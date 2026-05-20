@@ -38,6 +38,7 @@ import { ChatComposeBar } from '../components/ChatComposeBar';
 import { SlashCommandsTip } from '../components/SlashCommandsTip';
 import { zh } from '../locales/zh-CN';
 import { ChatMessageRow, chatBubbleTextStyle } from '../components/ChatMessageRow';
+import { AgentRunCard } from '../features/agent/AgentRunCard';
 import { ChatMessageContent } from '../components/chat/ChatMessageContent';
 import {
   BubbleTextSelectionProvider,
@@ -423,6 +424,14 @@ export function GroupChatScreen({ route, navigation }: Props) {
             scrollToEnd();
             return true;
           }
+          if (data.type === 'agent') {
+            // agent run 的 invoker/placeholderAi 消息已在后端写入 group_messages,
+            // 这里清掉本地 pending 占位并重新拉取消息列表让 AgentRunCard 接管。
+            setMessages((prev) => stripLocalGroupMessages(prev));
+            await loadMessages();
+            scrollToEnd();
+            return true;
+          }
         }
         if (isGroupLlm) {
           setMessages((prev) => stripLocalGroupMessages(prev));
@@ -524,6 +533,13 @@ export function GroupChatScreen({ route, navigation }: Props) {
     );
 
     const mark = bubbleMarkProps(item);
+
+    // M1b-3：agent run 占位消息（私聊 / 群聊 placeholderAi 都靠这个字段）
+    const agentRunId = (item as unknown as { agentRun?: { agentRunId?: string } })
+      .agentRun?.agentRunId;
+    if (agentRunId) {
+      return row(<AgentRunCard runId={agentRunId} />);
+    }
 
     if (isAi) {
       const pending = item.uiPending === true;

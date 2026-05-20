@@ -61,11 +61,16 @@ export function shouldShowIntentChips(result: IntentAnalyzeResult): boolean {
     result.suggested === 'memory_correct' ||
     result.suggested === 'memory_forget' ||
     result.suggested === 'persona_open_settings' ||
-    result.suggested === 'app_navigate'
+    result.suggested === 'app_navigate' ||
+    result.suggested === 'agent_run'
   ) {
     return true;
   }
-  if (result.candidates.some((c) => c.kind === 'app_navigate')) {
+  if (
+    result.candidates.some(
+      (c) => c.kind === 'app_navigate' || c.kind === 'agent_run',
+    )
+  ) {
     return true;
   }
   if (result.hint === 'no_memory_to_edit' || result.hint === 'extract_unavailable') {

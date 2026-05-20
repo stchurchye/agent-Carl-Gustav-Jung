@@ -5,10 +5,21 @@ export function isIntentExecuteResult(data: unknown): data is IntentExecuteResul
   return typeof data === 'object' && data !== null && 'type' in data;
 }
 
+export type AgentIntentMeta = {
+  runId: string;
+  userMessageId: string | null;
+  placeholderMessageId: string | null;
+};
+
 export type ChatIntentApplyCallbacks = {
   onChat: (user: ChatMessage, assistant: ChatMessage) => void | Promise<void>;
   onMemory: (user: ChatMessage, assistant: ChatMessage) => void;
   onTool: (user: ChatMessage, assistant: ChatMessage) => void;
+  /**
+   * M1b-3：私聊 agent run 占位消息已经写到 DB,
+   * 这里需要前端刷新本会话消息列表（payload 中带 agentRun 元数据）。
+   */
+  onAgent?: (meta: AgentIntentMeta) => void | Promise<void>;
 };
 
 export async function applyPrivateIntentResult(
@@ -25,6 +36,16 @@ export async function applyPrivateIntentResult(
   }
   if (data.type === 'tool' && data.userMessage && data.assistantMessage) {
     callbacks.onTool(data.userMessage, data.assistantMessage);
+    return true;
+  }
+  if (data.type === 'agent') {
+    if (callbacks.onAgent) {
+      await callbacks.onAgent({
+        runId: data.runId,
+        userMessageId: data.userMessageId,
+        placeholderMessageId: data.placeholderMessageId,
+      });
+    }
     return true;
   }
   if (data.type === 'skipped') {
