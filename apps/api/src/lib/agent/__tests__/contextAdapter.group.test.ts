@@ -5,6 +5,7 @@ import { getPool } from '../../../db/client.js';
 import { snapshotForAgent } from '../contextAdapter.js';
 import { addGroupMessage } from '../../../store/pg-social.js';
 import { ensureUser, ensureGroup, addMember } from './_groupFixture.js';
+import * as topicSkillsStore from '../topicSkills.js';
 
 /**
  * T7: snapshotForAgent 群聊路径
@@ -17,6 +18,7 @@ describe('snapshotForAgent group (T7)', () => {
   beforeEach(async () => {
     await getPool().query('DELETE FROM agent_steps');
     await getPool().query('DELETE FROM agent_runs');
+    await getPool().query('DELETE FROM topic_skills');
   });
 
   it('topic_skills enabled => system prompt contains skill content', async () => {
@@ -111,5 +113,31 @@ describe('snapshotForAgent group (T7)', () => {
     );
     expect(hasAlicePrefix).toBe(true);
     expect(hasBobPrefix).toBe(true);
+  });
+
+  it('falls back to DB topic_skills when no override is provided', async () => {
+    const u = await ensureUser('db-skill');
+    const { groupId, topicId } = await ensureGroup(u.id);
+    await topicSkillsStore.upsertSkill({
+      scope: 'topic',
+      ownerId: u.id,
+      groupId,
+      topicId,
+      title: 'DB 注入',
+      content: '从数据库读取',
+      enabled: true,
+      updatedByUserId: u.id,
+    });
+    const snap = await snapshotForAgent({
+      runId: randomUUID(),
+      userId: u.id,
+      channel: 'group',
+      groupId,
+      topicId,
+      pendingUser: 'x',
+      apiKey: 'fake',
+    });
+    expect(snap.systemPrompt).toContain('DB 注入');
+    expect(snap.systemPrompt).toContain('从数据库读取');
   });
 });

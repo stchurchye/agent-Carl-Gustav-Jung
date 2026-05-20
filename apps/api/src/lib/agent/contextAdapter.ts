@@ -3,17 +3,26 @@ import type { ChatMessageInput } from '../deepseek.js';
 import { prepareChatContext } from '../contextPipeline.js';
 import { listGroupMessages } from '../../store/pg-social.js';
 import { buildGroupLlmSystem, resolveGroupHistoryMessages } from '../groupLlm.js';
+import {
+  listForAgent as listTopicSkillsForAgent,
+  type TopicSkill as DbTopicSkill,
+} from './topicSkills.js';
 
-export type TopicSkill = {
-  id: string;
-  scope: 'topic' | 'user' | 'group';
-  ownerId: string | null;
-  groupId: string | null;
-  topicId: string | null;
-  title: string;
-  content: string;
-  enabled: boolean;
-};
+/**
+ * snapshotForAgent 仅消费 skill 的展示字段。这是 db TopicSkill 的子集——
+ * 用 Pick 派生避免类型漂移。
+ */
+export type TopicSkill = Pick<
+  DbTopicSkill,
+  | 'id'
+  | 'scope'
+  | 'ownerId'
+  | 'groupId'
+  | 'topicId'
+  | 'title'
+  | 'content'
+  | 'enabled'
+>;
 
 export type AgentContextSnapshot = {
   systemPrompt: string;
@@ -62,13 +71,21 @@ export type SnapshotForAgentParams = {
   topicId?: string;
   pendingUser: string;
   apiKey: string;
-  topicSkills: TopicSkill[];
+  /** 不传则从 db 按 (userId, groupId?, topicId?) 自动拉 enabled=true skills。 */
+  topicSkills?: TopicSkill[];
   dialect?: ReplyDialect;
 };
 
 export async function snapshotForAgent(
   params: SnapshotForAgentParams,
 ): Promise<AgentContextSnapshot> {
+  const skills: TopicSkill[] =
+    params.topicSkills ??
+    (await listTopicSkillsForAgent({
+      userId: params.userId,
+      groupId: params.groupId,
+      topicId: params.topicId,
+    }));
   if (params.channel === 'private') {
     if (!params.sessionId) {
       throw new Error('snapshotForAgent: private channel requires sessionId');
@@ -87,7 +104,7 @@ export async function snapshotForAgent(
         ? otherMsgs.slice(0, -1)
         : otherMsgs;
     const systemPrompt =
-      (systemMsg?.content ?? '') + formatTopicSkillsAsSystemBlock(params.topicSkills);
+      (systemMsg?.content ?? '') + formatTopicSkillsAsSystemBlock(skills);
     const last6 = history
       .slice(-6)
       .map((m) => `${m.role}: ${m.content.slice(0, 80)}`)
@@ -115,7 +132,7 @@ export async function snapshotForAgent(
     topicId: params.topicId,
     query: params.pendingUser,
   });
-  const systemPrompt = systemBase + formatTopicSkillsAsSystemBlock(params.topicSkills);
+  const systemPrompt = systemBase + formatTopicSkillsAsSystemBlock(skills);
   const history: ChatMessageInput[] = selected.map((m) => {
     const role: 'assistant' | 'user' = m.kind === 'ai' ? 'assistant' : 'user';
     const speaker =
