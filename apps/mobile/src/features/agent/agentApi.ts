@@ -31,3 +31,9 @@ export async function denyAgentRun(id: string, reason?: string): Promise<void> {
 export async function steerAgentRun(id: string, instruction: string): Promise<void> {
   await api.steerAgentRun(id, instruction);
 }
+
+export async function retryAgentRun(id: string): Promise<{ runId: string }> {
+  const res = await api.retryAgentRun(id);
+  const data = res.data as { runId: string };
+  return { runId: data.runId };
+}

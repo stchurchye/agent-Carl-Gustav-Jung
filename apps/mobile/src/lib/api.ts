@@ -748,4 +748,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ instruction }),
     }),
+  retryAgentRun: (id: string) =>
+    request<{
+      runId: string;
+      placeholderMessageId: string | null;
+      userMessageId: string | null;
+    }>(`/api/agent/runs/${id}/retry`, { method: 'POST' }),
 };

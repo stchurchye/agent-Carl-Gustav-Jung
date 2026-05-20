@@ -5,6 +5,7 @@ import {
   approveAgentRun,
   cancelAgentRun,
   denyAgentRun,
+  retryAgentRun,
   steerAgentRun,
 } from './agentApi';
 import type { AgentRunStatus } from './types';
@@ -32,7 +33,17 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
   budget_exhausted: '预算耗尽',
 };
 
-export function AgentRunCard({ runId }: { runId: string }) {
+export function AgentRunCard({
+  runId,
+  onRetry,
+}: {
+  runId: string;
+  /**
+   * M1d Task 3：重试成功后，上层调用方拿到新 runId 后可以决定如何处理，
+   * 通常是刷新会话消息列表，让新 placeholder 上挂另一个 AgentRunCard。
+   */
+  onRetry?: (newRunId: string) => void | Promise<void>;
+}) {
   const { run, steps, connected } = useAgentRunSubscription(runId);
 
   if (!run) {
@@ -140,6 +151,23 @@ export function AgentRunCard({ runId }: { runId: string }) {
             steerAgentRun(runId, text).catch((e) => Alert.alert('steer 失败', String(e)))
           }
         />
+      ) : null}
+
+      {terminal && run.status !== 'completed' ? (
+        <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end' }}>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                const { runId: newId } = await retryAgentRun(runId);
+                await onRetry?.(newId);
+              } catch (e) {
+                Alert.alert('重试失败', String(e));
+              }
+            }}
+          >
+            <Text style={{ color: '#0a6' }}>再试一次</Text>
+          </TouchableOpacity>
+        </View>
       ) : null}
     </View>
   );

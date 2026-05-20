@@ -6,7 +6,7 @@ import { jsonError } from '../lib/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import * as store from '../lib/agent/store.js';
-import { cancelRun, confirmRun } from '../lib/agent/runtime.js';
+import { cancelRun, confirmRun, createAgentRun } from '../lib/agent/runtime.js';
 import type { AgentRun } from '../lib/agent/types.js';
 import * as topicSkills from '../lib/agent/topicSkills.js';
 
@@ -106,6 +106,48 @@ agentRouter.post('/runs/:id/cancel', async (c) => {
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   await cancelRun(id, userId);
   return c.json({ ok: true, requestId: c.get('requestId') });
+});
+
+/**
+ * M1d Task 3：把一个终态 run 重跑——克隆 inputText / channel / budget，
+ * 创建一个新的 run（不复用旧 run id、不接续 step），返回新 runId。
+ * 只允许 terminal 状态调用；非 terminal 状态返回 409。
+ */
+agentRouter.post('/runs/:id/retry', async (c) => {
+  const userId = c.get('userId')!;
+  const id = c.req.param('id');
+  const run = await store.getAgentRun(id);
+  if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+  if (!(await canAccessRun(run, userId)))
+    return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
+  const isTerminal =
+    run.status === 'completed' ||
+    run.status === 'failed' ||
+    run.status === 'cancelled' ||
+    run.status === 'budget_exhausted';
+  if (!isTerminal) return jsonError(c, ErrorCodes.VALIDATION, 409);
+
+  const result = await createAgentRun({
+    ownerId: run.ownerId,
+    channel: run.channel,
+    sessionId: run.sessionId ?? undefined,
+    groupId: run.groupId ?? undefined,
+    topicId: run.topicId ?? undefined,
+    inputText: run.inputText,
+    // Worker 自己根据 apiKeySource 解析 key（M1d Task 6 才接 per-user key 取用）。
+    apiKey: '',
+    apiKeySource: run.apiKeySource,
+    budget: run.budget,
+  });
+  return c.json({
+    ok: true,
+    data: {
+      runId: result.run.id,
+      placeholderMessageId: result.placeholderMessageId,
+      userMessageId: result.userMessageId,
+    },
+    requestId: c.get('requestId'),
+  });
 });
 
 agentRouter.post('/runs/:id/confirm', async (c) => {

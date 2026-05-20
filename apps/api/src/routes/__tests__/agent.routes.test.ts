@@ -216,3 +216,121 @@ describe('approve/deny/steer routes (M1b-2)', () => {
     expect(res.status).toBe(400);
   });
 });
+
+/**
+ * M1d Task 3: retry route — terminal 状态可重跑、非 terminal 409、owner/member 鉴权。
+ */
+describe('POST /api/agent/runs/:id/retry (M1d)', () => {
+  beforeAll(async () => await runMigrations());
+  beforeEach(async () => {
+    await getPool().query('DELETE FROM agent_steps');
+    await getPool().query('DELETE FROM agent_runs');
+  });
+
+  function makeApp() {
+    const app = new Hono<{ Variables: AppVariables }>();
+    app.use('*', async (c, next) => {
+      c.set('requestId', randomUUID());
+      await next();
+    });
+    app.route('/api/agent', agentRouter);
+    return app;
+  }
+
+  async function tokenFor(u: { id: string; username: string; displayName: string }) {
+    const { accessToken } = await signAccessToken({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      createdAt: new Date().toISOString(),
+    });
+    return accessToken;
+  }
+
+  async function mkTerminalPrivateRun(ownerId: string, status: 'completed' | 'failed' | 'cancelled' | 'budget_exhausted') {
+    const sess = await (await import('../../store/pg.js')).createChatSession(ownerId, 't');
+    const r = await store.insertAgentRun({
+      ownerId,
+      channel: 'private',
+      sessionId: sess.id,
+      groupId: null,
+      topicId: null,
+      intentTurnId: null,
+      role: 'generalist',
+      status,
+      inputText: '原始输入，retry 应该复用',
+      budget: { maxSteps: 7, maxSeconds: 88, maxTokens: 999 },
+      apiKeyOwnerId: null,
+      apiKeySource: 'server',
+    });
+    return r.id;
+  }
+
+  it('terminal run: retry 创建新 run、复用 inputText/budget、返回新 runId', async () => {
+    const owner = await ensureUser('rt-ok');
+    const oldId = await mkTerminalPrivateRun(owner.id, 'failed');
+
+    const token = await tokenFor(owner);
+    const app = makeApp();
+    const res = await app.fetch(
+      new Request(`http://test/api/agent/runs/${oldId}/retry`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { runId: string } };
+    expect(body.data.runId).toBeTruthy();
+    expect(body.data.runId).not.toBe(oldId);
+
+    const newRun = await store.getAgentRun(body.data.runId);
+    expect(newRun?.inputText).toBe('原始输入，retry 应该复用');
+    expect(newRun?.budget.maxSteps).toBe(7);
+    expect(newRun?.status).toBe('draft');
+  });
+
+  it('non-terminal run: 409', async () => {
+    const owner = await ensureUser('rt-running');
+    const sess = await (await import('../../store/pg.js')).createChatSession(owner.id, 't');
+    const r = await store.insertAgentRun({
+      ownerId: owner.id,
+      channel: 'private',
+      sessionId: sess.id,
+      groupId: null,
+      topicId: null,
+      intentTurnId: null,
+      role: 'generalist',
+      status: 'running',
+      inputText: 'x',
+      budget: DEFAULT_BUDGET,
+      apiKeyOwnerId: null,
+      apiKeySource: 'server',
+    });
+
+    const token = await tokenFor(owner);
+    const app = makeApp();
+    const res = await app.fetch(
+      new Request(`http://test/api/agent/runs/${r.id}/retry`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it('stranger gets 403', async () => {
+    const owner = await ensureUser('rt-owner');
+    const stranger = await ensureUser('rt-stranger');
+    const oldId = await mkTerminalPrivateRun(owner.id, 'cancelled');
+
+    const token = await tokenFor(stranger);
+    const app = makeApp();
+    const res = await app.fetch(
+      new Request(`http://test/api/agent/runs/${oldId}/retry`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+});
