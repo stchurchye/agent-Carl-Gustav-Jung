@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { getPool } from '../../db/client.js';
 import * as store from './store.js';
 import {
   AgentBudgetExhausted,
@@ -17,6 +18,8 @@ import { checkBudget } from './budget.js';
 import {
   writePrivatePlaceholder,
   finalizePrivatePlaceholder,
+  writeGroupPlaceholder,
+  finalizeGroupPlaceholder,
 } from './messageBridge.js';
 
 const TOOL_TIMEOUT_MS = 60_000;
@@ -40,6 +43,7 @@ export type CreateAgentRunResult = {
   run: AgentRun;
   userMessageId: string | null;
   placeholderMessageId: string | null;
+  llmJobId: string | null;
 };
 
 export async function createAgentRun(
@@ -62,6 +66,7 @@ export async function createAgentRun(
 
   let userMessageId: string | null = null;
   let placeholderMessageId: string | null = null;
+  let llmJobId: string | null = null;
 
   if (input.channel === 'private' && input.sessionId) {
     const bridge = await writePrivatePlaceholder({
@@ -75,10 +80,51 @@ export async function createAgentRun(
     const updated = await store.updateAgentRun(run.id, {
       resultMessageId: placeholderMessageId,
     });
-    return { run: updated ?? run, userMessageId, placeholderMessageId };
+    return {
+      run: updated ?? run,
+      userMessageId,
+      placeholderMessageId,
+      llmJobId,
+    };
   }
 
-  return { run, userMessageId, placeholderMessageId };
+  if (input.channel === 'group' && input.groupId && input.topicId) {
+    const bridge = await writeGroupPlaceholder({
+      userId: input.ownerId,
+      groupId: input.groupId,
+      topicId: input.topicId,
+      inputText: input.inputText,
+      agentRunId: run.id,
+    });
+    userMessageId = bridge.invokeMessageId;
+    placeholderMessageId = bridge.placeholderAiMessageId;
+    llmJobId = bridge.llmJobId;
+    const updated = await store.updateAgentRun(run.id, {
+      invokeMessageId: bridge.invokeMessageId,
+      resultMessageId: placeholderMessageId,
+    });
+    return {
+      run: updated ?? run,
+      userMessageId,
+      placeholderMessageId,
+      llmJobId,
+    };
+  }
+
+  return { run, userMessageId, placeholderMessageId, llmJobId };
+}
+
+/**
+ * 群聊 finalize 需要 llmJobId。M1b-1 简化做法：从 group_messages.payload 反查
+ * （writeGroupPlaceholder 把它写在 payload.agentRun.llmJobId）。
+ */
+async function lookupGroupLlmJobId(messageId: string): Promise<string | null> {
+  const { rows } = await getPool().query(
+    `SELECT payload->'agentRun'->>'llmJobId' AS job_id
+     FROM group_messages WHERE id = $1`,
+    [messageId],
+  );
+  return (rows[0]?.job_id as string | null) ?? null;
 }
 
 function pickFinalContent(run: AgentRun, plan: Plan | null): string {
@@ -102,12 +148,25 @@ async function softComplete(
           ? `[任务失败${detail ? '：' + detail : ''}]`
           : pickFinalContent(run, run.plan);
 
-  if (run.resultMessageId && run.channel === 'private') {
-    await finalizePrivatePlaceholder({
-      messageId: run.resultMessageId,
-      finalContent,
-      status,
-    });
+  if (run.resultMessageId) {
+    if (run.channel === 'private') {
+      await finalizePrivatePlaceholder({
+        messageId: run.resultMessageId,
+        finalContent,
+        status,
+      });
+    } else if (run.channel === 'group') {
+      const llmJobId = await lookupGroupLlmJobId(run.resultMessageId);
+      if (llmJobId) {
+        await finalizeGroupPlaceholder({
+          ownerId: run.ownerId,
+          llmJobId,
+          placeholderAiMessageId: run.resultMessageId,
+          finalContent,
+          status,
+        });
+      }
+    }
   }
 
   await store.updateAgentRun(run.id, {
@@ -270,12 +329,25 @@ export async function cancelRun(
     cancelReason: 'user',
     endedAt: new Date(),
   });
-  if (run.resultMessageId && run.channel === 'private') {
-    await finalizePrivatePlaceholder({
-      messageId: run.resultMessageId,
-      finalContent: '[任务已取消]',
-      status: 'cancelled',
-    });
+  if (run.resultMessageId) {
+    if (run.channel === 'private') {
+      await finalizePrivatePlaceholder({
+        messageId: run.resultMessageId,
+        finalContent: '[任务已取消]',
+        status: 'cancelled',
+      });
+    } else if (run.channel === 'group') {
+      const llmJobId = await lookupGroupLlmJobId(run.resultMessageId);
+      if (llmJobId) {
+        await finalizeGroupPlaceholder({
+          ownerId: run.ownerId,
+          llmJobId,
+          placeholderAiMessageId: run.resultMessageId,
+          finalContent: '[任务已取消]',
+          status: 'cancelled',
+        });
+      }
+    }
   }
 }
 
