@@ -14,15 +14,18 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.4",
+    "@mozilla/readability": "^0.6.0",
     "@xzz/shared": "*",
     "bcryptjs": "^3.0.3",
     "hono": "^4.7.10",
     "jose": "^6.2.3",
+    "jsdom": "^29.1.1",
     "pg": "^8.20.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/jsdom": "^28.0.3",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^22.15.21",
     "@types/pg": "^8.20.0",
