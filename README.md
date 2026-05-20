@@ -73,19 +73,29 @@ npm run dev:mobile
 2. App → **我的** → 填入密钥 → **测试一下**  
 3. 或写入 `.env` 给 Docker：`DEEPSEEK_API_KEY=sk-...`
 
-## Agent Runtime（M1a）
+## Agent Runtime（M1a + M1b-1）
 
-后台多步 agent 执行能力。**M1a 范围**：私聊触发、echo mock 工具、worker 后台跑、取消 / SSE 流。群聊 + LLM planner + approval / steer / critique / 真实工具 / mobile UI 留 M1b-d。
+后台多步 agent 执行能力。**当前范围**：
 
-**入口**：私聊里发 `/agent 跑三步 echo` —— `intentRules` 把它识别为 `agent_run`，`intentExecute` 异步创建 `agent_runs` 行 + 占位 assistant 消息，worker 后台 pickup 执行。
+- **M1a**：私聊触发、echo mock 工具、worker 后台跑、取消 / SSE 流。
+- **M1b-1**：群聊触发、群成员任意一人可取消 / 查看 / 流式订阅、`topic_skills` 三层 scope（user/group/topic）CRUD + 自动注入 system prompt。
+- M1b-2（approval / steer / critique）、M1b-3（mobile UI + hooks）、M1c（LLM planner + 真实工具）、M1d（hardening：T5 heartbeat reclaim、T16 SSE reconnect）后续。
+
+**入口**：
+
+- 私聊：发 `/agent 跑三步 echo`
+- 群聊：在群话题内发 `/agent 帮我研究…`，`intentExecute` 落到 `createAgentRun({ channel:'group', groupId, topicId })`，同步建 `llm_invoke_jobs` + 群消息占位
 
 **HTTP / SSE**（均挂在 `/api/agent`，需登录）：
 
-- `POST /api/intent/execute` 带 `kind: 'agent_run'` 触发任务
-- `GET /api/agent/runs/:id` 取任务详情（run + 全部 steps）
+- `POST /api/intent/execute` 带 `kind: 'agent_run'` 触发任务（私聊 / 群聊均可）
+- `GET /api/agent/runs/:id` 取任务详情（run + 全部 steps）—— 私聊仅 owner，群聊任意群成员可访问
 - `GET /api/agent/runs/:id/stream`（SSE）实时推送 `step` / `status` / `end` 事件
-- `POST /api/agent/runs/:id/cancel` 取消
-- `POST /api/agent/runs/:id/confirm` 通过 `awaiting_confirm` 状态（M1b 才用）
+- `POST /api/agent/runs/:id/cancel` 取消（群聊任意成员可发起）
+- `POST /api/agent/runs/:id/confirm` 通过 `awaiting_confirm` 状态（M1b-2 才用）
+- `GET / POST / PATCH / DELETE /api/agent/skills` topic skills CRUD（按 scope 区分 user / group / topic）
+
+**Topic Skills**：用户在群话题里写"约定"（如"少用表情"、"聚焦税务不讨论投机"）。`contextAdapter.snapshotForAgent` 默认按 `(userId, groupId?, topicId?)` 自动从 `topic_skills` 表里捞 enabled 的项，拼到 system prompt 的 `<topic_skills>` 块。caller 也可显式传 `topicSkills` 覆盖。
 
 **测试 / 开发注意事项**：
 
@@ -96,5 +106,6 @@ npm run dev:mobile
 **设计 / 实现细节**：
 
 - 设计文档：`docs/superpowers/specs/2026-05-20-agent-runtime-design.md`
-- M1a 实现计划：`docs/superpowers/plans/2026-05-20-agent-runtime-m1a.md`
+- 实现计划：`docs/superpowers/plans/2026-05-20-agent-runtime-m1a.md`、`m1b-1.md`、`m1b-2.md`、`m1b-3.md`
+- ADR：`docs/superpowers/plans/2026-05-20-agent-runtime-m1b-completion.md`
 - 关键代码：`apps/api/src/lib/agent/*`，迁移：`apps/api/src/db/migrations/012_agent_runtime.sql`
