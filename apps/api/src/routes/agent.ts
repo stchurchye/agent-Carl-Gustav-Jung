@@ -119,6 +119,58 @@ agentRouter.post('/runs/:id/confirm', async (c) => {
   return c.json({ ok: true, requestId: c.get('requestId') });
 });
 
+// --------- Approval / Steer (M1b-2) ---------
+
+agentRouter.post('/runs/:id/approve', async (c) => {
+  const userId = c.get('userId')!;
+  const id = c.req.param('id');
+  const run = await store.getAgentRun(id);
+  if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+  if (!(await canAccessRun(run, userId)))
+    return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
+  const { approveRun } = await import('../lib/agent/approval.js');
+  const ok = await approveRun(id, userId);
+  return c.json({ ok, requestId: c.get('requestId') });
+});
+
+agentRouter.post('/runs/:id/deny', async (c) => {
+  const userId = c.get('userId')!;
+  const id = c.req.param('id');
+  const run = await store.getAgentRun(id);
+  if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+  if (!(await canAccessRun(run, userId)))
+    return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
+  const body = (await c.req.json().catch(() => ({}))) as { reason?: string };
+  const { denyRun } = await import('../lib/agent/approval.js');
+  const ok = await denyRun(id, userId, body.reason);
+  return c.json({ ok, requestId: c.get('requestId') });
+});
+
+agentRouter.post('/runs/:id/steer', async (c) => {
+  const userId = c.get('userId')!;
+  const id = c.req.param('id');
+  const run = await store.getAgentRun(id);
+  if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+  if (!(await canAccessRun(run, userId)))
+    return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
+  const body = await c.req
+    .json<{ instruction?: string }>()
+    .catch(() => ({}) as { instruction?: string });
+  const instruction = body.instruction?.trim();
+  if (!instruction) return jsonError(c, ErrorCodes.VALIDATION, 400);
+  const { steerRun } = await import('../lib/agent/steer.js');
+  const res = await steerRun({
+    runId: id,
+    byUserId: userId,
+    instruction,
+  });
+  return c.json({
+    ok: res.accepted,
+    reason: res.reason,
+    requestId: c.get('requestId'),
+  });
+});
+
 // --------- Topic skills CRUD (M1b-1) ---------
 
 async function canManageGroupSkill(
