@@ -24,7 +24,8 @@ import {
 
 const TOOL_TIMEOUT_MS = 60_000;
 
-const runControllers = new Map<string, AbortController>();
+// 共享 AbortController Map，与 steer.ts / cancelRun 同源（避免模块级私有 Map）。
+import { runControllers } from './runtimeRegistry.js';
 
 export type CreateAgentRunInput = {
   ownerId: string;

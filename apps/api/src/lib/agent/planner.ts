@@ -46,3 +46,37 @@ export function generatePlanForEcho(text: string): Plan {
     version: 1,
   };
 }
+
+/**
+ * M1b-2 steer 重规划。M1b 简化版：抽 instruction 里的步数生成新 echo 计划。
+ * 接口与 M1c 的 LLM-driven planner 对齐：(prevPlan, instruction, alreadyCompletedSteps) → Plan。
+ */
+export function generatePlanForSteer(
+  prevPlan: Plan,
+  instruction: string,
+  _alreadyCompletedSteps: number,
+): Plan {
+  const next = generatePlanForEcho(instruction);
+  return {
+    ...next,
+    intentSummary: `[steer] ${instruction}`,
+    version: prevPlan.version + 1,
+  };
+}
+
+/**
+ * M1b-2 deny 重规划。简化为 echo 1 步占位；M1c 接 LLM 时会带 deniedTool + inputText
+ * 让 planner 选替代方案。
+ */
+export function generatePlanForApprovalDeny(
+  prevPlan: Plan,
+  deniedTool: string,
+  inputText: string,
+): Plan {
+  const next = generatePlanForEcho(inputText || '继续');
+  return {
+    ...next,
+    intentSummary: `[after deny:${deniedTool}] 改用替代方案`,
+    version: prevPlan.version + 1,
+  };
+}
