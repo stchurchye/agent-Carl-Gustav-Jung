@@ -727,4 +727,25 @@ export const api = {
     request<LlmRequestLogListItem[]>(`/api/llm-logs?limit=${limit}`),
 
   getLlmLog: (id: string) => request<LlmRequestLogDetail>(`/api/llm-logs/${id}`),
+
+  // ----- agent runtime (M1b-3) -----
+  getAgentRun: (id: string) =>
+    request<unknown>(`/api/agent/runs/${id}`),
+  cancelAgentRun: (id: string) =>
+    request<unknown>(`/api/agent/runs/${id}/cancel`, { method: 'POST' }),
+  approveAgentRun: (id: string, reason?: string) =>
+    request<unknown>(`/api/agent/runs/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
+  denyAgentRun: (id: string, reason?: string) =>
+    request<unknown>(`/api/agent/runs/${id}/deny`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
+  steerAgentRun: (id: string, instruction: string) =>
+    request<unknown>(`/api/agent/runs/${id}/steer`, {
+      method: 'POST',
+      body: JSON.stringify({ instruction }),
+    }),
 };
