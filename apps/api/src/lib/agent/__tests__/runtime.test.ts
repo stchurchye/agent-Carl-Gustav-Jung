@@ -86,5 +86,16 @@ describe('agent runtime end-to-end (echo)', () => {
     expect(after?.status).toBe('budget_exhausted');
     const steps = await listSteps(run.id);
     expect(steps.filter((s) => s.kind === 'tool_call').length).toBeLessThanOrEqual(2);
+
+    // M1d T14：finalContent 应当展示已花费明细 + 上限
+    const pool = (await import('../../../db/client.js')).getPool();
+    const { rows } = await pool.query(
+      `SELECT payload->>'content' AS content FROM private_chat_messages WHERE id = $1`,
+      [after!.resultMessageId],
+    );
+    const content = rows[0]?.content as string;
+    expect(content).toContain('预算已用尽');
+    expect(content).toMatch(/步骤\s*2\/2/);
+    expect(content).toContain('再试一次');
   });
 });

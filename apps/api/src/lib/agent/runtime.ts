@@ -159,6 +159,27 @@ function pickFallbackFinalContent(run: AgentRun, plan: Plan | null): string {
 }
 
 /**
+ * M1d T14：budget_exhausted 软着陆。前端会单独把这段拆开渲染（usage 行），
+ * 这里 backend 保留可读的纯文本 fallback：
+ * - 第一行：已完成事项 + 用户的原始 intent（沿用 fallback final content）
+ * - 二行起：明确说"预算到了"+ 已花费 vs 上限
+ */
+function formatBudgetExhaustedReply(run: AgentRun, detail: string | undefined): string {
+  const base = pickFallbackFinalContent(run, run.plan);
+  const u = run.usage;
+  const b = run.budget;
+  const dim = detail ?? 'unknown';
+  const lines = [
+    base,
+    '',
+    `[预算已用尽：${dim}]`,
+    `已花费：步骤 ${u.steps}/${b.maxSteps}、tokens ${u.tokens}/${b.maxTokens}、用时 ${u.elapsedSeconds}s/${b.maxSeconds}s`,
+    `如需继续，可在聊天里发"再试一次"或在任务面板点重试。`,
+  ];
+  return lines.join('\n');
+}
+
+/**
  * M1c：completed 状态下用 LLM 生成终稿；非 completed 走原占位文本。
  * 测试环境 / 缺 API key 时直接 fallback。
  */
@@ -168,7 +189,7 @@ async function buildFinalContent(
   detail: string | undefined,
 ): Promise<string> {
   if (status === 'budget_exhausted') {
-    return `${pickFallbackFinalContent(run, run.plan)}\n\n[预算已用尽：${detail ?? ''}]`;
+    return formatBudgetExhaustedReply(run, detail);
   }
   if (status === 'cancelled') return `[任务已取消${detail ? '：' + detail : ''}]`;
   if (status === 'failed') return `[任务失败${detail ? '：' + detail : ''}]`;

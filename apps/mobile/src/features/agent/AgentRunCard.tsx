@@ -75,6 +75,27 @@ export function AgentRunCard({ runId }: { runId: string }) {
         <AgentTodoList todos={run.todos ?? []} />
       </View>
 
+      {run.status === 'budget_exhausted' && run.usage && run.budget ? (
+        <View
+          style={{
+            marginTop: 8,
+            paddingVertical: 6,
+            paddingHorizontal: 10,
+            borderRadius: 6,
+            backgroundColor: '#fff0f0',
+          }}
+        >
+          <Text style={{ fontSize: 12, color: '#a00', fontWeight: '600' }}>
+            预算已用尽
+          </Text>
+          <Text style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
+            步骤 {run.usage.steps}/{run.budget.maxSteps} · tokens{' '}
+            {run.usage.tokens}/{run.budget.maxTokens} · 用时{' '}
+            {run.usage.elapsedSeconds}s/{run.budget.maxSeconds}s
+          </Text>
+        </View>
+      ) : null}
+
       {awaitingApproval ? (
         <View
           style={{

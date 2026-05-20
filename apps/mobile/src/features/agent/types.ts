@@ -56,6 +56,19 @@ export type AgentTodo = {
   stepRefs: string[];
 };
 
+export type AgentBudget = {
+  maxSteps: number;
+  maxSeconds: number;
+  maxTokens: number;
+};
+
+export type AgentUsage = {
+  steps: number;
+  elapsedSeconds: number;
+  tokens: number;
+  costCny: number;
+};
+
 export type AgentRun = {
   id: string;
   ownerId: string;
@@ -65,8 +78,10 @@ export type AgentRun = {
   todos: AgentTodo[];
   pendingApprovalToolName: string | null;
   awaitingApprovalUntil: string | null;
-  // 其他后端字段 (plan / budget / usage 等) 按需扩展;
-  // M1b-3 UI 暂时只依赖 status / inputText / todos / approval 字段。
+  // M1d T14：budget_exhausted UI 渲染需要 usage + budget。
+  budget: AgentBudget;
+  usage: AgentUsage;
+  // 其他后端字段 (plan / cancelReason 等) 按需扩展。
 };
 
 export type AgentRunWithSteps = {
