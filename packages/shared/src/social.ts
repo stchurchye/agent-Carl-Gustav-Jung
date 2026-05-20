@@ -130,6 +130,7 @@ export type IntentKind =
   | 'magi_system_query'
   | 'magi_content_link'
   | 'app_navigate'
+  | 'agent_run'
   /** @deprecated 使用 app_navigate + navigateTarget personality */
   | 'persona_open_settings'
   | 'clarify';
