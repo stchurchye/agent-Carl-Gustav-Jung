@@ -73,14 +73,15 @@ npm run dev:mobile
 2. App → **我的** → 填入密钥 → **测试一下**  
 3. 或写入 `.env` 给 Docker：`DEEPSEEK_API_KEY=sk-...`
 
-## Agent Runtime（M1a + M1b-1 + M1b-2）
+## Agent Runtime（M1a + M1b-1 + M1b-2 + M1b-3）
 
 后台多步 agent 执行能力。**当前范围**：
 
 - **M1a**：私聊触发、echo mock 工具、worker 后台跑、取消 / SSE 流。
 - **M1b-1**：群聊触发、群成员任意一人可取消 / 查看 / 流式订阅、`topic_skills` 三层 scope（user/group/topic）CRUD + 自动注入 system prompt。
 - **M1b-2**：approval gate（`approvalMode='ask'` 工具调用前让出，60s 后按 `costHint` 自动 grant/deny）、steer（中途换方向，abort + replanning）、critique（每 5 步或连续 2 次失败插入 stub critique step）。
-- M1b-3（mobile UI + hooks）、M1c（LLM planner + 真实工具）、M1d（hardening：T5 heartbeat reclaim、T16 SSE reconnect）后续。
+- **M1b-3**：mobile UI + hooks bus。`AgentRunCard` 嵌入私聊 / 群聊消息行，含 cancel / approve / deny / steer 操作；`agentHookBus` 广播 run 生命周期 + step 事件，`logHook` 把事件落到 `agent_event_logs` 表。**M1b 用 polling（1.5s）替代 SSE；T16 断线重连 defer 到 M1d**。
+- M1c（LLM planner + 真实工具）、M1d（hardening：T5 heartbeat reclaim、T16 SSE reconnect）后续。
 
 **入口**：
 
@@ -110,6 +111,24 @@ npm run dev:mobile
 **测试用工具 `risky_echo`**：`approvalMode='ask'` + `costHint='medium'`，仅在 `NODE_ENV !== 'production'` 时注册（运行时入口 `index.ts`），方便手测 approval 流程。
 
 **Topic Skills**：用户在群话题里写"约定"（如"少用表情"、"聚焦税务不讨论投机"）。`contextAdapter.snapshotForAgent` 默认按 `(userId, groupId?, topicId?)` 自动从 `topic_skills` 表里捞 enabled 的项，拼到 system prompt 的 `<topic_skills>` 块。caller 也可显式传 `topicSkills` 覆盖。
+
+**Mobile（M1b-3）**：
+
+- `apps/mobile/src/features/agent/`
+  - `AgentRunCard`：嵌入聊天消息行（私聊 + 群聊），渲染当前 agent run 实时状态 + cancel / approve / deny / steer 按钮
+  - `AgentTodoList` / `AgentStepList` / `AgentSteerInput`：拆分子组件
+  - `useAgentRunPoll`：M1b polling fallback，M1d 升级为 SSE 时只换 import（`useAgentRunSubscription` 别名）
+- `IntentChipBar` 给 `agent_run` 候选加 `AGENT` 角标
+- `intentFlow / applyIntentExecute` 增加 `type:'agent'` 分支：不发 LLM 请求，刷新会话消息让 `AgentRunCard` 接管渲染（依赖 `payload.agentRun.agentRunId`）
+
+**Hooks Bus（M1b-3）**：
+
+- `apps/api/src/lib/agent/hooks.ts` 提供 `agentHookBus`（EventEmitter），事件名采用 `domain.event` 风格：
+  - `run.started` / `run.completed` / `run.failed` / `run.cancelled` / `run.budget_exhausted`
+  - `step.recorded`
+- 触发点：`stepRecorder.recordStep`（step.recorded）、`runtime.executeRun` 入口（run.started）、`runtime.softComplete` 终态、`runtime.cancelRun`
+- M1b-3 内置消费者 `logHook` 把事件序列化写入 `agent_event_logs`；M1c+ 可再加 webhook / Slack / 文件归档
+- Spec §14 完整事件名（`pre_tool_use` / `post_tool_use` / `approval_requested` 等）见 `agent-runtime-design.md`，M1b 实现子集，剩余 defer M1c
 
 **测试 / 开发注意事项**：
 
