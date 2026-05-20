@@ -18,7 +18,8 @@ import {
 import { runCritique } from './critique.js';
 import { agentHookBus } from './hooks.js';
 import { recordStep, incrementUsage, startHeartbeat } from './stepRecorder.js';
-import { toolRegistry } from './toolRegistry.js';
+import { toolRegistry, type ToolDef } from './toolRegistry.js';
+import type { PlanStep } from './types.js';
 import { checkBudget } from './budget.js';
 import {
   writePrivatePlaceholder,
@@ -31,6 +32,21 @@ const TOOL_TIMEOUT_MS = 60_000;
 
 // 共享 AbortController Map，与 steer.ts / cancelRun 同源（避免模块级私有 Map）。
 import { runControllers } from './runtimeRegistry.js';
+
+/**
+ * M1c：拼出 `tool_call_key`，用于 runtime idempotency 缓存。
+ * 命中规则与 store 表 `agent_steps_tool_call_key_unique (run_id, tool_call_key)` 对齐。
+ * 跨 run 共享 / 全局缓存 defer 到 M1d。
+ */
+export function resolveToolCallKey(
+  tool: ToolDef,
+  planStep: PlanStep,
+): string | null {
+  if (!tool.computeIdempotencyKey) return null;
+  const key = tool.computeIdempotencyKey(planStep.input);
+  if (!key) return null;
+  return `${tool.name}:${key}`;
+}
 
 export type CreateAgentRunInput = {
   ownerId: string;
@@ -345,6 +361,44 @@ export async function executeRun(runId: string): Promise<void> {
       }
       // === End approval gate ===
 
+      // === Idempotency gate (M1c, T10) ===
+      const toolCallKey = resolveToolCallKey(tool, planStep);
+      if (toolCallKey) {
+        const cached = await store.findStepByToolCallKey(runId, toolCallKey);
+        if (cached && cached.kind === 'tool_call' && cached.output != null) {
+          // 命中缓存：写一条 observe step 留痕，不再调外部 handler。
+          // observe step 不带 toolCallKey,避免触犯 unique 索引；
+          // idempotency 元信息留在 input.idempotencyKey 字段里。
+          await recordStep({
+            runId,
+            kind: 'observe',
+            toolName: tool.name,
+            input: { cached: true, idempotencyKey: toolCallKey },
+            output: cached.output,
+          });
+          const newTodosC: TodoItem[] = (run.todos.length > 0
+            ? run.todos
+            : plan.todos
+          ).map((t) =>
+            t.id === planStep.todoId ? { ...t, status: 'completed' as const } : t,
+          );
+          const elapsedC = Math.floor(
+            (Date.now() - startedAt.getTime()) / 1000,
+          );
+          const usageC = incrementUsage(run, {
+            steps: 1,
+            tokens: 0,
+            elapsedSeconds: elapsedC - run.usage.elapsedSeconds,
+          });
+          run = (await store.updateAgentRun(runId, {
+            todos: newTodosC,
+            usage: usageC,
+          }))!;
+          continue;
+        }
+      }
+      // === End idempotency gate ===
+
       const stepId = randomUUID();
       const ctx = {
         runId,
@@ -393,6 +447,7 @@ export async function executeRun(runId: string): Promise<void> {
         runId,
         kind: 'tool_call',
         toolName: tool.name,
+        toolCallKey,
         input: planStep.input,
         output: { result: output, retried },
         durationMs,
