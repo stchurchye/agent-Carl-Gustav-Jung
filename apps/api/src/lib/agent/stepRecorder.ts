@@ -31,6 +31,11 @@ export function startHeartbeat(
   runId: string,
   intervalMs = 10_000,
 ): () => void {
+  // 立即写一次,占住 pickupNextRun 的"30 秒陈旧"窗口,避免本进程刚起跑、
+  // 另一个 worker 就抢走同一行的竞态.
+  void store
+    .updateAgentRun(runId, { lastHeartbeatAt: new Date() })
+    .catch(() => {});
   const timer = setInterval(() => {
     void store
       .updateAgentRun(runId, { lastHeartbeatAt: new Date() })

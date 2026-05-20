@@ -20,6 +20,11 @@ async function tick() {
 export function startAgentWorker(
   opts: { concurrency?: number; intervalMs?: number } = {},
 ): WorkerHandle {
+  // 在测试环境(NODE_ENV=test/vitest)下完全跳过 pickup,避免与 vitest 进程
+  // 直接调用 executeRun 的测试争抢 agent_runs.
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+    return { stop: () => {} };
+  }
   const interval = opts.intervalMs ?? 2_000;
   const timer = setInterval(() => {
     void tick();

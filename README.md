@@ -72,3 +72,29 @@ npm run dev:mobile
 1. [platform.deepseek.com](https://platform.deepseek.com/api_keys) 申请  
 2. App → **我的** → 填入密钥 → **测试一下**  
 3. 或写入 `.env` 给 Docker：`DEEPSEEK_API_KEY=sk-...`
+
+## Agent Runtime（M1a）
+
+后台多步 agent 执行能力。**M1a 范围**：私聊触发、echo mock 工具、worker 后台跑、取消 / SSE 流。群聊 + LLM planner + approval / steer / critique / 真实工具 / mobile UI 留 M1b-d。
+
+**入口**：私聊里发 `/agent 跑三步 echo` —— `intentRules` 把它识别为 `agent_run`，`intentExecute` 异步创建 `agent_runs` 行 + 占位 assistant 消息，worker 后台 pickup 执行。
+
+**HTTP / SSE**（均挂在 `/api/agent`，需登录）：
+
+- `POST /api/intent/execute` 带 `kind: 'agent_run'` 触发任务
+- `GET /api/agent/runs/:id` 取任务详情（run + 全部 steps）
+- `GET /api/agent/runs/:id/stream`（SSE）实时推送 `step` / `status` / `end` 事件
+- `POST /api/agent/runs/:id/cancel` 取消
+- `POST /api/agent/runs/:id/confirm` 通过 `awaiting_confirm` 状态（M1b 才用）
+
+**测试 / 开发注意事项**：
+
+- agent runtime 的集成测试依赖共享 PG，跑测试前**先确保没有 `npm run dev:api` 在跑** —— 否则 worker 进程会和 vitest 进程争抢 `agent_runs`。worker 在 `process.env.NODE_ENV=test` / `VITEST=1` 时会自动跳过 pickup，但只对 vitest 进程本身生效，无法影响其他 node 进程。
+- `apps/api/vitest.config.ts` 用 `singleFork + fileParallelism:false` 串行执行，避免 db-写测试互相 `DELETE`。
+- 跑 db 集成测试要先 `set -a; source .env; set +a` 注入 `DATABASE_URL`。
+
+**设计 / 实现细节**：
+
+- 设计文档：`docs/superpowers/specs/2026-05-20-agent-runtime-design.md`
+- M1a 实现计划：`docs/superpowers/plans/2026-05-20-agent-runtime-m1a.md`
+- 关键代码：`apps/api/src/lib/agent/*`，迁移：`apps/api/src/db/migrations/012_agent_runtime.sql`
