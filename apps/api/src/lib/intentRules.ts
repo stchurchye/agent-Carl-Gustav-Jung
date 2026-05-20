@@ -4,6 +4,15 @@ import type { IntentChannel } from './intentAnalyzer.js';
 
 const URL_RE = /https?:\/\/\S+/i;
 
+/**
+ * M1c：触发 agent_run 的自然语言信号。
+ * - 调研/研究/整理一份报告/写文档存档
+ * - 多关键词 → 把 agent_run 作为 primary 候选展示
+ * - chip 默认 ask，不自动执行；autoExecute 仅斜杠命令路径走（详见 intentExecute）
+ */
+export const AGENT_RESEARCH_RE =
+  /(?:研究|调研|深入了解|查清楚|帮我搞清楚|帮我搜集).{0,16}(?:资料|信息|内容|背景|案例|文档)?|帮我做一份.{0,20}报告|整理一份.{0,16}(?:报告|文档|资料|笔记)|写一份.{0,16}(?:报告|笔记|总结)|存到\s*magi|存档(?:到|进)\s*magi/i;
+
 export const PERSONA_STYLE_RE =
   /对话风格|交流风格|说话风格|语气风格|聊天风格|性格设置|调整.{0,12}风格|改.{0,8}风格|想.{0,8}风格|我的风格|你怎么说话|说话方式|说话.{0,6}(?:别太冲|软一点|温柔|冲一点|生硬)|语气.{0,6}(?:软|冲|温柔|生硬)|(?:别太冲|温柔一点|软一点).{0,8}说话/;
 
@@ -270,6 +279,30 @@ function collectRuleMatches(ctx: RuleMatchContext): RuleMatch[] {
           description: '在 MAGI 知识库中检索',
           confidence: 0.7,
           group: 'primary',
+        },
+      ],
+      { forceChips: true },
+    ),
+  );
+
+  push(
+    applyRule(
+      'agent_research',
+      AGENT_RESEARCH_RE.test(t),
+      () => [
+        {
+          kind: 'agent_run',
+          label: '让 agent 跑',
+          description: '搜资料 → 总结 → 写文档（可中断、可改主意）',
+          confidence: 0.9,
+          group: 'primary',
+        },
+        {
+          kind: chatKind(ch),
+          label: chatLabel(ch),
+          description: '不开 agent，直接聊',
+          confidence: 0.6,
+          group: 'other',
         },
       ],
       { forceChips: true },

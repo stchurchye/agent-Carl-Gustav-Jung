@@ -80,6 +80,9 @@ export function analyzeIntent(input: {
     top &&
     top.kind !== 'memory_correct' &&
     top.kind !== 'memory_forget' &&
+    // M1c：agent_run 默认不自动执行 —— 即使 confidence 拉满也让用户先 confirm，
+    // 因为 agent 跑起来花钱花时间，需要明确意图。斜杠 /agent 由 chip primary 收回。
+    top.kind !== 'agent_run' &&
     top.confidence >= 0.82 &&
     (!second || top.confidence - second.confidence >= 0.15);
 

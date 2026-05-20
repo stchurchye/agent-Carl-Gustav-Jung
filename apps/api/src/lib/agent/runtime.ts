@@ -14,11 +14,14 @@ import {
 import {
   generatePlanForEcho,
   generatePlanForApprovalDeny,
+  generatePlanWithLlm,
 } from './planner.js';
+import { snapshotForAgent } from './contextAdapter.js';
 import { runCritique } from './critique.js';
 import { agentHookBus } from './hooks.js';
 import { recordStep, incrementUsage, startHeartbeat } from './stepRecorder.js';
-import { toolRegistry } from './toolRegistry.js';
+import { toolRegistry, type ToolDef } from './toolRegistry.js';
+import type { PlanStep } from './types.js';
 import { checkBudget } from './budget.js';
 import {
   writePrivatePlaceholder,
@@ -31,6 +34,21 @@ const TOOL_TIMEOUT_MS = 60_000;
 
 // 共享 AbortController Map，与 steer.ts / cancelRun 同源（避免模块级私有 Map）。
 import { runControllers } from './runtimeRegistry.js';
+
+/**
+ * M1c：拼出 `tool_call_key`，用于 runtime idempotency 缓存。
+ * 命中规则与 store 表 `agent_steps_tool_call_key_unique (run_id, tool_call_key)` 对齐。
+ * 跨 run 共享 / 全局缓存 defer 到 M1d。
+ */
+export function resolveToolCallKey(
+  tool: ToolDef,
+  planStep: PlanStep,
+): string | null {
+  if (!tool.computeIdempotencyKey) return null;
+  const key = tool.computeIdempotencyKey(planStep.input);
+  if (!key) return null;
+  return `${tool.name}:${key}`;
+}
 
 export type CreateAgentRunInput = {
   ownerId: string;
@@ -133,11 +151,45 @@ async function lookupGroupLlmJobId(messageId: string): Promise<string | null> {
   return (rows[0]?.job_id as string | null) ?? null;
 }
 
-function pickFinalContent(run: AgentRun, plan: Plan | null): string {
+function pickFallbackFinalContent(run: AgentRun, plan: Plan | null): string {
   if (!plan) return '[任务未完成]';
   const todos = run.todos.length > 0 ? run.todos : plan.todos;
   const completed = todos.filter((t) => t.status === 'completed').length;
   return `已完成 ${completed} 步：${plan.intentSummary}\n${plan.finalReplyHint}`;
+}
+
+/**
+ * M1c：completed 状态下用 LLM 生成终稿；非 completed 走原占位文本。
+ * 测试环境 / 缺 API key 时直接 fallback。
+ */
+async function buildFinalContent(
+  run: AgentRun,
+  status: 'completed' | 'budget_exhausted' | 'failed' | 'cancelled',
+  detail: string | undefined,
+): Promise<string> {
+  if (status === 'budget_exhausted') {
+    return `${pickFallbackFinalContent(run, run.plan)}\n\n[预算已用尽：${detail ?? ''}]`;
+  }
+  if (status === 'cancelled') return `[任务已取消${detail ? '：' + detail : ''}]`;
+  if (status === 'failed') return `[任务失败${detail ? '：' + detail : ''}]`;
+
+  // completed: 尝试 LLM 终稿
+  const text = run.inputText ?? '';
+  const isTestEnv =
+    process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+  const looksLikeEcho = /echo/i.test(text);
+  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (isTestEnv || looksLikeEcho || !serverKey || !run.plan) {
+    return pickFallbackFinalContent(run, run.plan);
+  }
+  const steps = await store.listSteps(run.id);
+  const { generateFinalReply } = await import('./replyGen.js');
+  return generateFinalReply({
+    run,
+    plan: run.plan,
+    steps,
+    apiKey: serverKey,
+  });
 }
 
 async function softComplete(
@@ -145,14 +197,7 @@ async function softComplete(
   status: 'completed' | 'budget_exhausted' | 'failed' | 'cancelled',
   detail?: string,
 ) {
-  const finalContent =
-    status === 'budget_exhausted'
-      ? `${pickFinalContent(run, run.plan)}\n\n[预算已用尽：${detail ?? ''}]`
-      : status === 'cancelled'
-        ? `[任务已取消${detail ? '：' + detail : ''}]`
-        : status === 'failed'
-          ? `[任务失败${detail ? '：' + detail : ''}]`
-          : pickFinalContent(run, run.plan);
+  const finalContent = await buildFinalContent(run, status, detail);
 
   if (run.resultMessageId) {
     if (run.channel === 'private') {
@@ -202,6 +247,41 @@ async function softComplete(
       run: latest,
       resource: detail ?? 'unknown',
     });
+  }
+}
+
+/**
+ * M1c：选择初始 plan 来源。
+ * - 测试 / `echo` 关键词 / 缺少 LLM key 时走老的 `generatePlanForEcho`，保证 CI 不依赖外部 LLM。
+ * - 其余调 `generatePlanWithLlm`（内部失败会再 fallback echo）。
+ */
+async function buildInitialPlan(run: AgentRun): Promise<Plan> {
+  const text = run.inputText ?? '';
+  const isTestEnv =
+    process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+  const looksLikeEcho = /echo/i.test(text);
+  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (isTestEnv || looksLikeEcho || !serverKey) {
+    return generatePlanForEcho(text);
+  }
+  try {
+    const snapshot = await snapshotForAgent({
+      runId: run.id,
+      userId: run.ownerId,
+      channel: run.channel,
+      sessionId: run.sessionId ?? undefined,
+      groupId: run.groupId ?? undefined,
+      topicId: run.topicId ?? undefined,
+      pendingUser: text,
+      apiKey: serverKey,
+    });
+    return await generatePlanWithLlm({
+      inputText: text,
+      snapshot,
+      apiKey: serverKey,
+    });
+  } catch {
+    return generatePlanForEcho(text);
   }
 }
 
@@ -260,7 +340,7 @@ export async function executeRun(runId: string): Promise<void> {
   try {
     if (!run.plan) {
       await store.updateAgentRun(runId, { status: 'planning', startedAt });
-      const plan = generatePlanForEcho(run.inputText);
+      const plan = await buildInitialPlan(run);
       await recordStep({ runId, kind: 'plan', output: plan });
       run = (await store.updateAgentRun(runId, {
         plan,
@@ -345,6 +425,44 @@ export async function executeRun(runId: string): Promise<void> {
       }
       // === End approval gate ===
 
+      // === Idempotency gate (M1c, T10) ===
+      const toolCallKey = resolveToolCallKey(tool, planStep);
+      if (toolCallKey) {
+        const cached = await store.findStepByToolCallKey(runId, toolCallKey);
+        if (cached && cached.kind === 'tool_call' && cached.output != null) {
+          // 命中缓存：写一条 observe step 留痕，不再调外部 handler。
+          // observe step 不带 toolCallKey,避免触犯 unique 索引；
+          // idempotency 元信息留在 input.idempotencyKey 字段里。
+          await recordStep({
+            runId,
+            kind: 'observe',
+            toolName: tool.name,
+            input: { cached: true, idempotencyKey: toolCallKey },
+            output: cached.output,
+          });
+          const newTodosC: TodoItem[] = (run.todos.length > 0
+            ? run.todos
+            : plan.todos
+          ).map((t) =>
+            t.id === planStep.todoId ? { ...t, status: 'completed' as const } : t,
+          );
+          const elapsedC = Math.floor(
+            (Date.now() - startedAt.getTime()) / 1000,
+          );
+          const usageC = incrementUsage(run, {
+            steps: 1,
+            tokens: 0,
+            elapsedSeconds: elapsedC - run.usage.elapsedSeconds,
+          });
+          run = (await store.updateAgentRun(runId, {
+            todos: newTodosC,
+            usage: usageC,
+          }))!;
+          continue;
+        }
+      }
+      // === End idempotency gate ===
+
       const stepId = randomUUID();
       const ctx = {
         runId,
@@ -393,6 +511,7 @@ export async function executeRun(runId: string): Promise<void> {
         runId,
         kind: 'tool_call',
         toolName: tool.name,
+        toolCallKey,
         input: planStep.input,
         output: { result: output, retried },
         durationMs,
@@ -446,8 +565,11 @@ export async function executeRun(runId: string): Promise<void> {
       }
     }
 
-    const reply = pickFinalContent(run, plan);
-    await recordStep({ runId, kind: 'reply', output: { content: reply } });
+    // M1c：终稿在 softComplete 里走 buildFinalContent（含 LLM 终稿）；
+    // 这里仍记一条 reply step，但内容直接用 fallback 概要——
+    // 真正写到 placeholder 的是 buildFinalContent 的返回值。
+    const replyDigest = pickFallbackFinalContent(run, plan);
+    await recordStep({ runId, kind: 'reply', output: { content: replyDigest } });
     await softComplete(run, 'completed');
   } catch (e) {
     const latest = (await store.getAgentRun(runId)) ?? run;
