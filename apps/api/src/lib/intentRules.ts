@@ -111,6 +111,26 @@ export function matchSlashCommand(ctx: RuleMatchContext): RuleMatch | null {
       forceChips: true,
       candidates: [nav('studio_settings', '打开设置', { confidence: 0.95, group: 'primary' })],
     },
+    agent: {
+      id: 'slash_agent',
+      forceChips: true,
+      candidates: [
+        {
+          kind: 'agent_run',
+          label: '让 agent 跑',
+          description: '后台多步执行，可中断',
+          confidence: 0.95,
+          group: 'primary',
+        },
+        {
+          kind: chatKind(ctx.channel),
+          label: chatLabel(ctx.channel),
+          description: '不开 agent，直接和 AI 聊',
+          confidence: 0.6,
+          group: 'other',
+        },
+      ],
+    },
   };
 
   return table[cmd] ?? null;
