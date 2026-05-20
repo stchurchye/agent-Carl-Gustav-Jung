@@ -1,5 +1,6 @@
 import * as store from './store.js';
 import { executeRun } from './runtime.js';
+import { autoResolveExpiredApprovals } from './approval.js';
 
 export type WorkerHandle = {
   stop: () => void;
@@ -8,6 +9,16 @@ export type WorkerHandle = {
 const inFlight = new Set<string>();
 
 async function tick() {
+  // 1) Approval timeout checker (M1b-2 ADR-1)：每个 tick 都扫一次过期 awaiting_approval。
+  //    autoResolveExpiredApprovals 内部已写 approval_timeout + grant/deny step，
+  //    且让对应 run 进入 'running' 或 'replanning' 状态，供下方 pickup 接力。
+  try {
+    await autoResolveExpiredApprovals(new Date());
+  } catch (e) {
+    console.error('[agent worker] autoResolveExpiredApprovals failed', e);
+  }
+
+  // 2) Pickup 下一个 draft/running/replanning 待办 run。
   if (inFlight.size > 0) return;
   const run = await store.pickupNextRun().catch(() => null);
   if (!run) return;

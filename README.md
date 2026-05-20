@@ -73,13 +73,14 @@ npm run dev:mobile
 2. App → **我的** → 填入密钥 → **测试一下**  
 3. 或写入 `.env` 给 Docker：`DEEPSEEK_API_KEY=sk-...`
 
-## Agent Runtime（M1a + M1b-1）
+## Agent Runtime（M1a + M1b-1 + M1b-2）
 
 后台多步 agent 执行能力。**当前范围**：
 
 - **M1a**：私聊触发、echo mock 工具、worker 后台跑、取消 / SSE 流。
 - **M1b-1**：群聊触发、群成员任意一人可取消 / 查看 / 流式订阅、`topic_skills` 三层 scope（user/group/topic）CRUD + 自动注入 system prompt。
-- M1b-2（approval / steer / critique）、M1b-3（mobile UI + hooks）、M1c（LLM planner + 真实工具）、M1d（hardening：T5 heartbeat reclaim、T16 SSE reconnect）后续。
+- **M1b-2**：approval gate（`approvalMode='ask'` 工具调用前让出，60s 后按 `costHint` 自动 grant/deny）、steer（中途换方向，abort + replanning）、critique（每 5 步或连续 2 次失败插入 stub critique step）。
+- M1b-3（mobile UI + hooks）、M1c（LLM planner + 真实工具）、M1d（hardening：T5 heartbeat reclaim、T16 SSE reconnect）后续。
 
 **入口**：
 
@@ -93,7 +94,20 @@ npm run dev:mobile
 - `GET /api/agent/runs/:id/stream`（SSE）实时推送 `step` / `status` / `end` 事件
 - `POST /api/agent/runs/:id/cancel` 取消（群聊任意成员可发起）
 - `POST /api/agent/runs/:id/confirm` 通过 `awaiting_confirm` 状态（M1b-2 才用）
+- `POST /api/agent/runs/:id/approve` 同意一个 `awaiting_approval` 状态的工具调用
+- `POST /api/agent/runs/:id/deny { reason? }` 拒绝 → 进入 `replanning`，worker re-pickup 后调 planner 找替代方案
+- `POST /api/agent/runs/:id/steer { instruction }` 中途换方向；服务端 abort 当前 step、写新 plan、状态切 `replanning`
 - `GET / POST / PATCH / DELETE /api/agent/skills` topic skills CRUD（按 scope 区分 user / group / topic）
+
+**Approval 模型（spec §12 / ADR-1）**：runtime 在 `approvalMode='ask'` 的工具调用前**让出执行**——写 `approval_request` step、`status='awaiting_approval'`、`awaiting_approval_until = now()+60s` 后立即 return。三条恢复路径：
+
+1. HTTP `/approve` → `status='running'` + 写 `approval_grant`
+2. HTTP `/deny` → `status='replanning'`（不是 cancelled） + 写 `approval_deny`，worker 下次 pickup 进 `runtime.replanning` 分支，调 `generatePlanForApprovalDeny` 生成新 plan
+3. worker tick（每 2s）跑 `autoResolveExpiredApprovals(now)`：扫所有过期 `awaiting_approval`，`costHint='low'` 自动 grant，其他自动 deny，再写一条 `approval_timeout` step
+
+**Steer 模型（spec §15.2 / ADR-3）**：调用 `steerRun(runId, instruction)` → 生成新 plan（version+1）+ `status='replanning'` + 写 `steer` step + abort 共享 `runControllers` 里的 AbortController。executeRun 检测到 `signal.aborted && db.status='replanning'` 抛 `AgentCancelled('steer')`，catch 块识别 `'steer'` 后直接 return，worker re-pickup 进 replanning 路径。
+
+**测试用工具 `risky_echo`**：`approvalMode='ask'` + `costHint='medium'`，仅在 `NODE_ENV !== 'production'` 时注册（运行时入口 `index.ts`），方便手测 approval 流程。
 
 **Topic Skills**：用户在群话题里写"约定"（如"少用表情"、"聚焦税务不讨论投机"）。`contextAdapter.snapshotForAgent` 默认按 `(userId, groupId?, topicId?)` 自动从 `topic_skills` 表里捞 enabled 的项，拼到 system prompt 的 `<topic_skills>` 块。caller 也可显式传 `topicSkills` 覆盖。
 

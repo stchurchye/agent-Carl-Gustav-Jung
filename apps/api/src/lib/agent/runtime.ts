@@ -11,7 +11,11 @@ import {
   type Plan,
   type TodoItem,
 } from './types.js';
-import { generatePlanForEcho } from './planner.js';
+import {
+  generatePlanForEcho,
+  generatePlanForApprovalDeny,
+} from './planner.js';
+import { runCritique } from './critique.js';
 import { recordStep, incrementUsage, startHeartbeat } from './stepRecorder.js';
 import { toolRegistry } from './toolRegistry.js';
 import { checkBudget } from './budget.js';
@@ -24,7 +28,8 @@ import {
 
 const TOOL_TIMEOUT_MS = 60_000;
 
-const runControllers = new Map<string, AbortController>();
+// 共享 AbortController Map，与 steer.ts / cancelRun 同源（避免模块级私有 Map）。
+import { runControllers } from './runtimeRegistry.js';
 
 export type CreateAgentRunInput = {
   ownerId: string;
@@ -187,6 +192,37 @@ export async function executeRun(runId: string): Promise<void> {
   ) {
     return;
   }
+  // ADR-1：awaiting_approval 状态绝对不能进入 tool loop——
+  // 等 /approve、/deny 或 worker timeout checker 触发后再 re-pickup。
+  if (run.status === 'awaiting_approval') return;
+
+  // Replanning 分支：steer 或 approval_deny 后由 worker re-pickup 进入这里。
+  // 注：steerRun 已经把新 plan 写入 db，所以 steer 路径不重新生成 plan；
+  // approval_deny 路径需要这里调 planner 选替代方案。
+  if (run.status === 'replanning') {
+    const steps = await store.listSteps(runId);
+    const lastSteer = [...steps].reverse().find((s) => s.kind === 'steer');
+    const lastDeny = [...steps].reverse().find((s) => s.kind === 'approval_deny');
+    if (lastDeny && (!lastSteer || lastDeny.idx > lastSteer.idx)) {
+      const newPlan = generatePlanForApprovalDeny(
+        run.plan!,
+        lastDeny.toolName ?? 'unknown',
+        run.inputText,
+      );
+      await recordStep({ runId, kind: 'replan', output: newPlan });
+      run = (await store.updateAgentRun(runId, {
+        plan: newPlan,
+        todos: newPlan.todos,
+      }))!;
+    }
+    // M1b 简化：replanning 后重置 usage.steps=0 → 让 for 循环从新 plan 第 0 步起。
+    // 防止无限 replan 由 plan.version 自带（同 instruction 多次 steer 不会变化 → 测试不会撞死循环）。
+    const resetUsage = { ...run.usage, steps: 0 };
+    run = (await store.updateAgentRun(runId, {
+      status: 'running',
+      usage: resetUsage,
+    }))!;
+  }
 
   const abortController = new AbortController();
   runControllers.set(runId, abortController);
@@ -208,8 +244,32 @@ export async function executeRun(runId: string): Promise<void> {
     const plan = run.plan!;
     const completedCount = run.usage.steps;
 
+    // 让 approve 后 re-pickup 时跳过 approval gate 一次：
+    // 如果上次让出后最新写入的是 approval_grant（手动 approve 或 timeout 自动 grant），
+    // 下一个工具调用应直接进 handler 而非再次触发 gate。autoResolveExpiredApprovals
+    // 在 approve 后又写了一条 approval_timeout，所以这里要忽略它。
+    let pendingGrantBypass = false;
+    {
+      const stepsForBypass = await store.listSteps(runId);
+      const lastMeaningful = [...stepsForBypass]
+        .reverse()
+        .find(
+          (s) =>
+            s.kind !== 'heartbeat' &&
+            s.kind !== 'approval_timeout',
+        );
+      if (lastMeaningful?.kind === 'approval_grant') {
+        pendingGrantBypass = true;
+      }
+    }
+
     for (let i = completedCount; i < plan.steps.length; i++) {
-      if (abortController.signal.aborted) throw new AgentCancelled('user');
+      if (abortController.signal.aborted) {
+        // 区分 steer vs user cancel：steerRun 已经写了 status='replanning'
+        const cur = await store.getAgentRun(runId);
+        if (cur?.status === 'replanning') throw new AgentCancelled('steer');
+        throw new AgentCancelled('user');
+      }
 
       const elapsedSeconds = Math.floor(
         (Date.now() - startedAt.getTime()) / 1000,
@@ -218,6 +278,45 @@ export async function executeRun(runId: string): Promise<void> {
 
       const planStep = plan.steps[i];
       const tool = toolRegistry.require(planStep.toolName);
+
+      // === Approval gate (ADR-1) ===
+      if (tool.approvalMode === 'never') {
+        await recordStep({
+          runId,
+          kind: 'approval_deny',
+          toolName: tool.name,
+          input: planStep.input,
+          error: 'approvalMode=never',
+        });
+        // 跳过本步：usage.steps+1 让 for 推进
+        const usage = incrementUsage(run, { steps: 1 });
+        run = (await store.updateAgentRun(runId, { usage }))!;
+        continue;
+      }
+      if (tool.approvalMode === 'ask') {
+        if (pendingGrantBypass) {
+          // 已 grant，跳过 gate 一次（消耗）
+          pendingGrantBypass = false;
+        } else {
+          await recordStep({
+            runId,
+            kind: 'approval_request',
+            toolName: tool.name,
+            input: planStep.input,
+          });
+          const stepIdxNow = await store.maxStepIdx(runId);
+          await store.updateAgentRun(runId, {
+            status: 'awaiting_approval',
+            awaitingApprovalUntil: new Date(Date.now() + 60_000),
+            awaitingApprovalStepIdx: stepIdxNow,
+            pendingApprovalToolName: tool.name,
+          });
+          // 让出：不抛错，直接 return；worker 在 approve/deny/timeout 后会 re-pickup
+          return;
+        }
+      }
+      // === End approval gate ===
+
       const stepId = randomUUID();
       const ctx = {
         runId,
@@ -238,7 +337,11 @@ export async function executeRun(runId: string): Promise<void> {
           TOOL_TIMEOUT_MS,
         );
       } catch (err) {
-        if (abortController.signal.aborted) throw new AgentCancelled('user');
+        if (abortController.signal.aborted) {
+          const cur = await store.getAgentRun(runId);
+          if (cur?.status === 'replanning') throw new AgentCancelled('steer');
+          throw new AgentCancelled('user');
+        }
         try {
           output = await withTimeout(
             tool.handler(planStep.input as never, ctx),
@@ -285,6 +388,34 @@ export async function executeRun(runId: string): Promise<void> {
         todos: newTodos,
         usage,
       }))!;
+
+      // === Critique (M1b-2 stub) ===
+      const stepsDone = run.usage.steps;
+      if (stepsDone > 0 && stepsDone % 5 === 0) {
+        const recentTail = (await store.listSteps(runId)).slice(-5);
+        const c = runCritique({
+          plan,
+          recentSteps: recentTail,
+          reason: 'periodic',
+        });
+        await recordStep({ runId, kind: 'critique', output: c });
+      }
+      const allSteps = await store.listSteps(runId);
+      const recentFailures = allSteps
+        .slice(-4)
+        .filter((s) => s.kind === 'tool_error').length;
+      if (recentFailures >= 2) {
+        const c = runCritique({
+          plan,
+          recentSteps: allSteps.slice(-4),
+          reason: 'consecutive_failures',
+        });
+        await recordStep({ runId, kind: 'critique', output: c });
+        if (c.shouldReplan) {
+          await store.updateAgentRun(runId, { status: 'replanning' });
+          return;
+        }
+      }
     }
 
     const reply = pickFinalContent(run, plan);
@@ -292,6 +423,10 @@ export async function executeRun(runId: string): Promise<void> {
     await softComplete(run, 'completed');
   } catch (e) {
     const latest = (await store.getAgentRun(runId)) ?? run;
+    if (e instanceof AgentCancelled && e.reason === 'steer') {
+      // steer 已经把 status 设为 'replanning'，worker 下次 pickup 会进 replanning 分支。
+      return;
+    }
     if (e instanceof AgentCancelled) {
       await recordStep({ runId, kind: 'cancel', error: e.reason });
       await softComplete(latest, 'cancelled', e.reason);
