@@ -23,8 +23,10 @@
 | 8 | MCP `handshakeTimeoutMs` 删字段 + close() 显式 reject pending + abort listener cleanup | S | mcp/stdioTransport.ts | review T8 |
 | 9 | secretBox keyId 版本化（base64 头部 1B versionTag）+ 轮换测试 | M | secretBox.ts | review 后续议程 |
 | 10 | `listForAgent` 二次 validate + DB 历史 skills lazy scan + README/docs 收尾 | M | topicSkills + 文档 | review T7/T9 |
+| 11 | **LLM provider 抽象**（`LlmChatClient` 接口 + DeepSeek/ZenMux 两个实现 + `agent_runs.model_id` 列） | L | task 1 + task 9 | 用户需求："整体要能切换模型" |
+| 12 | per-run / per-topic 模型选择 UI + 鉴权（user-key per provider） | M | task 11 | 用户需求 |
 
-**预估总工时**：14-18h，task 8/10 可并到同一天，task 1 单独占半天。
+**预估总工时**：22-28h，task 1 / 11 各占半天，task 11 是 M1e 最大单点。
 
 ### 不在 M1e 范围（推后到 M2 / 单独里程碑）
 
@@ -32,6 +34,8 @@
 - ❌ 任务面板 cursor 分页（hasMore 字段先留接口；真正需要分页时再做）
 - ❌ RN EventSource polyfill（M1d 已确认 polling 够用）
 - ❌ 多 agent 协作（spec §1.3 已划除非目标）
+- ❌ 多模态（图 / 音频）输入到 agent（ZenMux 支持但 spec 当前 IntentKind 不传图，留 M2/M3）
+- ❌ Anthropic / OpenAI 直连（M1e 只覆盖现有 codebase 已有 provider；未来加新 provider = 加个 `LlmChatClient` 实现即可）
 
 ---
 
@@ -376,32 +380,201 @@ feat(agent): defense-in-depth skill filter + historical scan + M1e docs
 
 ---
 
-## 12. 合并 & tag
+## 12. Task 11：LLM provider 抽象
+
+### 12.1 现状盘点
+
+- `apps/api/src/lib/deepseek.ts.chatCompletionRaw(apiKey, messages, opts)` —— 当前 agent planner / replyGen 唯一调用点
+- `apps/api/src/lib/zenmux.ts.zenmuxChatFromMessages(apiKey, messages, opts)` —— 已是 chat-capable，但签名不一致（带 model 参数、返回 `{ content, usage }`）
+- `apps/api/src/lib/dashscope.ts` —— 只做 TTS/ASR，不在 chat 抽象内
+- 现有 `apps/mobile` "我的"页有 DeepSeek/ZenMux/Dashscope 三个 key 录入位（`apps/mobile/src/lib/apiKeyKind.ts`）
+
+### 12.2 设计
+
+**12.2.1 接口**（新文件 `apps/api/src/lib/llm/types.ts`）：
+
+```ts
+export type LlmChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+export type LlmChatOptions = {
+  temperature?: number;
+  maxTokens?: number;
+  log?: LlmRequestLogContext;
+  signal?: AbortSignal;
+};
+export type LlmChatUsage = { promptTokens: number; completionTokens: number; totalTokens: number };
+export type LlmChatResult = { content: string; usage: LlmChatUsage; modelId: string };
+
+export type LlmProviderId = 'deepseek' | 'zenmux'; // Anthropic / OpenAI 未来加在这里
+export type LlmModelId = string; // 形如 'deepseek-chat' / 'zenmux/anthropic/claude-haiku-4.5'
+
+export type LlmChatClient = {
+  providerId: LlmProviderId;
+  modelId: LlmModelId;
+  chat(messages: LlmChatMessage[], opts?: LlmChatOptions): Promise<LlmChatResult>;
+};
+```
+
+**12.2.2 工厂**（`apps/api/src/lib/llm/factory.ts`）：
+
+```ts
+export type LlmClientSpec = {
+  providerId: LlmProviderId;
+  modelId: LlmModelId;
+  apiKey: string;
+};
+
+export function buildLlmClient(spec: LlmClientSpec): LlmChatClient {
+  switch (spec.providerId) {
+    case 'deepseek':
+      return new DeepSeekClient(spec.apiKey, spec.modelId);
+    case 'zenmux':
+      return new ZenMuxClient(spec.apiKey, spec.modelId);
+    default:
+      throw new Error(`unsupported llm provider: ${spec.providerId}`);
+  }
+}
+```
+
+**12.2.3 适配 wrapper**（`apps/api/src/lib/llm/providers/deepseek.ts`、`zenmux.ts`）：
+- 包薄薄一层调既有 `chatCompletionRaw` / `zenmuxChatFromMessages`
+- 把它们的返回归一化成 `LlmChatResult`
+- 错误归一化成 `LlmProviderError`（带 `providerId` / `modelId` 信息），便于 notice 通道展示
+
+**12.2.4 DB schema**（migration `015_agent_run_model.sql`）：
+
+```sql
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS provider_id TEXT;       -- 'deepseek' / 'zenmux' / null（默认走 server 配置）
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS model_id TEXT;          -- 具体 model 名
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS user_zenmux_key_enc TEXT;  -- M1d 只存了 DeepSeek key；ZenMux 单独一列
+```
+
+旧 run 的 `provider_id IS NULL` → 走 default = `'deepseek'` + `DEEPSEEK_MODEL_PRO`（向后兼容）。
+
+**12.2.5 改 `runApiKey.ts` → `runLlmClient.ts`**：
+
+```ts
+export async function resolveLlmClient(run: AgentRun): Promise<LlmChatClient | null> {
+  const providerId = run.providerId ?? DEFAULT_PROVIDER_ID;        // env LLM_DEFAULT_PROVIDER
+  const modelId = run.modelId ?? DEFAULT_MODEL_FOR_PROVIDER[providerId];
+  const apiKey = await resolveEffectiveApiKeyForProvider(run, providerId);
+  if (!apiKey) {
+    await emitNotice({
+      runId: run.id, severity: 'error', code: 'NO_API_KEY',
+      message: `没有可用的 ${providerId} key（既无用户配置也无服务端 env）`,
+    });
+    return null;
+  }
+  return buildLlmClient({ providerId, modelId, apiKey });
+}
+
+async function resolveEffectiveApiKeyForProvider(run: AgentRun, providerId: LlmProviderId): Promise<string | undefined> {
+  // user key（按 provider sealed）→ server env key fallback
+  // sealed 字段：deepseek 用 user_api_key_enc（M1d 老字段，沿用兼容）
+  //             zenmux 用 user_zenmux_key_enc
+  // 解密失败时 emitNotice + fallback server key
+}
+```
+
+**12.2.6 改 planner + replyGen**：
+
+```ts
+// planner.ts
+export async function generatePlanWithLlm(input: {
+  inputText: string;
+  snapshot: AgentContextSnapshot;
+  llm: LlmChatClient;  // ← 改成接收 client，而非 apiKey
+  role?: string;
+}): Promise<Plan> {
+  // 内部 llm.chat(messages, opts) 替换 chatCompletionRaw(apiKey, messages, opts)
+}
+```
+
+`replyGen.generateFinalReply` 同改。
+
+**12.2.7 改 `runExecute.ts` / `runReply.ts` / `runPlanGlue.ts`**：把 `effectiveKey: string` 替换成 `llm: LlmChatClient | null`，null → 走 fallback（echo planner / fallback reply）。
+
+### 12.3 测试
+
+- `llm/factory.test.ts`：buildLlmClient 三种 case（known providers + 未知）
+- `llm/providers/deepseek.test.ts`：mock fetch，验证 chat 调用走对 DeepSeek base URL + 返回 LlmChatResult 形态
+- `llm/providers/zenmux.test.ts`：同上
+- `runtime.userKey.test.ts` 扩成 `runtime.llmResolve.test.ts`：覆盖 (a) per-provider key 解密；(b) 老 run（provider_id=null）默认走 deepseek；(c) 切 zenmux + zenmux key 缺失 → emit notice + return null
+- `planner.llm.test.ts` 改成依赖 mock `LlmChatClient` 而非 mock chatCompletionRaw
+
+### 12.4 Commit
+
+```
+feat(agent): LLM provider abstraction — LlmChatClient + DeepSeek/ZenMux + agent_runs.model_id
+```
+
+---
+
+## 13. Task 12：模型选择 UI + per-provider 鉴权
+
+### 13.1 mobile 改造
+
+**13.1.1 设置**：在 "Agent 任务" 入口附近加 "默认模型" 设置（或在 BrainHomeKeys 屏后增设 "Agent 默认 provider"）。
+
+写入：用户级 setting `agent.defaultProvider` + `agent.defaultModel`（沿用现有 `apps/mobile/src/store/settings` 或写到 user 后端表，看现有架构）。
+
+**13.1.2 触发时**：`intentExecute` 走 `agent_run` 分支时，前端把 `defaultProvider` / `defaultModel` 通过 header 或 body 传给 `/api/intent/execute`，后端写到新建 run 的 `provider_id` / `model_id` 字段。
+
+**13.1.3 任务面板 / AgentRunCard**：显示当前 run 用的 provider + model（顶部小字"by deepseek / deepseek-chat"），透明化。
+
+**13.1.4 retry 路由**：复用旧 run 的 `provider_id` / `model_id`（沿用 task 3 的"复制旧 run 配置"思路）。
+
+### 13.2 后端 API 改造
+
+- `/api/intent/execute` 接受新 body 字段：
+  ```ts
+  { agentOptions?: { providerId?: LlmProviderId; modelId?: LlmModelId } }
+  ```
+  `intentExecute.ts` 在创建 agent_run 时把它们传进 `createAgentRun`
+- `createAgentRun` 签名加 `providerId?` / `modelId?`，写入 `agent_runs.provider_id` / `model_id`
+- `/api/agent/runs` 列表响应里加 `providerId` / `modelId` 字段（已经在 run 对象上自动序列化）
+
+### 13.3 测试
+
+- `intentExecute.agent.test.ts`：传 `agentOptions.providerId='zenmux'` → 建出 run.provider_id='zenmux'
+- mobile 端：基本 UI smoke
+
+### 13.4 Commit
+
+```
+feat(agent-mobile): per-run model selection UI + intentExecute agentOptions wiring
+```
+
+---
+
+## 14. 合并 & tag
 
 ```bash
 git checkout main
-git merge --no-ff feat/agent-runtime-m1e -m "Merge M1e: tech-debt cleanup + architectural prep"
+git merge --no-ff feat/agent-runtime-m1e -m "Merge M1e: tech-debt cleanup + LLM provider abstraction"
 git tag v0.m1e
 ```
 
 验收清单：
 - ✅ 4 个 review blocker 全修
 - ✅ runtime.ts 拆完（每文件 ≤ 250 行）
-- ✅ 169 → ~190 tests 全绿（每 task 至少 +1 case）
+- ✅ LLM provider 抽象就绪：DeepSeek + ZenMux 都能跑 agent，用户可在 UI 选 provider
+- ✅ 169 → ~210 tests 全绿（每 task 至少 +1 case）
 - ✅ `tsc -p apps/{api,mobile}` clean
 - ✅ README / spec / `.env.example` 一致
 
 ---
 
-## 13. 风险与 fallback
+## 15. 风险与 fallback
 
 - **Task 1（拆 runtime.ts）是最大风险**：如果拆完测试挂，回退方式 = `git checkout main -- apps/api/src/lib/agent/runtime.ts` 再 rebase，必要时 task 1 单独拉一个 PR 让 reviewer 先 sign-off。
 - **Task 2（notice 通道）**：DB 写入失败时绝对不能阻塞 agent run，所有 `emitNotice` 必须 try/catch + console.warn。
 - **Task 9（secretBox 版本化）**：要兼容老的"无 version 头部" sealed key —— 检测 base64 长度若是旧格式（无版本字节），按 v0 解码。否则会把 M1d 已 seal 的 key 全部解不开。
+- **Task 11（provider 抽象）**：旧 run 的 `provider_id` / `model_id` 是 NULL，必须显式 fallback 到 `DEEPSEEK_MODEL_PRO`，否则 reclaim / list 会瞎报错。
+- **Task 12（UI 模型选择）**：rebuild mobile bundle 时，老 client 没传 `agentOptions` → 后端按默认 deepseek 走，向后兼容。
 
 ---
 
-## 14. 与后续里程碑的衔接
+## 16. 与后续里程碑的衔接
 
 | 里程碑 | 主题 | 依赖 M1e 的什么 |
 |--------|------|---------------|
