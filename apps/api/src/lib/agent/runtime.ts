@@ -16,6 +16,7 @@ import {
   generatePlanForApprovalDeny,
 } from './planner.js';
 import { runCritique } from './critique.js';
+import { agentHookBus } from './hooks.js';
 import { recordStep, incrementUsage, startHeartbeat } from './stepRecorder.js';
 import { toolRegistry } from './toolRegistry.js';
 import { checkBudget } from './budget.js';
@@ -178,6 +179,30 @@ async function softComplete(
     status,
     endedAt: new Date(),
   });
+
+  // Emit terminal hook event with the latest run snapshot (including endedAt).
+  const latest = (await store.getAgentRun(run.id)) ?? run;
+  if (status === 'completed') {
+    agentHookBus.emitEvent({ type: 'run.completed', run: latest });
+  } else if (status === 'failed') {
+    agentHookBus.emitEvent({
+      type: 'run.failed',
+      run: latest,
+      error: detail ?? finalContent,
+    });
+  } else if (status === 'cancelled') {
+    agentHookBus.emitEvent({
+      type: 'run.cancelled',
+      run: latest,
+      byUserId: latest.cancelledByUserId,
+    });
+  } else if (status === 'budget_exhausted') {
+    agentHookBus.emitEvent({
+      type: 'run.budget_exhausted',
+      run: latest,
+      resource: detail ?? 'unknown',
+    });
+  }
 }
 
 export async function executeRun(runId: string): Promise<void> {
@@ -228,6 +253,9 @@ export async function executeRun(runId: string): Promise<void> {
   runControllers.set(runId, abortController);
   const stopHb = startHeartbeat(runId, 10_000);
   const startedAt = run.startedAt ?? new Date();
+  // 每次 executeRun 实际开跑都 emit 一次 run.started；
+  // M1c 可细化为仅首次（区分 draft → running vs replanning → running）。
+  agentHookBus.emitEvent({ type: 'run.started', run });
 
   try {
     if (!run.plan) {
@@ -463,6 +491,12 @@ export async function cancelRun(
     cancelledByUserId: byUserId,
     cancelReason: 'user',
     endedAt: new Date(),
+  });
+  const latest = (await store.getAgentRun(runId)) ?? run;
+  agentHookBus.emitEvent({
+    type: 'run.cancelled',
+    run: latest,
+    byUserId,
   });
   if (run.resultMessageId) {
     if (run.channel === 'private') {
