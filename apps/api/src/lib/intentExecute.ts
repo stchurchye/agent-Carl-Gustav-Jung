@@ -145,25 +145,52 @@ export async function executeIntent(
   }
 
   if (input.kind === 'agent_run') {
-    if (input.channel !== 'private' || !input.sessionId) {
-      return { type: 'skipped', reason: 'AGENT_PRIVATE_ONLY_M1A' };
-    }
     const { createAgentRun } = await import('./agent/runtime.js');
     const apiKey = input.deepseekApiKey ?? input.apiKey;
-    const { run, userMessageId, placeholderMessageId } = await createAgentRun({
-      ownerId: input.userId,
-      channel: 'private',
-      sessionId: input.sessionId,
-      inputText: input.text,
-      apiKey,
-      apiKeySource: input.deepseekApiKey ? 'user' : 'server',
-    });
-    return {
-      type: 'agent',
-      runId: run.id,
-      userMessageId,
-      placeholderMessageId,
-    };
+    const apiKeySource = input.deepseekApiKey ? 'user' : 'server';
+
+    if (input.channel === 'private') {
+      if (!input.sessionId) {
+        return { type: 'skipped', reason: 'AGENT_PRIVATE_REQUIRES_SESSION' };
+      }
+      const r = await createAgentRun({
+        ownerId: input.userId,
+        channel: 'private',
+        sessionId: input.sessionId,
+        inputText: input.text,
+        apiKey,
+        apiKeySource,
+      });
+      return {
+        type: 'agent',
+        runId: r.run.id,
+        userMessageId: r.userMessageId,
+        placeholderMessageId: r.placeholderMessageId,
+      };
+    }
+
+    if (input.channel === 'group') {
+      if (!input.groupId || !input.topicId) {
+        return { type: 'skipped', reason: 'AGENT_GROUP_REQUIRES_GROUP_TOPIC' };
+      }
+      const r = await createAgentRun({
+        ownerId: input.userId,
+        channel: 'group',
+        groupId: input.groupId,
+        topicId: input.topicId,
+        inputText: input.text,
+        apiKey,
+        apiKeySource,
+      });
+      return {
+        type: 'agent',
+        runId: r.run.id,
+        userMessageId: r.userMessageId,
+        placeholderMessageId: r.placeholderMessageId,
+      };
+    }
+
+    return { type: 'skipped', reason: 'AGENT_UNSUPPORTED_CHANNEL' };
   }
 
   if (

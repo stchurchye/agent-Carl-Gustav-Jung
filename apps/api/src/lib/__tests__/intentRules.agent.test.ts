@@ -28,4 +28,13 @@ describe('intentRules: /agent slash command (M1a)', () => {
     });
     expect(r.candidates[0]?.kind).not.toBe('agent_run');
   });
+
+  it('/agent triggers agent_run in group channel too (M1b-1)', () => {
+    const r = buildCandidatesFromRules({
+      text: '/agent 帮我研究一下',
+      channel: 'group',
+    });
+    expect(r.candidates[0]?.kind).toBe('agent_run');
+    expect(r.matchedRuleIds).toContain('slash_agent');
+  });
 });
