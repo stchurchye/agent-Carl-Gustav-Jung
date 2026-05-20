@@ -139,6 +139,48 @@ export async function getAgentRun(id: string): Promise<AgentRun | null> {
   return rows[0] ? parseRun(rows[0]) : null;
 }
 
+/**
+ * M1d Task 4：列表查询。返回用户作为 owner 的 run + 用户群里 owner 不是自己但
+ * 是群成员的 run。按 createdAt DESC。
+ *
+ * 不做分页 cursor（朋友量级，limit 100 够），按 status 过滤可选。
+ */
+export async function listAgentRunsForUser(
+  userId: string,
+  opts?: { status?: AgentRunStatus; limit?: number },
+): Promise<AgentRun[]> {
+  const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
+  const params: unknown[] = [userId];
+  let statusFilter = '';
+  if (opts?.status) {
+    params.push(opts.status);
+    statusFilter = `AND r.status = $${params.length}`;
+  }
+  params.push(limit);
+  const { rows } = await getPool().query(
+    `
+    SELECT ${RUN_COLUMNS}
+    FROM agent_runs r
+    WHERE (
+      r.owner_id = $1
+      OR (
+        r.channel = 'group'
+        AND r.group_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM group_members gm
+          WHERE gm.group_id = r.group_id AND gm.user_id = $1
+        )
+      )
+    )
+    ${statusFilter}
+    ORDER BY r.created_at DESC
+    LIMIT $${params.length}
+    `,
+    params,
+  );
+  return rows.map(parseRun);
+}
+
 export type UpdateAgentRunInput = Partial<{
   status: AgentRunStatus;
   plan: Plan | null;

@@ -7,7 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import * as store from '../lib/agent/store.js';
 import { cancelRun, confirmRun, createAgentRun } from '../lib/agent/runtime.js';
-import type { AgentRun } from '../lib/agent/types.js';
+import type { AgentRun, AgentRunStatus } from '../lib/agent/types.js';
 import * as topicSkills from '../lib/agent/topicSkills.js';
 
 export const agentRouter = new Hono<{ Variables: AppVariables }>();
@@ -29,6 +29,22 @@ export async function canAccessRun(run: AgentRun, userId: string): Promise<boole
   }
   return false;
 }
+
+/**
+ * M1d Task 4：任务面板列表。按 owner=me 或 me 是 run.groupId 群成员过滤。
+ * 可选 ?status= 过滤、?limit= 控量（默认 50，最大 100）。
+ */
+agentRouter.get('/runs', async (c) => {
+  const userId = c.get('userId')!;
+  const status = c.req.query('status');
+  const limitRaw = c.req.query('limit');
+  const limit = limitRaw ? Number(limitRaw) : undefined;
+  const runs = await store.listAgentRunsForUser(userId, {
+    status: (status as AgentRunStatus) || undefined,
+    limit,
+  });
+  return c.json({ ok: true, data: { runs }, requestId: c.get('requestId') });
+});
 
 agentRouter.get('/runs/:id', async (c) => {
   const userId = c.get('userId')!;

@@ -334,3 +334,100 @@ describe('POST /api/agent/runs/:id/retry (M1d)', () => {
     expect(res.status).toBe(403);
   });
 });
+
+/**
+ * M1d Task 4: GET /api/agent/runs 列表 — owner runs + 群成员 runs，
+ * 不返回外人 / 其它 group 的 run；支持 status / limit 过滤。
+ */
+describe('GET /api/agent/runs (M1d task panel)', () => {
+  beforeAll(async () => await runMigrations());
+  beforeEach(async () => {
+    await getPool().query('DELETE FROM agent_steps');
+    await getPool().query('DELETE FROM agent_runs');
+  });
+
+  function makeApp() {
+    const app = new Hono<{ Variables: AppVariables }>();
+    app.use('*', async (c, next) => {
+      c.set('requestId', randomUUID());
+      await next();
+    });
+    app.route('/api/agent', agentRouter);
+    return app;
+  }
+
+  async function tokenFor(u: { id: string; username: string; displayName: string }) {
+    const { accessToken } = await signAccessToken({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      createdAt: new Date().toISOString(),
+    });
+    return accessToken;
+  }
+
+  it('returns owner runs + group runs where caller is a member; excludes stranger groups', async () => {
+    const me = await ensureUser('list-me');
+    const friend = await ensureUser('list-friend');
+    const stranger = await ensureUser('list-stranger');
+    const { groupId: myGroupId } = await ensureGroup(friend.id);
+    await addMember(myGroupId, me.id);
+    const { groupId: otherGroupId } = await ensureGroup(stranger.id);
+
+    // 我自己的私聊 run（应被列出）
+    const myRun = await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: null, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+      inputText: 'mine', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    // friend 在我加入的群里发起的 run（我作为成员应能看到）
+    const groupRun = await store.insertAgentRun({
+      ownerId: friend.id, channel: 'group', sessionId: null, groupId: myGroupId,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'running',
+      inputText: 'group', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    // stranger 在自己群里发起的 run（我不该看到）
+    await store.insertAgentRun({
+      ownerId: stranger.id, channel: 'group', sessionId: null, groupId: otherGroupId,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'running',
+      inputText: 'other', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+
+    const token = await tokenFor(me);
+    const res = await makeApp().fetch(
+      new Request('http://test/api/agent/runs', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { runs: { id: string }[] } };
+    const ids = body.data.runs.map((r) => r.id);
+    expect(ids).toContain(myRun.id);
+    expect(ids).toContain(groupRun.id);
+    expect(ids.length).toBe(2);
+  });
+
+  it('status filter narrows results', async () => {
+    const me = await ensureUser('list-st');
+    await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: null, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+      inputText: 'c', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: null, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'failed',
+      inputText: 'f', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+
+    const token = await tokenFor(me);
+    const res = await makeApp().fetch(
+      new Request('http://test/api/agent/runs?status=failed', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    const body = (await res.json()) as { data: { runs: { status: string }[] } };
+    expect(body.data.runs.length).toBe(1);
+    expect(body.data.runs[0].status).toBe('failed');
+  });
+});
