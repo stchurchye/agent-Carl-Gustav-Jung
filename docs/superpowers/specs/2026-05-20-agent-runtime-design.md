@@ -1218,7 +1218,7 @@ apps/mobile/src/features/agent/
 | **T2** | **Budget 检查** | unit | maxSteps/maxSeconds/maxTokens 三道闸；耗尽时抛 `BudgetExhausted` | M1a |
 | **T3** | **Planner JSON schema** | unit | LLM 输出非法 JSON 时重试 1 次；2 次都失败 → run 标 `failed` 且 step 含 raw 输出；合法 JSON 解析正确；steps 为空数组合法 | M1a |
 | **T4** | **Approval timeout** | unit + integration | 60s 超时；costHint='low' auto grant；其他 deny；crash 后超时仍生效（用模拟 time） | M1b |
-| **T5** | **Heartbeat reclaim** | integration | worker A 跑到一半进程死亡，30s 后 worker B pickup，从下一 step 继续；同一 run 不会被两 worker 同时跑 | M1b |
+| **T5** | **Heartbeat reclaim** | integration | worker A 跑到一半进程死亡，30s 后 worker B pickup，从下一 step 继续；同一 run 不会被两 worker 同时跑 | M1d ¹ |
 | **T6** | **echo tool integration** | integration | 端到端：创建 run → planner 出 3 步 echo plan → worker 跑 → reply → message 更新 | M1a |
 | **T7** | **Context Adapter** | unit | 私聊：snapshot.systemPrompt 含 persona+memory+topicSkill；群聊：history 含成员名前缀；topicSkills 包在 `<topic_skills>` 标签 | M1b |
 | **T8** | **Message Bridge** | integration | 私聊：placeholder 在 createAgentRun 时写入，runId 写入 payload；completed 时 UPDATE；群聊：invokeMessage + placeholderAi + `llm_invoke_jobs` 三者一致 | M1b |
@@ -1229,7 +1229,9 @@ apps/mobile/src/features/agent/
 | **T13** | **Topic Skills 注入** | unit + integration | enable=false 的 skill 不注入；scope='topic' 的 skill 在该 topic 注入而其他 topic 不注入 | M1b |
 | **T14** | **预算软着陆** | integration | budget 用尽时生成 final reply 标"已用预算"，不抛异常 | M1d |
 | **T15** | **DB 迁移幂等** | integration | 跑 `runMigrations` 两次结果一致；012 已在 `schema_migrations` 时不重跑 | M1a |
-| **T16** | **SSE 断线重连** | integration | 客户端断开 SSE 后重连，能继续收到事件（按 run 状态恢复） | M1b |
+| **T16** | **SSE 断线重连** | integration | 客户端断开 SSE 后重连，能继续收到事件（按 run 状态恢复） | M1d ¹ |
+
+> ¹ **2026-05-20 修订（m1b-completion ADR-5）：** T5 / T16 原定 M1b。审阅复核后改为 M1d hardening。M1b-3 mobile 暂用 1.5s polling 占位；M1b-2 通过让出模型已自然覆盖 reclaim 主路径，完整 crash 模拟测试（testcontainers 模拟进程死）独立写在 M1d。
 
 **覆盖率目标**：M1a 完成时 T1/T2/T3/T6/T9/T15 必须 PASS；M1b 完成时 T4/T5/T7/T8/T11/T12/T13/T16 必须 PASS；M1c 完成时 T10 必须 PASS；M1d 完成时全表 PASS。
 
