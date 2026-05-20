@@ -14,7 +14,9 @@ import {
 import {
   generatePlanForEcho,
   generatePlanForApprovalDeny,
+  generatePlanWithLlm,
 } from './planner.js';
+import { snapshotForAgent } from './contextAdapter.js';
 import { runCritique } from './critique.js';
 import { agentHookBus } from './hooks.js';
 import { recordStep, incrementUsage, startHeartbeat } from './stepRecorder.js';
@@ -221,6 +223,41 @@ async function softComplete(
   }
 }
 
+/**
+ * M1c：选择初始 plan 来源。
+ * - 测试 / `echo` 关键词 / 缺少 LLM key 时走老的 `generatePlanForEcho`，保证 CI 不依赖外部 LLM。
+ * - 其余调 `generatePlanWithLlm`（内部失败会再 fallback echo）。
+ */
+async function buildInitialPlan(run: AgentRun): Promise<Plan> {
+  const text = run.inputText ?? '';
+  const isTestEnv =
+    process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+  const looksLikeEcho = /echo/i.test(text);
+  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (isTestEnv || looksLikeEcho || !serverKey) {
+    return generatePlanForEcho(text);
+  }
+  try {
+    const snapshot = await snapshotForAgent({
+      runId: run.id,
+      userId: run.ownerId,
+      channel: run.channel,
+      sessionId: run.sessionId ?? undefined,
+      groupId: run.groupId ?? undefined,
+      topicId: run.topicId ?? undefined,
+      pendingUser: text,
+      apiKey: serverKey,
+    });
+    return await generatePlanWithLlm({
+      inputText: text,
+      snapshot,
+      apiKey: serverKey,
+    });
+  } catch {
+    return generatePlanForEcho(text);
+  }
+}
+
 export async function executeRun(runId: string): Promise<void> {
   const fetched = await store.getAgentRun(runId);
   if (!fetched) throw new Error(`run not found: ${runId}`);
@@ -276,7 +313,7 @@ export async function executeRun(runId: string): Promise<void> {
   try {
     if (!run.plan) {
       await store.updateAgentRun(runId, { status: 'planning', startedAt });
-      const plan = generatePlanForEcho(run.inputText);
+      const plan = await buildInitialPlan(run);
       await recordStep({ runId, kind: 'plan', output: plan });
       run = (await store.updateAgentRun(runId, {
         plan,
