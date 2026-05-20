@@ -144,6 +144,55 @@ export async function executeIntent(
     return { type: 'skipped', reason: 'CLIENT_NAVIGATE' };
   }
 
+  if (input.kind === 'agent_run') {
+    const { createAgentRun } = await import('./agent/runtime.js');
+    const apiKey = input.deepseekApiKey ?? input.apiKey;
+    const apiKeySource = input.deepseekApiKey ? 'user' : 'server';
+
+    if (input.channel === 'private') {
+      if (!input.sessionId) {
+        return { type: 'skipped', reason: 'AGENT_PRIVATE_REQUIRES_SESSION' };
+      }
+      const r = await createAgentRun({
+        ownerId: input.userId,
+        channel: 'private',
+        sessionId: input.sessionId,
+        inputText: input.text,
+        apiKey,
+        apiKeySource,
+      });
+      return {
+        type: 'agent',
+        runId: r.run.id,
+        userMessageId: r.userMessageId,
+        placeholderMessageId: r.placeholderMessageId,
+      };
+    }
+
+    if (input.channel === 'group') {
+      if (!input.groupId || !input.topicId) {
+        return { type: 'skipped', reason: 'AGENT_GROUP_REQUIRES_GROUP_TOPIC' };
+      }
+      const r = await createAgentRun({
+        ownerId: input.userId,
+        channel: 'group',
+        groupId: input.groupId,
+        topicId: input.topicId,
+        inputText: input.text,
+        apiKey,
+        apiKeySource,
+      });
+      return {
+        type: 'agent',
+        runId: r.run.id,
+        userMessageId: r.userMessageId,
+        placeholderMessageId: r.placeholderMessageId,
+      };
+    }
+
+    return { type: 'skipped', reason: 'AGENT_UNSUPPORTED_CHANNEL' };
+  }
+
   if (
     input.kind === 'memory_remember' ||
     input.kind === 'memory_correct' ||

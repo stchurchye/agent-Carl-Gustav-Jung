@@ -72,3 +72,40 @@ npm run dev:mobile
 1. [platform.deepseek.com](https://platform.deepseek.com/api_keys) 申请  
 2. App → **我的** → 填入密钥 → **测试一下**  
 3. 或写入 `.env` 给 Docker：`DEEPSEEK_API_KEY=sk-...`
+
+## Agent Runtime（M1a + M1b-1）
+
+后台多步 agent 执行能力。**当前范围**：
+
+- **M1a**：私聊触发、echo mock 工具、worker 后台跑、取消 / SSE 流。
+- **M1b-1**：群聊触发、群成员任意一人可取消 / 查看 / 流式订阅、`topic_skills` 三层 scope（user/group/topic）CRUD + 自动注入 system prompt。
+- M1b-2（approval / steer / critique）、M1b-3（mobile UI + hooks）、M1c（LLM planner + 真实工具）、M1d（hardening：T5 heartbeat reclaim、T16 SSE reconnect）后续。
+
+**入口**：
+
+- 私聊：发 `/agent 跑三步 echo`
+- 群聊：在群话题内发 `/agent 帮我研究…`，`intentExecute` 落到 `createAgentRun({ channel:'group', groupId, topicId })`，同步建 `llm_invoke_jobs` + 群消息占位
+
+**HTTP / SSE**（均挂在 `/api/agent`，需登录）：
+
+- `POST /api/intent/execute` 带 `kind: 'agent_run'` 触发任务（私聊 / 群聊均可）
+- `GET /api/agent/runs/:id` 取任务详情（run + 全部 steps）—— 私聊仅 owner，群聊任意群成员可访问
+- `GET /api/agent/runs/:id/stream`（SSE）实时推送 `step` / `status` / `end` 事件
+- `POST /api/agent/runs/:id/cancel` 取消（群聊任意成员可发起）
+- `POST /api/agent/runs/:id/confirm` 通过 `awaiting_confirm` 状态（M1b-2 才用）
+- `GET / POST / PATCH / DELETE /api/agent/skills` topic skills CRUD（按 scope 区分 user / group / topic）
+
+**Topic Skills**：用户在群话题里写"约定"（如"少用表情"、"聚焦税务不讨论投机"）。`contextAdapter.snapshotForAgent` 默认按 `(userId, groupId?, topicId?)` 自动从 `topic_skills` 表里捞 enabled 的项，拼到 system prompt 的 `<topic_skills>` 块。caller 也可显式传 `topicSkills` 覆盖。
+
+**测试 / 开发注意事项**：
+
+- agent runtime 的集成测试依赖共享 PG，跑测试前**先确保没有 `npm run dev:api` 在跑** —— 否则 worker 进程会和 vitest 进程争抢 `agent_runs`。worker 在 `process.env.NODE_ENV=test` / `VITEST=1` 时会自动跳过 pickup，但只对 vitest 进程本身生效，无法影响其他 node 进程。
+- `apps/api/vitest.config.ts` 用 `singleFork + fileParallelism:false` 串行执行，避免 db-写测试互相 `DELETE`。
+- 跑 db 集成测试要先 `set -a; source .env; set +a` 注入 `DATABASE_URL`。
+
+**设计 / 实现细节**：
+
+- 设计文档：`docs/superpowers/specs/2026-05-20-agent-runtime-design.md`
+- 实现计划：`docs/superpowers/plans/2026-05-20-agent-runtime-m1a.md`、`m1b-1.md`、`m1b-2.md`、`m1b-3.md`
+- ADR：`docs/superpowers/plans/2026-05-20-agent-runtime-m1b-completion.md`
+- 关键代码：`apps/api/src/lib/agent/*`，迁移：`apps/api/src/db/migrations/012_agent_runtime.sql`

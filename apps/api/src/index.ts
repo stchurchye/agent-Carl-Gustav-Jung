@@ -18,6 +18,9 @@ import { orchestrateRouter } from './routes/orchestrate.js';
 import { btwRouter } from './routes/btw.js';
 import { memoryRouter } from './routes/memory.js';
 import { intentRouter } from './routes/intent.js';
+import { agentRouter } from './routes/agent.js';
+import { startAgentWorker } from './lib/agent/worker.js';
+import { registerEchoSleep } from './lib/agent/tools/echoSleep.js';
 import { llmLogsRouter } from './routes/llmLogs.js';
 import { mediaRouter } from './routes/media.js';
 import { XZZ_API_PORT } from '@xzz/shared';
@@ -89,6 +92,7 @@ app.route('/api/orchestrate', orchestrateRouter);
 app.route('/api/btw', btwRouter);
 app.route('/api/memory', memoryRouter);
 app.route('/api/intent', intentRouter);
+app.route('/api/agent', agentRouter);
 app.route('/api/llm-logs', llmLogsRouter);
 app.route('/api/media', mediaRouter);
 app.route('/api/settings', settingsRouter);
@@ -100,6 +104,8 @@ async function main() {
   assertProductionConfig();
   requireDatabaseUrl();
   await runMigrations();
+  registerEchoSleep();
+  startAgentWorker({ concurrency: 1, intervalMs: 2_000 });
   const port = Number(process.env.PORT ?? XZZ_API_PORT);
   serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, (info) => {
     log('info', 'api.started', {
