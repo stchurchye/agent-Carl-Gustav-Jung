@@ -38,3 +38,38 @@ describe('intentRules: /agent slash command (M1a)', () => {
     expect(r.matchedRuleIds).toContain('slash_agent');
   });
 });
+
+describe('intentRules: agent_run natural-language signals (M1c)', () => {
+  it('research request → agent_run primary candidate', () => {
+    const r = buildCandidatesFromRules({
+      text: '帮我研究下家族信托相关的资料',
+      channel: 'private',
+    });
+    expect(r.candidates[0]?.kind).toBe('agent_run');
+    expect(r.matchedRuleIds).toContain('agent_research');
+  });
+
+  it('"整理一份报告" matches agent_research', () => {
+    const r = buildCandidatesFromRules({
+      text: '帮我整理一份关于A股新能源的报告',
+      channel: 'private',
+    });
+    expect(r.candidates[0]?.kind).toBe('agent_run');
+  });
+
+  it('memory keyword does NOT match agent_research (sanity)', () => {
+    const r = buildCandidatesFromRules({
+      text: '记住我喜欢猫',
+      channel: 'private',
+    });
+    expect(r.candidates[0]?.kind).not.toBe('agent_run');
+  });
+
+  it('plain url does NOT match agent_research', () => {
+    const r = buildCandidatesFromRules({
+      text: 'https://example.com/foo',
+      channel: 'private',
+    });
+    expect(r.candidates[0]?.kind).not.toBe('agent_run');
+  });
+});
