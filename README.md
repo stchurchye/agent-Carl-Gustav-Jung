@@ -73,7 +73,7 @@ npm run dev:mobile
 2. App → **我的** → 填入密钥 → **测试一下**  
 3. 或写入 `.env` 给 Docker：`DEEPSEEK_API_KEY=sk-...`
 
-## Agent Runtime（M1a + M1b-1 + M1b-2 + M1b-3）
+## Agent Runtime（M1a + M1b-{1,2,3} + M1c）
 
 后台多步 agent 执行能力。**当前范围**：
 
@@ -81,7 +81,14 @@ npm run dev:mobile
 - **M1b-1**：群聊触发、群成员任意一人可取消 / 查看 / 流式订阅、`topic_skills` 三层 scope（user/group/topic）CRUD + 自动注入 system prompt。
 - **M1b-2**：approval gate（`approvalMode='ask'` 工具调用前让出，60s 后按 `costHint` 自动 grant/deny）、steer（中途换方向，abort + replanning）、critique（每 5 步或连续 2 次失败插入 stub critique step）。
 - **M1b-3**：mobile UI + hooks bus。`AgentRunCard` 嵌入私聊 / 群聊消息行，含 cancel / approve / deny / steer 操作；`agentHookBus` 广播 run 生命周期 + step 事件，`logHook` 把事件落到 `agent_event_logs` 表。**M1b 用 polling（1.5s）替代 SSE；T16 断线重连 defer 到 M1d**。
-- M1c（LLM planner + 真实工具）、M1d（hardening：T5 heartbeat reclaim、T16 SSE reconnect）后续。
+- **M1c**：第一批真工具 + LLM planner + LLM 终稿 + idempotency gate + MCP 骨架。
+  - 工具：`magi_system_read`（auto / 读 MAGI）、`magi_content_ingest`（ask / 写 MAGI）、`web_search`（auto / Tavily）、`url_fetch`（auto / Mozilla Readability）、`doc_export_markdown`（auto / 按 title upsert 到 documents 表）
+  - LLM planner：`generatePlanWithLlm` 用 DeepSeek 把 user 请求 + tool list 翻译成 plan；解析失败 / LLM 不可用自动 fallback 到 echo planner
+  - LLM 终稿：`replyGen.generateFinalReply` 在 `softComplete(status='completed')` 时调 LLM 把工具结果汇成一段话，失败 fallback 到原 hint 拼接
+  - Idempotency gate：`runtime.resolveToolCallKey(tool, planStep)` 为带 `computeIdempotencyKey` 的工具拼 `<toolName>:<key>`，runtime 先查 `agent_steps.tool_call_key` 命中则改写 observe step 跳过外部调用（适用于同 run 内重复 / crash 恢复）
+  - intent 升级：`agent_research` 规则识别"研究/调研/整理一份报告"等自然语言把 `agent_run` 提到 primary chip；orchestrator `autoExecute` 显式排除 `agent_run`，让 agent 始终 user-confirm
+  - MCP：`apps/api/src/lib/agent/mcp/` 提供 `McpClient` 接口 + `registerMcpServer` 把远端工具命名空间化（`mcp:<server>:<tool>`）后注册为本地 `ToolDef`；真实 transport defer 到 M1d
+- M1d（hardening：T5 heartbeat reclaim、T16 SSE reconnect、MCP transport）后续。
 
 **入口**：
 
@@ -139,6 +146,7 @@ npm run dev:mobile
 **设计 / 实现细节**：
 
 - 设计文档：`docs/superpowers/specs/2026-05-20-agent-runtime-design.md`
-- 实现计划：`docs/superpowers/plans/2026-05-20-agent-runtime-m1a.md`、`m1b-1.md`、`m1b-2.md`、`m1b-3.md`
+- 实现计划：`docs/superpowers/plans/2026-05-20-agent-runtime-m1a.md`、`m1b-1.md`、`m1b-2.md`、`m1b-3.md`、`m1c.md`
 - ADR：`docs/superpowers/plans/2026-05-20-agent-runtime-m1b-completion.md`
-- 关键代码：`apps/api/src/lib/agent/*`，迁移：`apps/api/src/db/migrations/012_agent_runtime.sql`
+- 关键代码：`apps/api/src/lib/agent/*`，迁移：`apps/api/src/db/migrations/012_agent_runtime.sql` / `013_agent_event_logs.sql`
+- M1c 配置：填 `TAVILY_API_KEY` 启用 `web_search`（不填则返回空结果不抛错）；填 `MAGI_SYSTEM_*` / `MAGI_CONTENT_*` 启用 magi 工具真实 transport
