@@ -151,11 +151,45 @@ async function lookupGroupLlmJobId(messageId: string): Promise<string | null> {
   return (rows[0]?.job_id as string | null) ?? null;
 }
 
-function pickFinalContent(run: AgentRun, plan: Plan | null): string {
+function pickFallbackFinalContent(run: AgentRun, plan: Plan | null): string {
   if (!plan) return '[任务未完成]';
   const todos = run.todos.length > 0 ? run.todos : plan.todos;
   const completed = todos.filter((t) => t.status === 'completed').length;
   return `已完成 ${completed} 步：${plan.intentSummary}\n${plan.finalReplyHint}`;
+}
+
+/**
+ * M1c：completed 状态下用 LLM 生成终稿；非 completed 走原占位文本。
+ * 测试环境 / 缺 API key 时直接 fallback。
+ */
+async function buildFinalContent(
+  run: AgentRun,
+  status: 'completed' | 'budget_exhausted' | 'failed' | 'cancelled',
+  detail: string | undefined,
+): Promise<string> {
+  if (status === 'budget_exhausted') {
+    return `${pickFallbackFinalContent(run, run.plan)}\n\n[预算已用尽：${detail ?? ''}]`;
+  }
+  if (status === 'cancelled') return `[任务已取消${detail ? '：' + detail : ''}]`;
+  if (status === 'failed') return `[任务失败${detail ? '：' + detail : ''}]`;
+
+  // completed: 尝试 LLM 终稿
+  const text = run.inputText ?? '';
+  const isTestEnv =
+    process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+  const looksLikeEcho = /echo/i.test(text);
+  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (isTestEnv || looksLikeEcho || !serverKey || !run.plan) {
+    return pickFallbackFinalContent(run, run.plan);
+  }
+  const steps = await store.listSteps(run.id);
+  const { generateFinalReply } = await import('./replyGen.js');
+  return generateFinalReply({
+    run,
+    plan: run.plan,
+    steps,
+    apiKey: serverKey,
+  });
 }
 
 async function softComplete(
@@ -163,14 +197,7 @@ async function softComplete(
   status: 'completed' | 'budget_exhausted' | 'failed' | 'cancelled',
   detail?: string,
 ) {
-  const finalContent =
-    status === 'budget_exhausted'
-      ? `${pickFinalContent(run, run.plan)}\n\n[预算已用尽：${detail ?? ''}]`
-      : status === 'cancelled'
-        ? `[任务已取消${detail ? '：' + detail : ''}]`
-        : status === 'failed'
-          ? `[任务失败${detail ? '：' + detail : ''}]`
-          : pickFinalContent(run, run.plan);
+  const finalContent = await buildFinalContent(run, status, detail);
 
   if (run.resultMessageId) {
     if (run.channel === 'private') {
@@ -538,8 +565,11 @@ export async function executeRun(runId: string): Promise<void> {
       }
     }
 
-    const reply = pickFinalContent(run, plan);
-    await recordStep({ runId, kind: 'reply', output: { content: reply } });
+    // M1c：终稿在 softComplete 里走 buildFinalContent（含 LLM 终稿）；
+    // 这里仍记一条 reply step，但内容直接用 fallback 概要——
+    // 真正写到 placeholder 的是 buildFinalContent 的返回值。
+    const replyDigest = pickFallbackFinalContent(run, plan);
+    await recordStep({ runId, kind: 'reply', output: { content: replyDigest } });
     await softComplete(run, 'completed');
   } catch (e) {
     const latest = (await store.getAgentRun(runId)) ?? run;
