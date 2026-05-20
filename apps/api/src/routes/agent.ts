@@ -288,18 +288,32 @@ agentRouter.post('/skills', async (c) => {
   if (!(await canManageGroupSkill(userId, groupId))) {
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   }
-  const skill = await topicSkills.upsertSkill({
-    id: body.id,
-    scope,
-    ownerId: scope === 'user' ? userId : userId,
-    groupId,
-    topicId,
-    title,
-    content,
-    enabled: body.enabled !== false,
-    updatedByUserId: userId,
-  });
-  return c.json({ ok: true, data: { skill }, requestId: c.get('requestId') });
+  try {
+    const skill = await topicSkills.upsertSkill({
+      id: body.id,
+      scope,
+      ownerId: scope === 'user' ? userId : userId,
+      groupId,
+      topicId,
+      title,
+      content,
+      enabled: body.enabled !== false,
+      updatedByUserId: userId,
+    });
+    return c.json({ ok: true, data: { skill }, requestId: c.get('requestId') });
+  } catch (e) {
+    if (e instanceof topicSkills.SkillValidationError) {
+      return c.json(
+        {
+          ok: false,
+          error: { code: ErrorCodes.VALIDATION, message: e.message },
+          requestId: c.get('requestId'),
+        },
+        400,
+      );
+    }
+    throw e;
+  }
 });
 
 agentRouter.patch('/skills/:id', async (c) => {
@@ -311,18 +325,32 @@ agentRouter.patch('/skills/:id', async (c) => {
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   }
   const body = await c.req.json().catch(() => ({}));
-  const skill = await topicSkills.upsertSkill({
-    id,
-    scope: existing.scope,
-    ownerId: existing.ownerId,
-    groupId: existing.groupId,
-    topicId: existing.topicId,
-    title: (body.title as string | undefined)?.trim() || existing.title,
-    content: (body.content as string | undefined)?.trim() || existing.content,
-    enabled: typeof body.enabled === 'boolean' ? body.enabled : existing.enabled,
-    updatedByUserId: userId,
-  });
-  return c.json({ ok: true, data: { skill }, requestId: c.get('requestId') });
+  try {
+    const skill = await topicSkills.upsertSkill({
+      id,
+      scope: existing.scope,
+      ownerId: existing.ownerId,
+      groupId: existing.groupId,
+      topicId: existing.topicId,
+      title: (body.title as string | undefined)?.trim() || existing.title,
+      content: (body.content as string | undefined)?.trim() || existing.content,
+      enabled: typeof body.enabled === 'boolean' ? body.enabled : existing.enabled,
+      updatedByUserId: userId,
+    });
+    return c.json({ ok: true, data: { skill }, requestId: c.get('requestId') });
+  } catch (e) {
+    if (e instanceof topicSkills.SkillValidationError) {
+      return c.json(
+        {
+          ok: false,
+          error: { code: ErrorCodes.VALIDATION, message: e.message },
+          requestId: c.get('requestId'),
+        },
+        400,
+      );
+    }
+    throw e;
+  }
 });
 
 agentRouter.delete('/skills/:id', async (c) => {

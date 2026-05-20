@@ -46,7 +46,65 @@ export type UpsertSkillInput = {
   updatedByUserId: string;
 };
 
+/**
+ * M1d Task 7：prompt-injection 防御。topic skill 会被注入到 agent system
+ * prompt 里（snapshotForAgent / planner），所以任何看起来像"override
+ * instructions"、"忽略上面"、"reveal API key" 的 pattern 都要拒掉。
+ *
+ * 这是 defense-in-depth：planner system prompt 自己也带 anti-jailbreak
+ * 段落；但 skill 是 *持久化* 的危险源，宁可在写入时拦截。
+ *
+ * 触发即抛 SkillValidationError，上层路由把它映射成 400 + 可读消息。
+ */
+export class SkillValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SkillValidationError';
+  }
+}
+
+const SUSPICIOUS_PATTERNS: { re: RegExp; reason: string }[] = [
+  // 中英文 "忽略上面 / 忘掉之前 / 不要听 system / disregard prior"
+  { re: /忽略(以上|上面|之前|前面|系统)|忘[掉记]/i, reason: 'IGNORE_INSTRUCTIONS_ZH' },
+  { re: /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions|prompt|messages)/i, reason: 'IGNORE_INSTRUCTIONS_EN' },
+  { re: /disregard\s+(all\s+)?(prior|previous|above|system)/i, reason: 'DISREGARD_EN' },
+  { re: /system\s*[:：]/i, reason: 'INJECT_SYSTEM_ROLE' },
+  // 让 LLM 角色互换 / 拒绝过滤
+  { re: /(扮演|装作|你现在是).{0,12}(管理员|开发者|无审查|jailbreak)/i, reason: 'ROLE_OVERRIDE_ZH' },
+  { re: /you\s+are\s+now\s+(?:an?\s+)?(?:dan|jailbroken|uncensored|developer\s+mode)/i, reason: 'ROLE_OVERRIDE_EN' },
+  // 直接索要敏感字段
+  { re: /(api[_\- ]?key|deepseek\s*key|access[_\- ]?token|secret)/i, reason: 'SECRET_DISCLOSURE' },
+  // 强制执行任意工具（特别是 magi_content_ingest / doc_export 这种有副作用的）
+  { re: /(必须|一定要|always|must)\s*(执行|调用|call|invoke|run).{0,20}(magi_content_ingest|doc_export|tool)/i, reason: 'FORCE_TOOL_CALL' },
+];
+
+const MAX_TITLE_LEN = 80;
+const MAX_CONTENT_LEN = 2000;
+
+/**
+ * 公开导出：路由 / 测试可单独验证 input。返回错误数组（空数组即通过）。
+ */
+export function validateSkillInput(input: { title: string; content: string }): { reason: string; field: 'title' | 'content' }[] {
+  const errors: { reason: string; field: 'title' | 'content' }[] = [];
+  const title = input.title ?? '';
+  const content = input.content ?? '';
+  if (title.trim().length === 0) errors.push({ reason: 'EMPTY_TITLE', field: 'title' });
+  if (title.length > MAX_TITLE_LEN) errors.push({ reason: 'TITLE_TOO_LONG', field: 'title' });
+  if (content.length > MAX_CONTENT_LEN) errors.push({ reason: 'CONTENT_TOO_LONG', field: 'content' });
+  for (const { re, reason } of SUSPICIOUS_PATTERNS) {
+    if (re.test(title)) errors.push({ reason, field: 'title' });
+    if (re.test(content)) errors.push({ reason, field: 'content' });
+  }
+  return errors;
+}
+
 export async function upsertSkill(input: UpsertSkillInput): Promise<TopicSkill> {
+  const errs = validateSkillInput(input);
+  if (errs.length > 0) {
+    throw new SkillValidationError(
+      `topic skill rejected: ${errs.map((e) => `${e.field}:${e.reason}`).join(', ')}`,
+    );
+  }
   const id = input.id ?? randomUUID();
   const { rows } = await getPool().query(
     `INSERT INTO topic_skills (id, scope, owner_id, group_id, topic_id,
