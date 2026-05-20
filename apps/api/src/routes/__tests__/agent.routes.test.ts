@@ -407,6 +407,62 @@ describe('GET /api/agent/runs (M1d task panel)', () => {
     expect(ids.length).toBe(2);
   });
 
+  it('SSE stream resumes from Last-Event-ID, skipping prior steps', async () => {
+    const me = await ensureUser('sse-resume');
+    const sess = await (await import('../../store/pg.js')).createChatSession(me.id, 'sse');
+    const r = await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: sess.id, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+      inputText: 'sse', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    // 注入 3 条 step：idx 0/1/2
+    for (let i = 0; i < 3; i++) {
+      await store.insertStep({
+        runId: r.id,
+        idx: i,
+        kind: 'tool_call',
+        toolName: 'fake',
+        input: { i },
+        output: { i },
+      });
+    }
+
+    const token = await tokenFor(me);
+    const res = await makeApp().fetch(
+      new Request(`http://test/api/agent/runs/${r.id}/stream`, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          'last-event-id': '0', // 断点：客户端只见过 idx 0，要从 idx 1 开始
+        },
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const text = await readSseUntilEnd(res);
+    // 应包含 idx 1 / 2，不包含 idx 0
+    expect(text).toMatch(/"idx":1/);
+    expect(text).toMatch(/"idx":2/);
+    expect(text).not.toMatch(/"idx":0/);
+    // SSE id 字段应该出现在每条 step 上
+    expect(text).toMatch(/id: 1/);
+    expect(text).toMatch(/id: 2/);
+  });
+
+  async function readSseUntilEnd(res: Response): Promise<string> {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let acc = '';
+    const stopAt = Date.now() + 4000;
+    while (Date.now() < stopAt) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) acc += decoder.decode(value);
+      if (acc.includes('event: end')) break;
+    }
+    try { reader.cancel(); } catch {}
+    return acc;
+  }
+
   it('status filter narrows results', async () => {
     const me = await ensureUser('list-st');
     await store.insertAgentRun({

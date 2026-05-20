@@ -69,8 +69,19 @@ agentRouter.get('/runs/:id/stream', async (c) => {
   if (!(await canAccessRun(run, userId)))
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
 
+  // M1d T16：支持 SSE 断线重连。客户端把上次收到的最后一个 step.idx 放在
+  // `Last-Event-ID` header（HTML5 标准）或 `?after=` query param 里，
+  // 服务端会跳过该 idx 之前的 step，先 catch-up 漏掉的，再进入实时循环。
+  const lastEventHeader = c.req.header('last-event-id');
+  const afterQuery = c.req.query('after');
+  const resumeFromRaw = lastEventHeader ?? afterQuery;
+  const resumeFrom =
+    resumeFromRaw != null && !Number.isNaN(Number(resumeFromRaw))
+      ? Number(resumeFromRaw)
+      : -1;
+
   return streamSSE(c, async (stream) => {
-    let lastStepIdx = -1;
+    let lastStepIdx = resumeFrom;
     let lastStatus = run.status;
     let alive = true;
     stream.onAbort(() => {
@@ -85,6 +96,8 @@ agentRouter.get('/runs/:id/stream', async (c) => {
       for (const s of newSteps) {
         await stream.writeSSE({
           event: 'step',
+          // SSE id 字段：浏览器 EventSource 自动把它当 Last-Event-ID 在重连时回传。
+          id: String(s.idx),
           data: JSON.stringify(s),
         });
         lastStepIdx = s.idx;
