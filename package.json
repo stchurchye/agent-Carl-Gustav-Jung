@@ -1,0 +1,33 @@
+{
+  "name": "xingdong-zhongzhi",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "PORT=3922 npm run dev -w @xzz/api",
+    "dev:api:host": "bash scripts/dev-api-host.sh",
+    "dev:mobile": "npm run start --prefix apps/mobile",
+    "ios:ipad": "npm run ios:ipad -w @xzz/mobile",
+    "ios:metro": "bash scripts/ios-metro.sh",
+    "ios:xcode": "bash scripts/ios-metro.sh & sleep 2 && open \"$(pwd)/apps/mobile/ios/app.xcworkspace\"",
+    "ios:dev": "cd apps/mobile && npx expo run:ios --port 8090",
+    "ios:reload": "bash scripts/ios-sim-reload.sh",
+    "ios:run": "npm run dev:api & npm run start --prefix apps/mobile",
+    "docker:up": "bash scripts/docker-preflight.sh && docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f api",
+    "build": "npm run build -w @xzz/shared && npm run build -w @xzz/api",
+    "pack": "bash scripts/pack-release.sh",
+    "pack:verify": "bash scripts/pack-verify.sh",
+    "pack:docker": "docker compose build api",
+    "pack:mobile": "npm run build -w @xzz/shared && cd apps/mobile && npx expo export --platform all",
+    "db:seed": "npm run db:seed -w @xzz/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test -w @xzz/shared && npm run test -w @xzz/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

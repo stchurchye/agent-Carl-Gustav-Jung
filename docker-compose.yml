@@ -1,0 +1,52 @@
+name: xzz
+# 行动中止派 API — 端口 3922
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: xzz-postgres
+    environment:
+      POSTGRES_USER: xzz
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-xzz_dev_password}
+      POSTGRES_DB: xzz_app
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xzz -d xzz_app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: xzz-api
+    ports:
+      - "3922:3922"
+    environment:
+      PORT: "3922"
+      NODE_ENV: production
+      # 须在 .env 中设置（运行 npm run docker:up 前会执行 scripts/docker-preflight.sh 检查）
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      JWT_EXPIRES_SEC: ${JWT_EXPIRES_SEC:-604800}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      ZENMUX_API_KEY: ${ZENMUX_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      # 注意：部分环境下容器无法访问 zenmux.ai，语音/识图请用 npm run dev:api:host
+      DATABASE_URL: postgresql://xzz:${POSTGRES_PASSWORD:-xzz_dev_password}@postgres:5432/xzz_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3922/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  pgdata:

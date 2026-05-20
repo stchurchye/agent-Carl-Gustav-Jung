@@ -1,0 +1,32 @@
+{
+  "name": "@xzz/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && mkdir -p dist/db/migrations dist/assets/seed && cp src/db/migrations/*.sql dist/db/migrations/ && cp src/assets/seed/* dist/assets/seed/",
+    "start": "node dist/index.js",
+    "db:seed": "tsx src/scripts/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.4",
+    "@xzz/shared": "*",
+    "bcryptjs": "^3.0.3",
+    "hono": "^4.7.10",
+    "jose": "^6.2.3",
+    "pg": "^8.20.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.15.21",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

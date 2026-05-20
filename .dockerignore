@@ -1,0 +1,19 @@
+# node_modules 由 Dockerfile 显式 COPY（pack 前执行 npm ci --omit=dev）
+.git
+.cursor
+*.md
+!README.md
+apps/mobile
+apps/mobile/ios
+apps/mobile/android
+.expo
+**/.expo
+# 发布包与移动端 export，不进入 API 镜像
+dist/release*
+dist/xzz-*
+apps/mobile/dist
+data
+.env
+.env.local
+*.log
+.DS_Store
