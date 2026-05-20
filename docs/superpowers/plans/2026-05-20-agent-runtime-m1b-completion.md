@@ -33,8 +33,16 @@
 
 ### 1.3 同步 spec 更新（M1b 收尾必做）
 
-- [ ] `docs/superpowers/specs/2026-05-20-agent-runtime-design.md` §19 表格：T5/T16 阶段列 `M1b` → `M1d`，加 footnote 解释。
-- [ ] 同 §16：`/agent/skills` 是确定路径；spec 已是真理，plan 对齐即可（无需改 spec）。
+- [x] `docs/superpowers/specs/2026-05-20-agent-runtime-design.md` §19 表格：T5/T16 阶段列 `M1b` → `M1d`，加 footnote 解释。
+- [x] 同 §16：`/agent/skills` 是确定路径；spec 已是真理，plan 对齐即可（无需改 spec）。
+
+### 1.4 Git 收尾（2026-05-20）
+
+- [x] `main` ← `feat/agent-runtime-m1b-1`（含 M1a 全量）
+- [x] `main` ← `feat/agent-runtime-m1b-2`
+- [x] `main` ← `feat/agent-runtime-m1b-3`
+- [x] tag `v0.m1b`
+- [x] `npm run typecheck` + `npm run test -w @xzz/api`（87 passed）
 
 ---
 
