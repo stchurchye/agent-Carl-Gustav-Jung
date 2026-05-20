@@ -99,6 +99,11 @@ export type InsertAgentRunInput = {
   budget: AgentBudget;
   apiKeyOwnerId: string | null;
   apiKeySource: ApiKeySource;
+  /**
+   * M1d Task 6：user key 在 route 层用 `sealUserApiKey` 加密后传进来。
+   * worker 用 `openUserApiKey` 解开。可选；缺省时 worker 退回 server key。
+   */
+  userApiKeyEnc?: string | null;
 };
 
 export async function insertAgentRun(
@@ -109,8 +114,8 @@ export async function insertAgentRun(
     `INSERT INTO agent_runs (
        id, owner_id, channel, session_id, group_id, topic_id,
        intent_turn_id, role, status, input_text, budget,
-       api_key_owner_id, api_key_source
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       api_key_owner_id, api_key_source, user_api_key_enc
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING ${RUN_COLUMNS}`,
     [
       id,
@@ -126,9 +131,22 @@ export async function insertAgentRun(
       JSON.stringify(input.budget),
       input.apiKeyOwnerId,
       input.apiKeySource,
+      input.userApiKeyEnc ?? null,
     ],
   );
   return parseRun(rows[0]);
+}
+
+/**
+ * M1d Task 6：worker 内部用，单独取 sealed user key（不放进 AgentRun
+ * 主类型避免泄漏到 SSE / API）。
+ */
+export async function getUserApiKeyEnc(runId: string): Promise<string | null> {
+  const { rows } = await getPool().query(
+    `SELECT user_api_key_enc FROM agent_runs WHERE id = $1`,
+    [runId],
+  );
+  return (rows[0]?.user_api_key_enc as string | null) ?? null;
 }
 
 export async function getAgentRun(id: string): Promise<AgentRun | null> {

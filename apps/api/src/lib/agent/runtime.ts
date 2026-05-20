@@ -73,6 +73,24 @@ export type CreateAgentRunResult = {
 export async function createAgentRun(
   input: CreateAgentRunInput,
 ): Promise<CreateAgentRunResult> {
+  // M1d T6：把 user 主动提供的 DeepSeek key 加密落到 agent_runs，worker 后台
+  // 再用同一把 key 调 LLM。AGENT_KEY_SECRET 没配 → 不存（worker 退回 server key）。
+  let userApiKeyEnc: string | null = null;
+  if (input.apiKeySource === 'user' && input.apiKey) {
+    try {
+      const { isSecretBoxAvailable, sealUserApiKey } = await import('./secretBox.js');
+      if (isSecretBoxAvailable()) {
+        userApiKeyEnc = sealUserApiKey(input.apiKey);
+      } else {
+        console.warn(
+          '[agent.createAgentRun] AGENT_KEY_SECRET not set; user-provided DeepSeek key dropped, worker will fall back to server key.',
+        );
+      }
+    } catch (e) {
+      console.warn('[agent.createAgentRun] failed to seal user api key', e);
+    }
+  }
+
   const run = await store.insertAgentRun({
     ownerId: input.ownerId,
     channel: input.channel,
@@ -86,6 +104,7 @@ export async function createAgentRun(
     budget: input.budget ?? DEFAULT_BUDGET,
     apiKeyOwnerId: input.apiKeySource === 'user' ? input.ownerId : null,
     apiKeySource: input.apiKeySource,
+    userApiKeyEnc,
   });
 
   let userMessageId: string | null = null;
@@ -180,6 +199,28 @@ function formatBudgetExhaustedReply(run: AgentRun, detail: string | undefined): 
 }
 
 /**
+ * M1d Task 6：取出 worker 调 LLM 用的 effective key。
+ * 优先级：run.apiKeySource='user' 且 user_api_key_enc 解密成功 → 用户 key；
+ * 否则退回 server env DEEPSEEK_API_KEY。
+ */
+async function resolveEffectiveApiKey(run: AgentRun): Promise<string | undefined> {
+  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (run.apiKeySource === 'user') {
+    try {
+      const sealed = await store.getUserApiKeyEnc(run.id);
+      if (sealed) {
+        const { openUserApiKey } = await import('./secretBox.js');
+        const key = openUserApiKey(sealed).trim();
+        if (key) return key;
+      }
+    } catch (e) {
+      console.warn('[agent.resolveEffectiveApiKey] failed to open user key', e);
+    }
+  }
+  return serverKey || undefined;
+}
+
+/**
  * M1c：completed 状态下用 LLM 生成终稿；非 completed 走原占位文本。
  * 测试环境 / 缺 API key 时直接 fallback。
  */
@@ -199,8 +240,8 @@ async function buildFinalContent(
   const isTestEnv =
     process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
   const looksLikeEcho = /echo/i.test(text);
-  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
-  if (isTestEnv || looksLikeEcho || !serverKey || !run.plan) {
+  const effectiveKey = await resolveEffectiveApiKey(run);
+  if (isTestEnv || looksLikeEcho || !effectiveKey || !run.plan) {
     return pickFallbackFinalContent(run, run.plan);
   }
   const steps = await store.listSteps(run.id);
@@ -209,7 +250,7 @@ async function buildFinalContent(
     run,
     plan: run.plan,
     steps,
-    apiKey: serverKey,
+    apiKey: effectiveKey,
   });
 }
 
@@ -281,8 +322,8 @@ async function buildInitialPlan(run: AgentRun): Promise<Plan> {
   const isTestEnv =
     process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
   const looksLikeEcho = /echo/i.test(text);
-  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
-  if (isTestEnv || looksLikeEcho || !serverKey) {
+  const effectiveKey = await resolveEffectiveApiKey(run);
+  if (isTestEnv || looksLikeEcho || !effectiveKey) {
     return generatePlanForEcho(text);
   }
   try {
@@ -294,12 +335,12 @@ async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       groupId: run.groupId ?? undefined,
       topicId: run.topicId ?? undefined,
       pendingUser: text,
-      apiKey: serverKey,
+      apiKey: effectiveKey,
     });
     return await generatePlanWithLlm({
       inputText: text,
       snapshot,
-      apiKey: serverKey,
+      apiKey: effectiveKey,
     });
   } catch {
     return generatePlanForEcho(text);
