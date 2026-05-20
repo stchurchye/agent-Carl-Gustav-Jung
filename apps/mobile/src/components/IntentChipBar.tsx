@@ -51,6 +51,8 @@ type OptionRowProps = {
   description?: string;
   recommended?: boolean;
   muted?: boolean;
+  /** agent_run 候选用不同 accent，提示是后台多步任务而非普通问答。 */
+  agentRun?: boolean;
   onPress: () => void;
   showSeparator: boolean;
 };
@@ -61,6 +63,7 @@ function OptionRow({
   description,
   recommended,
   muted,
+  agentRun,
   onPress,
   showSeparator,
 }: OptionRowProps) {
@@ -93,6 +96,11 @@ function OptionRow({
             {recommended ? (
               <View style={styles.optionBadge}>
                 <Text style={styles.optionBadgeText}>{zh.intent.recommended}</Text>
+              </View>
+            ) : null}
+            {agentRun ? (
+              <View style={[styles.optionBadge, styles.optionBadgeAgent]}>
+                <Text style={[styles.optionBadgeText, styles.optionBadgeAgentText]}>AGENT</Text>
               </View>
             ) : null}
           </View>
@@ -156,6 +164,7 @@ export function IntentChipBar({
         label={c.label}
         description={c.description}
         recommended={isRecommendedCandidate(c, analyze, i)}
+        agentRun={c.kind === 'agent_run'}
         showSeparator
         onPress={() => onSelectIntent(c.kind, c.slots)}
       />
@@ -317,6 +326,13 @@ const styles = StyleSheet.create({
     color: evaBrain.accentBright,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  optionBadgeAgent: {
+    borderColor: '#5a6cff',
+    backgroundColor: 'rgba(90, 108, 255, 0.12)',
+  },
+  optionBadgeAgentText: {
+    color: '#5a6cff',
   },
   optionDesc: {
     marginTop: 2,

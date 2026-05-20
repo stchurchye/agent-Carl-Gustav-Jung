@@ -51,7 +51,13 @@ import {
 } from '../lib/assistantFeedback';
 import { isSpeaking, speakChinese, speakText, stopSpeaking } from '../lib/tts';
 import { animateTypewriter } from '../lib/typewriter';
-import { chatBubbleText, collectAssistantRepliesFromScreen, type ChatUiMessage } from '../lib/uiMessage';
+import {
+  chatBubbleText,
+  collectAssistantRepliesFromScreen,
+  getAgentRunIdFromMessage,
+  type ChatUiMessage,
+} from '../lib/uiMessage';
+import { AgentRunCard } from '../features/agent/AgentRunCard';
 import { zenmuxChatModelLabel } from '../lib/chatLlmModel';
 import { attachChatTimeFlags } from '../lib/chatTime';
 import { ChatComposeBar } from '../components/ChatComposeBar';
@@ -478,6 +484,12 @@ export function ChatScreen({ route, navigation }: Props) {
               { ...assistantMsg, status: 'done' as const },
             ]);
           },
+          onAgent: async () => {
+            // Agent run 占位消息已在后端写入 db,
+            // 直接重新拉取会话消息让 AgentRunCard 接管渲染。
+            setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+            await loadMessages(sessionId);
+          },
         });
         if (!ok && res.data.type === 'skipped') {
           appAlert('无法执行', res.data.reason);
@@ -730,6 +742,11 @@ export function ChatScreen({ route, navigation }: Props) {
       onBubbleLongPress: (anchor: MessageBubbleAnchor) => openBubbleAction(item, anchor),
       contextExcluded: item.llmExclude?.active === true,
     };
+
+    const agentRunId = getAgentRunIdFromMessage(item);
+    if (agentRunId) {
+      return row(<AgentRunCard runId={agentRunId} />);
+    }
 
     if (!isUser && !isError) {
       const showMetaFootnote = Boolean(

@@ -1,4 +1,5 @@
 import * as store from './store.js';
+import { agentHookBus } from './hooks.js';
 import type { AgentRun, StepKind } from './types.js';
 
 export type RecordStepInput = {
@@ -20,7 +21,9 @@ export type RecordStepInput = {
  */
 export async function recordStep(input: RecordStepInput) {
   const nextIdx = (await store.maxStepIdx(input.runId)) + 1;
-  return store.insertStep({ ...input, idx: nextIdx });
+  const step = await store.insertStep({ ...input, idx: nextIdx });
+  agentHookBus.emitEvent({ type: 'step.recorded', runId: input.runId, step });
+  return step;
 }
 
 /**

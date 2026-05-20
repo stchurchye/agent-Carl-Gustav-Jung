@@ -3,13 +3,30 @@ import type { WritingAssistantMessage } from '@xzz/shared';
 
 export type MessageUiStatus = 'pending' | 'streaming' | 'error' | 'done';
 
+/**
+ * 后端在 `private_chat_messages.payload` 写入的 agent run 元信息。
+ * 字段名必须与 `apps/api/src/lib/agent/messageBridge.ts` 保持一致。
+ */
+export type AgentRunMessageMeta = {
+  agentRunId: string;
+  /** 'draft' | 'final' 等占位状态；UI 主要靠 agentRunId 渲染 card */
+  status?: string;
+  role?: 'invoker' | 'placeholder';
+};
+
 export type ChatUiMessage = ChatMessage & {
   status?: MessageUiStatus;
   /** 气泡里当前显示的文字（打字机进行中） */
   displayContent?: string;
   /** 失败后点「再试一次」时重发的用户内容 */
   retryText?: string;
+  /** 后端 payload 直通的 agent 元信息（私聊 placeholder） */
+  agentRun?: AgentRunMessageMeta;
 };
+
+export function getAgentRunIdFromMessage(m: ChatUiMessage): string | null {
+  return m.agentRun?.agentRunId ?? null;
+}
 
 export type WritingUiMessage = WritingAssistantMessage & {
   status?: MessageUiStatus;

@@ -22,6 +22,7 @@ import { agentRouter } from './routes/agent.js';
 import { startAgentWorker } from './lib/agent/worker.js';
 import { registerEchoSleep } from './lib/agent/tools/echoSleep.js';
 import { registerRiskyEcho } from './lib/agent/tools/riskyEcho.js';
+import { registerLogHook } from './lib/agent/logHook.js';
 import { llmLogsRouter } from './routes/llmLogs.js';
 import { mediaRouter } from './routes/media.js';
 import { XZZ_API_PORT } from '@xzz/shared';
@@ -110,6 +111,7 @@ async function main() {
   if (process.env.NODE_ENV !== 'production') {
     registerRiskyEcho();
   }
+  registerLogHook();
   startAgentWorker({ concurrency: 1, intervalMs: 2_000 });
   const port = Number(process.env.PORT ?? XZZ_API_PORT);
   serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, (info) => {
