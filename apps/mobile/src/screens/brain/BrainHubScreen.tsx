@@ -97,6 +97,16 @@ export function BrainHubScreen({ navigation }: Props) {
             </Pressable>
           );
         })}
+        <Pressable
+          style={styles.cell}
+          onPress={() => navigation.navigate('BrainAgentTasks')}
+          accessibilityRole="button"
+        >
+          <View style={styles.cellInner}>
+            <Text style={styles.cellTitle}>Agent 任务</Text>
+            <Text style={styles.cellSub}>查看后台 agent 跑的所有任务、重试失败</Text>
+          </View>
+        </Pressable>
       </ScrollView>
     </View>
   );

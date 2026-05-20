@@ -13,7 +13,11 @@ const TERMINAL_STATUSES: AgentRun['status'][] = [
 /**
  * M1b-3：轮询 GET /api/agent/runs/:id 拿 { run, steps }。
  *
- * M1d 升级到 SSE 时，只需要把消费者从这个 hook 切到 useAgentRunSSE，
+ * M1d 说明：后端 SSE (`/api/agent/runs/:id/stream`) 已支持 `Last-Event-ID`
+ * （或 `?after=` query）续传，每条 step 都带 SSE `id` 字段——给 Web /
+ * CLI 客户端用 EventSource 用。Mobile 因为 RN 缺 native EventSource，
+ * 这里继续走轮询：每轮都是 full state read，天然"断线即续传"，简单且健壮。
+ * 切 SSE 的话只需把消费者从这个 hook 切到 useAgentRunSSE，
  * 上层组件用 alias import (`useAgentRunSubscription`) 屏蔽差异。
  */
 export function useAgentRunPoll(runId: string | null) {

@@ -73,7 +73,7 @@ npm run dev:mobile
 2. App → **我的** → 填入密钥 → **测试一下**  
 3. 或写入 `.env` 给 Docker：`DEEPSEEK_API_KEY=sk-...`
 
-## Agent Runtime（M1a + M1b-{1,2,3} + M1c）
+## Agent Runtime（M1a + M1b-{1,2,3} + M1c + M1d）
 
 后台多步 agent 执行能力。**当前范围**：
 
@@ -88,7 +88,15 @@ npm run dev:mobile
   - Idempotency gate：`runtime.resolveToolCallKey(tool, planStep)` 为带 `computeIdempotencyKey` 的工具拼 `<toolName>:<key>`，runtime 先查 `agent_steps.tool_call_key` 命中则改写 observe step 跳过外部调用（适用于同 run 内重复 / crash 恢复）
   - intent 升级：`agent_research` 规则识别"研究/调研/整理一份报告"等自然语言把 `agent_run` 提到 primary chip；orchestrator `autoExecute` 显式排除 `agent_run`，让 agent 始终 user-confirm
   - MCP：`apps/api/src/lib/agent/mcp/` 提供 `McpClient` 接口 + `registerMcpServer` 把远端工具命名空间化（`mcp:<server>:<tool>`）后注册为本地 `ToolDef`；真实 transport defer 到 M1d
-- M1d（hardening：T5 heartbeat reclaim、T16 SSE reconnect、MCP transport）后续。
+- **M1d**：hardening、UX、扩展性。
+  - **T5 heartbeat reclaim**：worker A 写完 `tool_call` 后崩溃、`agent_runs.usage.steps` 未追上时，worker B re-pickup 时按 DB 里 `tool_call + observe` 计数推断 `completedCount`，从下一步开始而非重跑非幂等工具。从 `replanning` 状态进入 executeRun 时跳过 reclaim 检测（usage 是被显式 reset 的，不是 crash）。同时写一条 `heartbeat` step `{reclaim: true}` 留痕。
+  - **T14 budget_exhausted UX**：终稿明确列出"步骤 X/Y、tokens A/B、用时 Cs/Ds"+ "再试一次"提示；`AgentRunCard` 给 budget_exhausted 单独渲染 usage 行。
+  - **Retry**：`POST /api/agent/runs/:id/retry`（仅 terminal 状态）按原 `inputText` / `channel` / `budget` 创建新 run；`AgentRunCard` failed / cancelled / budget_exhausted 状态下显示"再试一次"按钮，详情页 retry 后自动 `navigation.replace` 到新 run。
+  - **任务面板**：`GET /api/agent/runs?status=&limit=` 返回 owner runs + 群成员 runs（不含外人）；`BrainAgentTasksScreen` 列表 + `BrainAgentTaskDetailScreen` 详情，已挂到 `BrainHubScreen` 入口。
+  - **T16 SSE Last-Event-ID**：`/runs/:id/stream` 每条 step 带 SSE `id` 字段；客户端断线重连用 `Last-Event-ID` header 或 `?after=N` query 续传，跳过已收到的 step。Mobile 继续走轮询（full state read 天然续传）。
+  - **Per-user DeepSeek key in worker**：用户在客户端填的 key 经 `secretBox.sealUserApiKey`（AES-256-GCM）落到 `agent_runs.user_api_key_enc`，worker 调 LLM 时 `resolveEffectiveApiKey(run)` 优先解开用户 key，缺则退回 env `DEEPSEEK_API_KEY`。**需要配置 `AGENT_KEY_SECRET`**（≥16 字符）才会启用；未配置则 user key 在写入时被丢弃 + warn。
+  - **Topic skill prompt-injection 防御**：`upsertSkill` 前用 `validateSkillInput` 拒掉常见 jailbreak pattern（"忽略以上"、"ignore previous instructions"、"you are now DAN"、明文索要 api key 等），HTTP 路由把 `SkillValidationError` 映射成 400 + 可读 reason 列表。
+  - **MCP stdio transport**：`apps/api/src/lib/agent/mcp/stdioTransport.ts` 提供 `McpStdioClient`，按行式 JSON-RPC（`tools/list`、`tools/call`）与 stdio MCP server 通信；自带 `_demoEchoServer.mjs` smoke 测试，可作为接 Anthropic 官方 SDK 前的参考。
 
 **入口**：
 
@@ -105,7 +113,9 @@ npm run dev:mobile
 - `POST /api/agent/runs/:id/approve` 同意一个 `awaiting_approval` 状态的工具调用
 - `POST /api/agent/runs/:id/deny { reason? }` 拒绝 → 进入 `replanning`，worker re-pickup 后调 planner 找替代方案
 - `POST /api/agent/runs/:id/steer { instruction }` 中途换方向；服务端 abort 当前 step、写新 plan、状态切 `replanning`
-- `GET / POST / PATCH / DELETE /api/agent/skills` topic skills CRUD（按 scope 区分 user / group / topic）
+- `POST /api/agent/runs/:id/retry` 把终态 run（completed/failed/cancelled/budget_exhausted）按原 inputText/budget 重跑（M1d）
+- `GET /api/agent/runs?status=&limit=` 任务面板列表（owner + 群成员可见，M1d）
+- `GET / POST / PATCH / DELETE /api/agent/skills` topic skills CRUD（按 scope 区分 user / group / topic）—— 写入时会拒掉 prompt-injection pattern
 
 **Approval 模型（spec §12 / ADR-1）**：runtime 在 `approvalMode='ask'` 的工具调用前**让出执行**——写 `approval_request` step、`status='awaiting_approval'`、`awaiting_approval_until = now()+60s` 后立即 return。三条恢复路径：
 
@@ -148,5 +158,5 @@ npm run dev:mobile
 - 设计文档：`docs/superpowers/specs/2026-05-20-agent-runtime-design.md`
 - 实现计划：`docs/superpowers/plans/2026-05-20-agent-runtime-m1a.md`、`m1b-1.md`、`m1b-2.md`、`m1b-3.md`、`m1c.md`
 - ADR：`docs/superpowers/plans/2026-05-20-agent-runtime-m1b-completion.md`
-- 关键代码：`apps/api/src/lib/agent/*`，迁移：`apps/api/src/db/migrations/012_agent_runtime.sql` / `013_agent_event_logs.sql`
+- 关键代码：`apps/api/src/lib/agent/*`，迁移：`apps/api/src/db/migrations/012_agent_runtime.sql` / `013_agent_event_logs.sql` / `014_agent_user_api_key.sql`
 - M1c 配置：填 `TAVILY_API_KEY` 启用 `web_search`（不填则返回空结果不抛错）；填 `MAGI_SYSTEM_*` / `MAGI_CONTENT_*` 启用 magi 工具真实 transport

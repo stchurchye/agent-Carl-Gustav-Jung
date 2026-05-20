@@ -73,6 +73,24 @@ export type CreateAgentRunResult = {
 export async function createAgentRun(
   input: CreateAgentRunInput,
 ): Promise<CreateAgentRunResult> {
+  // M1d T6：把 user 主动提供的 DeepSeek key 加密落到 agent_runs，worker 后台
+  // 再用同一把 key 调 LLM。AGENT_KEY_SECRET 没配 → 不存（worker 退回 server key）。
+  let userApiKeyEnc: string | null = null;
+  if (input.apiKeySource === 'user' && input.apiKey) {
+    try {
+      const { isSecretBoxAvailable, sealUserApiKey } = await import('./secretBox.js');
+      if (isSecretBoxAvailable()) {
+        userApiKeyEnc = sealUserApiKey(input.apiKey);
+      } else {
+        console.warn(
+          '[agent.createAgentRun] AGENT_KEY_SECRET not set; user-provided DeepSeek key dropped, worker will fall back to server key.',
+        );
+      }
+    } catch (e) {
+      console.warn('[agent.createAgentRun] failed to seal user api key', e);
+    }
+  }
+
   const run = await store.insertAgentRun({
     ownerId: input.ownerId,
     channel: input.channel,
@@ -86,6 +104,7 @@ export async function createAgentRun(
     budget: input.budget ?? DEFAULT_BUDGET,
     apiKeyOwnerId: input.apiKeySource === 'user' ? input.ownerId : null,
     apiKeySource: input.apiKeySource,
+    userApiKeyEnc,
   });
 
   let userMessageId: string | null = null;
@@ -159,6 +178,49 @@ function pickFallbackFinalContent(run: AgentRun, plan: Plan | null): string {
 }
 
 /**
+ * M1d T14：budget_exhausted 软着陆。前端会单独把这段拆开渲染（usage 行），
+ * 这里 backend 保留可读的纯文本 fallback：
+ * - 第一行：已完成事项 + 用户的原始 intent（沿用 fallback final content）
+ * - 二行起：明确说"预算到了"+ 已花费 vs 上限
+ */
+function formatBudgetExhaustedReply(run: AgentRun, detail: string | undefined): string {
+  const base = pickFallbackFinalContent(run, run.plan);
+  const u = run.usage;
+  const b = run.budget;
+  const dim = detail ?? 'unknown';
+  const lines = [
+    base,
+    '',
+    `[预算已用尽：${dim}]`,
+    `已花费：步骤 ${u.steps}/${b.maxSteps}、tokens ${u.tokens}/${b.maxTokens}、用时 ${u.elapsedSeconds}s/${b.maxSeconds}s`,
+    `如需继续，可在聊天里发"再试一次"或在任务面板点重试。`,
+  ];
+  return lines.join('\n');
+}
+
+/**
+ * M1d Task 6：取出 worker 调 LLM 用的 effective key。
+ * 优先级：run.apiKeySource='user' 且 user_api_key_enc 解密成功 → 用户 key；
+ * 否则退回 server env DEEPSEEK_API_KEY。
+ */
+async function resolveEffectiveApiKey(run: AgentRun): Promise<string | undefined> {
+  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (run.apiKeySource === 'user') {
+    try {
+      const sealed = await store.getUserApiKeyEnc(run.id);
+      if (sealed) {
+        const { openUserApiKey } = await import('./secretBox.js');
+        const key = openUserApiKey(sealed).trim();
+        if (key) return key;
+      }
+    } catch (e) {
+      console.warn('[agent.resolveEffectiveApiKey] failed to open user key', e);
+    }
+  }
+  return serverKey || undefined;
+}
+
+/**
  * M1c：completed 状态下用 LLM 生成终稿；非 completed 走原占位文本。
  * 测试环境 / 缺 API key 时直接 fallback。
  */
@@ -168,7 +230,7 @@ async function buildFinalContent(
   detail: string | undefined,
 ): Promise<string> {
   if (status === 'budget_exhausted') {
-    return `${pickFallbackFinalContent(run, run.plan)}\n\n[预算已用尽：${detail ?? ''}]`;
+    return formatBudgetExhaustedReply(run, detail);
   }
   if (status === 'cancelled') return `[任务已取消${detail ? '：' + detail : ''}]`;
   if (status === 'failed') return `[任务失败${detail ? '：' + detail : ''}]`;
@@ -178,8 +240,8 @@ async function buildFinalContent(
   const isTestEnv =
     process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
   const looksLikeEcho = /echo/i.test(text);
-  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
-  if (isTestEnv || looksLikeEcho || !serverKey || !run.plan) {
+  const effectiveKey = await resolveEffectiveApiKey(run);
+  if (isTestEnv || looksLikeEcho || !effectiveKey || !run.plan) {
     return pickFallbackFinalContent(run, run.plan);
   }
   const steps = await store.listSteps(run.id);
@@ -188,7 +250,7 @@ async function buildFinalContent(
     run,
     plan: run.plan,
     steps,
-    apiKey: serverKey,
+    apiKey: effectiveKey,
   });
 }
 
@@ -260,8 +322,8 @@ async function buildInitialPlan(run: AgentRun): Promise<Plan> {
   const isTestEnv =
     process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
   const looksLikeEcho = /echo/i.test(text);
-  const serverKey = process.env.DEEPSEEK_API_KEY?.trim();
-  if (isTestEnv || looksLikeEcho || !serverKey) {
+  const effectiveKey = await resolveEffectiveApiKey(run);
+  if (isTestEnv || looksLikeEcho || !effectiveKey) {
     return generatePlanForEcho(text);
   }
   try {
@@ -273,12 +335,12 @@ async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       groupId: run.groupId ?? undefined,
       topicId: run.topicId ?? undefined,
       pendingUser: text,
-      apiKey: serverKey,
+      apiKey: effectiveKey,
     });
     return await generatePlanWithLlm({
       inputText: text,
       snapshot,
-      apiKey: serverKey,
+      apiKey: effectiveKey,
     });
   } catch {
     return generatePlanForEcho(text);
@@ -300,6 +362,10 @@ export async function executeRun(runId: string): Promise<void> {
   // ADR-1：awaiting_approval 状态绝对不能进入 tool loop——
   // 等 /approve、/deny 或 worker timeout checker 触发后再 re-pickup。
   if (run.status === 'awaiting_approval') return;
+
+  // 标记本次 executeRun 是否来自 replanning：replanning 会主动 reset usage.steps=0，
+  // 这种"假性的 usage 落后于 DB"不应触发 T5 reclaim 逻辑。
+  const enteredViaReplanning = run.status === 'replanning';
 
   // Replanning 分支：steer 或 approval_deny 后由 worker re-pickup 进入这里。
   // 注：steerRun 已经把新 plan 写入 db，所以 steer 路径不重新生成 plan；
@@ -350,7 +416,37 @@ export async function executeRun(runId: string): Promise<void> {
     }
 
     const plan = run.plan!;
-    const completedCount = run.usage.steps;
+
+    // M1d T5：reclaim 检测。Worker A 写了 tool_call 后崩溃、usage 没追上时，
+    // DB 实际 step 数比 usage.steps 大；用 DB 数推断 completedCount，避免 worker B
+    // 重复执行非幂等工具。
+    //
+    // 不适用场景：
+    //   - 来自 replanning 的 re-pickup：usage 被显式 reset 到 0，DB 历史 step 属于旧 plan，
+    //     不能算作"新 plan 已完成"。
+    //   - 同 run 内多次 executeRun (approve 后续跑)：plan 不变，usage 也单调递增，逻辑成立。
+    let completedCount = run.usage.steps;
+    if (!enteredViaReplanning) {
+      const allStepsForReclaim = await store.listSteps(runId);
+      const dbAdvancing = allStepsForReclaim.filter(
+        (s) => s.kind === 'tool_call' || s.kind === 'observe',
+      ).length;
+      if (dbAdvancing > run.usage.steps) {
+        await recordStep({
+          runId,
+          kind: 'heartbeat',
+          output: {
+            reclaim: true,
+            prevUsageSteps: run.usage.steps,
+            dbAdvancing,
+            lastHeartbeatAt: run.lastHeartbeatAt?.toISOString() ?? null,
+          },
+        });
+        const usage = { ...run.usage, steps: dbAdvancing };
+        run = (await store.updateAgentRun(runId, { usage }))!;
+        completedCount = dbAdvancing;
+      }
+    }
 
     // 让 approve 后 re-pickup 时跳过 approval gate 一次：
     // 如果上次让出后最新写入的是 approval_grant（手动 approve 或 timeout 自动 grant），

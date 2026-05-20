@@ -5,6 +5,7 @@ import {
   approveAgentRun,
   cancelAgentRun,
   denyAgentRun,
+  retryAgentRun,
   steerAgentRun,
 } from './agentApi';
 import type { AgentRunStatus } from './types';
@@ -32,7 +33,17 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
   budget_exhausted: '预算耗尽',
 };
 
-export function AgentRunCard({ runId }: { runId: string }) {
+export function AgentRunCard({
+  runId,
+  onRetry,
+}: {
+  runId: string;
+  /**
+   * M1d Task 3：重试成功后，上层调用方拿到新 runId 后可以决定如何处理，
+   * 通常是刷新会话消息列表，让新 placeholder 上挂另一个 AgentRunCard。
+   */
+  onRetry?: (newRunId: string) => void | Promise<void>;
+}) {
   const { run, steps, connected } = useAgentRunSubscription(runId);
 
   if (!run) {
@@ -74,6 +85,27 @@ export function AgentRunCard({ runId }: { runId: string }) {
       <View style={{ marginTop: 8 }}>
         <AgentTodoList todos={run.todos ?? []} />
       </View>
+
+      {run.status === 'budget_exhausted' && run.usage && run.budget ? (
+        <View
+          style={{
+            marginTop: 8,
+            paddingVertical: 6,
+            paddingHorizontal: 10,
+            borderRadius: 6,
+            backgroundColor: '#fff0f0',
+          }}
+        >
+          <Text style={{ fontSize: 12, color: '#a00', fontWeight: '600' }}>
+            预算已用尽
+          </Text>
+          <Text style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
+            步骤 {run.usage.steps}/{run.budget.maxSteps} · tokens{' '}
+            {run.usage.tokens}/{run.budget.maxTokens} · 用时{' '}
+            {run.usage.elapsedSeconds}s/{run.budget.maxSeconds}s
+          </Text>
+        </View>
+      ) : null}
 
       {awaitingApproval ? (
         <View
@@ -119,6 +151,23 @@ export function AgentRunCard({ runId }: { runId: string }) {
             steerAgentRun(runId, text).catch((e) => Alert.alert('steer 失败', String(e)))
           }
         />
+      ) : null}
+
+      {terminal && run.status !== 'completed' ? (
+        <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end' }}>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                const { runId: newId } = await retryAgentRun(runId);
+                await onRetry?.(newId);
+              } catch (e) {
+                Alert.alert('重试失败', String(e));
+              }
+            }}
+          >
+            <Text style={{ color: '#0a6' }}>再试一次</Text>
+          </TouchableOpacity>
+        </View>
       ) : null}
     </View>
   );

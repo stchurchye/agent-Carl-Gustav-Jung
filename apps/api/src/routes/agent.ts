@@ -6,8 +6,8 @@ import { jsonError } from '../lib/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import * as store from '../lib/agent/store.js';
-import { cancelRun, confirmRun } from '../lib/agent/runtime.js';
-import type { AgentRun } from '../lib/agent/types.js';
+import { cancelRun, confirmRun, createAgentRun } from '../lib/agent/runtime.js';
+import type { AgentRun, AgentRunStatus } from '../lib/agent/types.js';
 import * as topicSkills from '../lib/agent/topicSkills.js';
 
 export const agentRouter = new Hono<{ Variables: AppVariables }>();
@@ -29,6 +29,22 @@ export async function canAccessRun(run: AgentRun, userId: string): Promise<boole
   }
   return false;
 }
+
+/**
+ * M1d Task 4：任务面板列表。按 owner=me 或 me 是 run.groupId 群成员过滤。
+ * 可选 ?status= 过滤、?limit= 控量（默认 50，最大 100）。
+ */
+agentRouter.get('/runs', async (c) => {
+  const userId = c.get('userId')!;
+  const status = c.req.query('status');
+  const limitRaw = c.req.query('limit');
+  const limit = limitRaw ? Number(limitRaw) : undefined;
+  const runs = await store.listAgentRunsForUser(userId, {
+    status: (status as AgentRunStatus) || undefined,
+    limit,
+  });
+  return c.json({ ok: true, data: { runs }, requestId: c.get('requestId') });
+});
 
 agentRouter.get('/runs/:id', async (c) => {
   const userId = c.get('userId')!;
@@ -53,8 +69,19 @@ agentRouter.get('/runs/:id/stream', async (c) => {
   if (!(await canAccessRun(run, userId)))
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
 
+  // M1d T16：支持 SSE 断线重连。客户端把上次收到的最后一个 step.idx 放在
+  // `Last-Event-ID` header（HTML5 标准）或 `?after=` query param 里，
+  // 服务端会跳过该 idx 之前的 step，先 catch-up 漏掉的，再进入实时循环。
+  const lastEventHeader = c.req.header('last-event-id');
+  const afterQuery = c.req.query('after');
+  const resumeFromRaw = lastEventHeader ?? afterQuery;
+  const resumeFrom =
+    resumeFromRaw != null && !Number.isNaN(Number(resumeFromRaw))
+      ? Number(resumeFromRaw)
+      : -1;
+
   return streamSSE(c, async (stream) => {
-    let lastStepIdx = -1;
+    let lastStepIdx = resumeFrom;
     let lastStatus = run.status;
     let alive = true;
     stream.onAbort(() => {
@@ -69,6 +96,8 @@ agentRouter.get('/runs/:id/stream', async (c) => {
       for (const s of newSteps) {
         await stream.writeSSE({
           event: 'step',
+          // SSE id 字段：浏览器 EventSource 自动把它当 Last-Event-ID 在重连时回传。
+          id: String(s.idx),
           data: JSON.stringify(s),
         });
         lastStepIdx = s.idx;
@@ -106,6 +135,48 @@ agentRouter.post('/runs/:id/cancel', async (c) => {
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   await cancelRun(id, userId);
   return c.json({ ok: true, requestId: c.get('requestId') });
+});
+
+/**
+ * M1d Task 3：把一个终态 run 重跑——克隆 inputText / channel / budget，
+ * 创建一个新的 run（不复用旧 run id、不接续 step），返回新 runId。
+ * 只允许 terminal 状态调用；非 terminal 状态返回 409。
+ */
+agentRouter.post('/runs/:id/retry', async (c) => {
+  const userId = c.get('userId')!;
+  const id = c.req.param('id');
+  const run = await store.getAgentRun(id);
+  if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+  if (!(await canAccessRun(run, userId)))
+    return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
+  const isTerminal =
+    run.status === 'completed' ||
+    run.status === 'failed' ||
+    run.status === 'cancelled' ||
+    run.status === 'budget_exhausted';
+  if (!isTerminal) return jsonError(c, ErrorCodes.VALIDATION, 409);
+
+  const result = await createAgentRun({
+    ownerId: run.ownerId,
+    channel: run.channel,
+    sessionId: run.sessionId ?? undefined,
+    groupId: run.groupId ?? undefined,
+    topicId: run.topicId ?? undefined,
+    inputText: run.inputText,
+    // Worker 自己根据 apiKeySource 解析 key（M1d Task 6 才接 per-user key 取用）。
+    apiKey: '',
+    apiKeySource: run.apiKeySource,
+    budget: run.budget,
+  });
+  return c.json({
+    ok: true,
+    data: {
+      runId: result.run.id,
+      placeholderMessageId: result.placeholderMessageId,
+      userMessageId: result.userMessageId,
+    },
+    requestId: c.get('requestId'),
+  });
 });
 
 agentRouter.post('/runs/:id/confirm', async (c) => {
@@ -217,18 +288,32 @@ agentRouter.post('/skills', async (c) => {
   if (!(await canManageGroupSkill(userId, groupId))) {
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   }
-  const skill = await topicSkills.upsertSkill({
-    id: body.id,
-    scope,
-    ownerId: scope === 'user' ? userId : userId,
-    groupId,
-    topicId,
-    title,
-    content,
-    enabled: body.enabled !== false,
-    updatedByUserId: userId,
-  });
-  return c.json({ ok: true, data: { skill }, requestId: c.get('requestId') });
+  try {
+    const skill = await topicSkills.upsertSkill({
+      id: body.id,
+      scope,
+      ownerId: scope === 'user' ? userId : userId,
+      groupId,
+      topicId,
+      title,
+      content,
+      enabled: body.enabled !== false,
+      updatedByUserId: userId,
+    });
+    return c.json({ ok: true, data: { skill }, requestId: c.get('requestId') });
+  } catch (e) {
+    if (e instanceof topicSkills.SkillValidationError) {
+      return c.json(
+        {
+          ok: false,
+          error: { code: ErrorCodes.VALIDATION, message: e.message },
+          requestId: c.get('requestId'),
+        },
+        400,
+      );
+    }
+    throw e;
+  }
 });
 
 agentRouter.patch('/skills/:id', async (c) => {
@@ -240,18 +325,32 @@ agentRouter.patch('/skills/:id', async (c) => {
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   }
   const body = await c.req.json().catch(() => ({}));
-  const skill = await topicSkills.upsertSkill({
-    id,
-    scope: existing.scope,
-    ownerId: existing.ownerId,
-    groupId: existing.groupId,
-    topicId: existing.topicId,
-    title: (body.title as string | undefined)?.trim() || existing.title,
-    content: (body.content as string | undefined)?.trim() || existing.content,
-    enabled: typeof body.enabled === 'boolean' ? body.enabled : existing.enabled,
-    updatedByUserId: userId,
-  });
-  return c.json({ ok: true, data: { skill }, requestId: c.get('requestId') });
+  try {
+    const skill = await topicSkills.upsertSkill({
+      id,
+      scope: existing.scope,
+      ownerId: existing.ownerId,
+      groupId: existing.groupId,
+      topicId: existing.topicId,
+      title: (body.title as string | undefined)?.trim() || existing.title,
+      content: (body.content as string | undefined)?.trim() || existing.content,
+      enabled: typeof body.enabled === 'boolean' ? body.enabled : existing.enabled,
+      updatedByUserId: userId,
+    });
+    return c.json({ ok: true, data: { skill }, requestId: c.get('requestId') });
+  } catch (e) {
+    if (e instanceof topicSkills.SkillValidationError) {
+      return c.json(
+        {
+          ok: false,
+          error: { code: ErrorCodes.VALIDATION, message: e.message },
+          requestId: c.get('requestId'),
+        },
+        400,
+      );
+    }
+    throw e;
+  }
 });
 
 agentRouter.delete('/skills/:id', async (c) => {

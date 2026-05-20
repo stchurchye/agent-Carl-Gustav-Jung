@@ -216,3 +216,274 @@ describe('approve/deny/steer routes (M1b-2)', () => {
     expect(res.status).toBe(400);
   });
 });
+
+/**
+ * M1d Task 3: retry route — terminal 状态可重跑、非 terminal 409、owner/member 鉴权。
+ */
+describe('POST /api/agent/runs/:id/retry (M1d)', () => {
+  beforeAll(async () => await runMigrations());
+  beforeEach(async () => {
+    await getPool().query('DELETE FROM agent_steps');
+    await getPool().query('DELETE FROM agent_runs');
+  });
+
+  function makeApp() {
+    const app = new Hono<{ Variables: AppVariables }>();
+    app.use('*', async (c, next) => {
+      c.set('requestId', randomUUID());
+      await next();
+    });
+    app.route('/api/agent', agentRouter);
+    return app;
+  }
+
+  async function tokenFor(u: { id: string; username: string; displayName: string }) {
+    const { accessToken } = await signAccessToken({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      createdAt: new Date().toISOString(),
+    });
+    return accessToken;
+  }
+
+  async function mkTerminalPrivateRun(ownerId: string, status: 'completed' | 'failed' | 'cancelled' | 'budget_exhausted') {
+    const sess = await (await import('../../store/pg.js')).createChatSession(ownerId, 't');
+    const r = await store.insertAgentRun({
+      ownerId,
+      channel: 'private',
+      sessionId: sess.id,
+      groupId: null,
+      topicId: null,
+      intentTurnId: null,
+      role: 'generalist',
+      status,
+      inputText: '原始输入，retry 应该复用',
+      budget: { maxSteps: 7, maxSeconds: 88, maxTokens: 999 },
+      apiKeyOwnerId: null,
+      apiKeySource: 'server',
+    });
+    return r.id;
+  }
+
+  it('terminal run: retry 创建新 run、复用 inputText/budget、返回新 runId', async () => {
+    const owner = await ensureUser('rt-ok');
+    const oldId = await mkTerminalPrivateRun(owner.id, 'failed');
+
+    const token = await tokenFor(owner);
+    const app = makeApp();
+    const res = await app.fetch(
+      new Request(`http://test/api/agent/runs/${oldId}/retry`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { runId: string } };
+    expect(body.data.runId).toBeTruthy();
+    expect(body.data.runId).not.toBe(oldId);
+
+    const newRun = await store.getAgentRun(body.data.runId);
+    expect(newRun?.inputText).toBe('原始输入，retry 应该复用');
+    expect(newRun?.budget.maxSteps).toBe(7);
+    expect(newRun?.status).toBe('draft');
+  });
+
+  it('non-terminal run: 409', async () => {
+    const owner = await ensureUser('rt-running');
+    const sess = await (await import('../../store/pg.js')).createChatSession(owner.id, 't');
+    const r = await store.insertAgentRun({
+      ownerId: owner.id,
+      channel: 'private',
+      sessionId: sess.id,
+      groupId: null,
+      topicId: null,
+      intentTurnId: null,
+      role: 'generalist',
+      status: 'running',
+      inputText: 'x',
+      budget: DEFAULT_BUDGET,
+      apiKeyOwnerId: null,
+      apiKeySource: 'server',
+    });
+
+    const token = await tokenFor(owner);
+    const app = makeApp();
+    const res = await app.fetch(
+      new Request(`http://test/api/agent/runs/${r.id}/retry`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it('stranger gets 403', async () => {
+    const owner = await ensureUser('rt-owner');
+    const stranger = await ensureUser('rt-stranger');
+    const oldId = await mkTerminalPrivateRun(owner.id, 'cancelled');
+
+    const token = await tokenFor(stranger);
+    const app = makeApp();
+    const res = await app.fetch(
+      new Request(`http://test/api/agent/runs/${oldId}/retry`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+/**
+ * M1d Task 4: GET /api/agent/runs 列表 — owner runs + 群成员 runs，
+ * 不返回外人 / 其它 group 的 run；支持 status / limit 过滤。
+ */
+describe('GET /api/agent/runs (M1d task panel)', () => {
+  beforeAll(async () => await runMigrations());
+  beforeEach(async () => {
+    await getPool().query('DELETE FROM agent_steps');
+    await getPool().query('DELETE FROM agent_runs');
+  });
+
+  function makeApp() {
+    const app = new Hono<{ Variables: AppVariables }>();
+    app.use('*', async (c, next) => {
+      c.set('requestId', randomUUID());
+      await next();
+    });
+    app.route('/api/agent', agentRouter);
+    return app;
+  }
+
+  async function tokenFor(u: { id: string; username: string; displayName: string }) {
+    const { accessToken } = await signAccessToken({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      createdAt: new Date().toISOString(),
+    });
+    return accessToken;
+  }
+
+  it('returns owner runs + group runs where caller is a member; excludes stranger groups', async () => {
+    const me = await ensureUser('list-me');
+    const friend = await ensureUser('list-friend');
+    const stranger = await ensureUser('list-stranger');
+    const { groupId: myGroupId } = await ensureGroup(friend.id);
+    await addMember(myGroupId, me.id);
+    const { groupId: otherGroupId } = await ensureGroup(stranger.id);
+
+    // 我自己的私聊 run（应被列出）
+    const myRun = await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: null, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+      inputText: 'mine', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    // friend 在我加入的群里发起的 run（我作为成员应能看到）
+    const groupRun = await store.insertAgentRun({
+      ownerId: friend.id, channel: 'group', sessionId: null, groupId: myGroupId,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'running',
+      inputText: 'group', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    // stranger 在自己群里发起的 run（我不该看到）
+    await store.insertAgentRun({
+      ownerId: stranger.id, channel: 'group', sessionId: null, groupId: otherGroupId,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'running',
+      inputText: 'other', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+
+    const token = await tokenFor(me);
+    const res = await makeApp().fetch(
+      new Request('http://test/api/agent/runs', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { runs: { id: string }[] } };
+    const ids = body.data.runs.map((r) => r.id);
+    expect(ids).toContain(myRun.id);
+    expect(ids).toContain(groupRun.id);
+    expect(ids.length).toBe(2);
+  });
+
+  it('SSE stream resumes from Last-Event-ID, skipping prior steps', async () => {
+    const me = await ensureUser('sse-resume');
+    const sess = await (await import('../../store/pg.js')).createChatSession(me.id, 'sse');
+    const r = await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: sess.id, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+      inputText: 'sse', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    // 注入 3 条 step：idx 0/1/2
+    for (let i = 0; i < 3; i++) {
+      await store.insertStep({
+        runId: r.id,
+        idx: i,
+        kind: 'tool_call',
+        toolName: 'fake',
+        input: { i },
+        output: { i },
+      });
+    }
+
+    const token = await tokenFor(me);
+    const res = await makeApp().fetch(
+      new Request(`http://test/api/agent/runs/${r.id}/stream`, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          'last-event-id': '0', // 断点：客户端只见过 idx 0，要从 idx 1 开始
+        },
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const text = await readSseUntilEnd(res);
+    // 应包含 idx 1 / 2，不包含 idx 0
+    expect(text).toMatch(/"idx":1/);
+    expect(text).toMatch(/"idx":2/);
+    expect(text).not.toMatch(/"idx":0/);
+    // SSE id 字段应该出现在每条 step 上
+    expect(text).toMatch(/id: 1/);
+    expect(text).toMatch(/id: 2/);
+  });
+
+  async function readSseUntilEnd(res: Response): Promise<string> {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let acc = '';
+    const stopAt = Date.now() + 4000;
+    while (Date.now() < stopAt) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) acc += decoder.decode(value);
+      if (acc.includes('event: end')) break;
+    }
+    try { reader.cancel(); } catch {}
+    return acc;
+  }
+
+  it('status filter narrows results', async () => {
+    const me = await ensureUser('list-st');
+    await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: null, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+      inputText: 'c', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: null, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'failed',
+      inputText: 'f', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+
+    const token = await tokenFor(me);
+    const res = await makeApp().fetch(
+      new Request('http://test/api/agent/runs?status=failed', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    const body = (await res.json()) as { data: { runs: { status: string }[] } };
+    expect(body.data.runs.length).toBe(1);
+    expect(body.data.runs[0].status).toBe('failed');
+  });
+});

@@ -45,6 +45,8 @@ export type BrainStackParamList = {
   BrainMemoryDetail: { fragmentId: string };
   BrainHomeKeys: undefined;
   ApiKeyDetail: { kind: ApiKeyKindParam };
+  BrainAgentTasks: undefined;
+  BrainAgentTaskDetail: { runId: string };
   SettingsMemory: {
     scope?: 'user' | 'topic' | 'session';
     groupId?: string;

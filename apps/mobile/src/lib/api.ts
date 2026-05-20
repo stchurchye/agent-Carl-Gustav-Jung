@@ -728,7 +728,14 @@ export const api = {
 
   getLlmLog: (id: string) => request<LlmRequestLogDetail>(`/api/llm-logs/${id}`),
 
-  // ----- agent runtime (M1b-3) -----
+  // ----- agent runtime (M1b-3 / M1d) -----
+  listAgentRuns: (params?: { status?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set('status', params.status);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<{ runs: unknown[] }>(`/api/agent/runs${suffix}`);
+  },
   getAgentRun: (id: string) =>
     request<unknown>(`/api/agent/runs/${id}`),
   cancelAgentRun: (id: string) =>
@@ -748,4 +755,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ instruction }),
     }),
+  retryAgentRun: (id: string) =>
+    request<{
+      runId: string;
+      placeholderMessageId: string | null;
+      userMessageId: string | null;
+    }>(`/api/agent/runs/${id}/retry`, { method: 'POST' }),
 };
