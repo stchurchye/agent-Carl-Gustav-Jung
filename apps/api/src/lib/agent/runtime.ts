@@ -301,6 +301,10 @@ export async function executeRun(runId: string): Promise<void> {
   // 等 /approve、/deny 或 worker timeout checker 触发后再 re-pickup。
   if (run.status === 'awaiting_approval') return;
 
+  // 标记本次 executeRun 是否来自 replanning：replanning 会主动 reset usage.steps=0，
+  // 这种"假性的 usage 落后于 DB"不应触发 T5 reclaim 逻辑。
+  const enteredViaReplanning = run.status === 'replanning';
+
   // Replanning 分支：steer 或 approval_deny 后由 worker re-pickup 进入这里。
   // 注：steerRun 已经把新 plan 写入 db，所以 steer 路径不重新生成 plan；
   // approval_deny 路径需要这里调 planner 选替代方案。
@@ -350,7 +354,37 @@ export async function executeRun(runId: string): Promise<void> {
     }
 
     const plan = run.plan!;
-    const completedCount = run.usage.steps;
+
+    // M1d T5：reclaim 检测。Worker A 写了 tool_call 后崩溃、usage 没追上时，
+    // DB 实际 step 数比 usage.steps 大；用 DB 数推断 completedCount，避免 worker B
+    // 重复执行非幂等工具。
+    //
+    // 不适用场景：
+    //   - 来自 replanning 的 re-pickup：usage 被显式 reset 到 0，DB 历史 step 属于旧 plan，
+    //     不能算作"新 plan 已完成"。
+    //   - 同 run 内多次 executeRun (approve 后续跑)：plan 不变，usage 也单调递增，逻辑成立。
+    let completedCount = run.usage.steps;
+    if (!enteredViaReplanning) {
+      const allStepsForReclaim = await store.listSteps(runId);
+      const dbAdvancing = allStepsForReclaim.filter(
+        (s) => s.kind === 'tool_call' || s.kind === 'observe',
+      ).length;
+      if (dbAdvancing > run.usage.steps) {
+        await recordStep({
+          runId,
+          kind: 'heartbeat',
+          output: {
+            reclaim: true,
+            prevUsageSteps: run.usage.steps,
+            dbAdvancing,
+            lastHeartbeatAt: run.lastHeartbeatAt?.toISOString() ?? null,
+          },
+        });
+        const usage = { ...run.usage, steps: dbAdvancing };
+        run = (await store.updateAgentRun(runId, { usage }))!;
+        completedCount = dbAdvancing;
+      }
+    }
 
     // 让 approve 后 re-pickup 时跳过 approval gate 一次：
     // 如果上次让出后最新写入的是 approval_grant（手动 approve 或 timeout 自动 grant），

@@ -161,10 +161,20 @@ describe('runtime idempotency gate (M1c, T10)', () => {
 
     const after = await getAgentRun(run.id);
     expect(after?.status).toBe('completed');
-    const observes = (await listSteps(run.id)).filter(
-      (s) => s.kind === 'observe' && s.toolName === 'counted_tool',
+
+    // M1d T5 后契约：DB 里 tool_call 数 >= plan.steps.length 时，
+    // reclaim 路径直接 skip 整个 for 循环，不会再写 observe。
+    // （observe 只在"同 run 内 mid-execution 命中 idempotency 缓存"时写。）
+    // 取而代之地，会写一条 heartbeat reclaim step 表示接管发生过。
+    const steps = await listSteps(run.id);
+    const heartbeat = steps.find(
+      (s) =>
+        s.kind === 'heartbeat' &&
+        (s.output as { reclaim?: boolean } | null)?.reclaim === true,
     );
-    expect(observes.length).toBe(1);
-    expect((observes[0].output as { result?: { n?: number } })?.result?.n).toBe(999);
+    expect(heartbeat).toBeDefined();
+    const toolCalls = steps.filter((s) => s.kind === 'tool_call');
+    expect(toolCalls.length).toBe(1);
+    expect((toolCalls[0].output as { result?: { n?: number } })?.result?.n).toBe(999);
   });
 });
