@@ -30,4 +30,11 @@ export type IntentExecuteResult =
       groupMessages?: GroupMessage[];
       confirmation: string;
     }
-  | { type: 'skipped'; reason: string };
+  | { type: 'skipped'; reason: string }
+  | {
+      type: 'agent';
+      runId: string;
+      userMessageId: string | null;
+      placeholderMessageId: string | null;
+      confirmation?: string;
+    };

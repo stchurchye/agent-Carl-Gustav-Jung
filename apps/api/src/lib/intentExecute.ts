@@ -144,6 +144,28 @@ export async function executeIntent(
     return { type: 'skipped', reason: 'CLIENT_NAVIGATE' };
   }
 
+  if (input.kind === 'agent_run') {
+    if (input.channel !== 'private' || !input.sessionId) {
+      return { type: 'skipped', reason: 'AGENT_PRIVATE_ONLY_M1A' };
+    }
+    const { createAgentRun } = await import('./agent/runtime.js');
+    const apiKey = input.deepseekApiKey ?? input.apiKey;
+    const { run, userMessageId, placeholderMessageId } = await createAgentRun({
+      ownerId: input.userId,
+      channel: 'private',
+      sessionId: input.sessionId,
+      inputText: input.text,
+      apiKey,
+      apiKeySource: input.deepseekApiKey ? 'user' : 'server',
+    });
+    return {
+      type: 'agent',
+      runId: run.id,
+      userMessageId,
+      placeholderMessageId,
+    };
+  }
+
   if (
     input.kind === 'memory_remember' ||
     input.kind === 'memory_correct' ||
