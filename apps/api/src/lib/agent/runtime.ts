@@ -244,6 +244,25 @@ export async function executeRun(runId: string): Promise<void> {
     const plan = run.plan!;
     const completedCount = run.usage.steps;
 
+    // 让 approve 后 re-pickup 时跳过 approval gate 一次：
+    // 如果上次让出后最新写入的是 approval_grant（手动 approve 或 timeout 自动 grant），
+    // 下一个工具调用应直接进 handler 而非再次触发 gate。autoResolveExpiredApprovals
+    // 在 approve 后又写了一条 approval_timeout，所以这里要忽略它。
+    let pendingGrantBypass = false;
+    {
+      const stepsForBypass = await store.listSteps(runId);
+      const lastMeaningful = [...stepsForBypass]
+        .reverse()
+        .find(
+          (s) =>
+            s.kind !== 'heartbeat' &&
+            s.kind !== 'approval_timeout',
+        );
+      if (lastMeaningful?.kind === 'approval_grant') {
+        pendingGrantBypass = true;
+      }
+    }
+
     for (let i = completedCount; i < plan.steps.length; i++) {
       if (abortController.signal.aborted) {
         // 区分 steer vs user cancel：steerRun 已经写了 status='replanning'
@@ -275,21 +294,26 @@ export async function executeRun(runId: string): Promise<void> {
         continue;
       }
       if (tool.approvalMode === 'ask') {
-        await recordStep({
-          runId,
-          kind: 'approval_request',
-          toolName: tool.name,
-          input: planStep.input,
-        });
-        const stepIdxNow = await store.maxStepIdx(runId);
-        await store.updateAgentRun(runId, {
-          status: 'awaiting_approval',
-          awaitingApprovalUntil: new Date(Date.now() + 60_000),
-          awaitingApprovalStepIdx: stepIdxNow,
-          pendingApprovalToolName: tool.name,
-        });
-        // 让出：不抛错，直接 return；worker 在 approve/deny/timeout 后会 re-pickup
-        return;
+        if (pendingGrantBypass) {
+          // 已 grant，跳过 gate 一次（消耗）
+          pendingGrantBypass = false;
+        } else {
+          await recordStep({
+            runId,
+            kind: 'approval_request',
+            toolName: tool.name,
+            input: planStep.input,
+          });
+          const stepIdxNow = await store.maxStepIdx(runId);
+          await store.updateAgentRun(runId, {
+            status: 'awaiting_approval',
+            awaitingApprovalUntil: new Date(Date.now() + 60_000),
+            awaitingApprovalStepIdx: stepIdxNow,
+            pendingApprovalToolName: tool.name,
+          });
+          // 让出：不抛错，直接 return；worker 在 approve/deny/timeout 后会 re-pickup
+          return;
+        }
       }
       // === End approval gate ===
 
