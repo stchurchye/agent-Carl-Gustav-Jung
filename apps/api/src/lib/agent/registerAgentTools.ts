@@ -15,6 +15,7 @@ import { registerUrlFetch } from './tools/urlFetch.js';
 import { registerDocExportMarkdown } from './tools/docExportMarkdown.js';
 import { registerRunPython } from './tools/runPython.js';
 import { registerSearchPapers } from './tools/searchPapers.js';
+import { registerCritiqueLastAnswer } from './tools/critiqueLastAnswer.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -24,4 +25,5 @@ export function registerAgentTools(): void {
   registerDocExportMarkdown();
   registerRunPython();
   registerSearchPapers();
+  registerCritiqueLastAnswer();
 }

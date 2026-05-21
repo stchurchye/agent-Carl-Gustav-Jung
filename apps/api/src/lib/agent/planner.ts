@@ -258,7 +258,7 @@ function tryParseJson(raw: string): LoosePlan | null {
   }
 }
 
-function extractJsonCandidate(raw: string): string | null {
+export function extractJsonCandidate(raw: string): string | null {
   let s = raw.replace(/\r\n/g, '\n').trim();
 
   const fenceMatch = s.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/i);
