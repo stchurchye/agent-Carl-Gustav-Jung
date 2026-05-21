@@ -7,10 +7,12 @@ type MagiContentIngestInput = {
 };
 
 type MagiContentIngestOutput = {
+  ok: boolean;
   title: string;
   summary: string;
   videoUrl?: string;
   enabled: boolean;
+  error?: string;
 };
 
 /**
@@ -47,15 +49,28 @@ export const magiContentIngestTool: ToolDef<MagiContentIngestInput, MagiContentI
   },
   computeIdempotencyKey: (input) =>
     'url-sha256:' + createHash('sha256').update((input as MagiContentIngestInput).url.trim()).digest('hex'),
-  async handler(input) {
+  async handler(input, ctx) {
     const enabled = magiContentEnabled();
-    const res = await ingestMagiContent(input.url);
-    return {
-      title: res.title,
-      summary: res.summary,
-      videoUrl: res.videoUrl,
-      enabled,
-    };
+    try {
+      const res = await ingestMagiContent(input.url, ctx.signal);
+      return {
+        ok: true,
+        title: res.title,
+        summary: res.summary,
+        videoUrl: res.videoUrl,
+        enabled,
+      };
+    } catch (e) {
+      // M1f #5：AbortError 透传；其它错误 soft-fail 让 planner 决定 retry / 跳过。
+      if (e instanceof Error && e.name === 'AbortError') throw e;
+      return {
+        ok: false,
+        title: '',
+        summary: '',
+        enabled,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
   },
 };
 

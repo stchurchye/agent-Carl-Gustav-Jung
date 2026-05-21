@@ -6,8 +6,10 @@ type MagiSystemReadInput = {
 };
 
 type MagiSystemReadOutput = {
+  ok: boolean;
   answer: string;
   enabled: boolean;
+  error?: string;
 };
 
 /**
@@ -38,16 +40,20 @@ export const magiSystemReadTool: ToolDef<MagiSystemReadInput, MagiSystemReadOutp
   },
   computeIdempotencyKey: (input) =>
     `q:${(input as MagiSystemReadInput).question.trim().slice(0, 256)}`,
-  async handler(input) {
+  async handler(input, ctx) {
     const enabled = magiSystemEnabled();
     try {
-      const answer = await queryMagiSystem(input.question);
-      return { answer, enabled };
+      const answer = await queryMagiSystem(input.question, ctx.signal);
+      return { ok: true, answer, enabled };
     } catch (e) {
-      // 网络/上游故障 → 给 planner 一个明确信号但不让 run 整体失败
+      // M1f #5：AbortError 透传，让 runtime 看到 cancel；其它错误 soft-fail。
+      if (e instanceof Error && e.name === 'AbortError') throw e;
+      const msg = e instanceof Error ? e.message : String(e);
       return {
-        answer: `MAGI 查询失败：${e instanceof Error ? e.message : String(e)}`,
+        ok: false,
+        answer: `MAGI 查询失败：${msg}`,
         enabled,
+        error: msg,
       };
     }
   },

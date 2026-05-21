@@ -224,6 +224,19 @@ export async function executeRun(runId: string): Promise<void> {
       }
       const durationMs = Date.now() - t0;
 
+      // M1f #5：tool output { ok: false, error } 视为 soft-fail。
+      // 不抛错（避免触发 hard-retry / fail run），但把 error 写到 step.error，
+      // 下一轮 planner / critique 能在 snapshot 里看到，从而 replan 或跳过。
+      const softFailed =
+        output != null &&
+        typeof output === 'object' &&
+        'ok' in (output as Record<string, unknown>) &&
+        (output as { ok: unknown }).ok === false;
+      const softError = softFailed
+        ? ((output as { error?: string }).error ??
+          'soft-fail (tool returned ok=false)')
+        : null;
+
       await recordStep({
         runId,
         kind: 'tool_call',
@@ -232,6 +245,7 @@ export async function executeRun(runId: string): Promise<void> {
         input: planStep.input,
         output: { result: output, retried },
         durationMs,
+        error: softError,
       });
 
       const newTodos: TodoItem[] = (run.todos.length > 0

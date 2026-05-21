@@ -13,6 +13,7 @@ type DocExportMarkdownInput = {
 };
 
 type DocExportMarkdownOutput = {
+  ok: boolean;
   documentId: string;
   /** 写入实际使用的 title（命中用户编辑保护时可能是 "原 title v2"）。 */
   title: string;
@@ -67,12 +68,15 @@ export const docExportMarkdownTool: ToolDef<
     );
   },
   async handler(input, ctx) {
+    // M1f #3：cancel signal audit。pg driver 不接 signal，只能在长 await 间穿插 check。
+    if (ctx.signal.aborted) throw new Error('aborted');
     const title = input.title.trim();
     const ownerId = ctx.ownerId;
     const newHash = createHash('sha256').update(input.markdown).digest('hex');
 
     // upsert by (ownerId, exact title)
     const all = await listDocuments(ownerId);
+    if (ctx.signal.aborted) throw new Error('aborted');
     const existing = all.find((d) => d.title === title && !d.hiddenAt);
 
     let docId: string;
@@ -122,6 +126,7 @@ export const docExportMarkdownTool: ToolDef<
       created = true;
     }
 
+    if (ctx.signal.aborted) throw new Error('aborted');
     // 把 markdown 写到第一章第一块
     const fresh = (await listDocuments(ownerId)).find((d) => d.id === docId);
     const chapter = fresh?.chapters[0];
@@ -135,7 +140,7 @@ export const docExportMarkdownTool: ToolDef<
     // M1e Task 13.2：记录本次 agent 写入的 hash，下次再调本工具时用于检测用户编辑。
     await updateDocument(ownerId, docId, { agentLastExportHash: newHash });
 
-    return { documentId: docId, title: versionedTitle, created };
+    return { ok: true, documentId: docId, title: versionedTitle, created };
   },
 };
 

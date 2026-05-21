@@ -6,6 +6,7 @@ type EchoSleepInput = {
 };
 
 type EchoSleepOutput = {
+  ok: boolean;
   text: string;
   sleptMs: number;
 };
@@ -39,7 +40,7 @@ export const echoSleepTool: ToolDef<EchoSleepInput, EchoSleepOutput> = {
         { once: true },
       );
     });
-    return { text: input.text, sleptMs: ms };
+    return { ok: true, text: input.text, sleptMs: ms };
   },
 };
 

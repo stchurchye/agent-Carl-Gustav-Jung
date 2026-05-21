@@ -12,8 +12,10 @@ type WebSearchHit = {
 };
 
 type WebSearchOutput = {
+  ok: boolean;
   results: WebSearchHit[];
   note?: string;
+  error?: string;
 };
 
 const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
@@ -51,32 +53,46 @@ export const webSearchTool: ToolDef<WebSearchInput, WebSearchOutput> = {
   async handler(input, ctx) {
     const apiKey = process.env.TAVILY_API_KEY?.trim();
     if (!apiKey) {
-      return { results: [], note: '搜索未配置（缺 TAVILY_API_KEY）' };
+      return { ok: true, results: [], note: '搜索未配置（缺 TAVILY_API_KEY）' };
     }
     const maxResults = Math.max(1, Math.min(input.maxResults ?? 5, 10));
-    const res = await fetch(TAVILY_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: apiKey,
-        query: input.query,
-        max_results: maxResults,
-        search_depth: 'basic',
-      }),
-      signal: ctx.signal,
-    });
-    if (!res.ok) {
-      throw new Error(`Tavily HTTP ${res.status}`);
+    try {
+      const res = await fetch(TAVILY_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: apiKey,
+          query: input.query,
+          max_results: maxResults,
+          search_depth: 'basic',
+        }),
+        signal: ctx.signal,
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          results: [],
+          error: `Tavily HTTP ${res.status}`,
+        };
+      }
+      const json = (await res.json()) as {
+        results?: Array<{ title?: string; url?: string; content?: string }>;
+      };
+      const results: WebSearchHit[] = (json.results ?? []).map((r) => ({
+        title: r.title ?? '',
+        url: r.url ?? '',
+        snippet: (r.content ?? '').slice(0, 300),
+      }));
+      return { ok: true, results };
+    } catch (e) {
+      // M1f #3：AbortError 透传，让 runtime 看到 cancel；其他 error 转 soft-fail。
+      if (e instanceof Error && e.name === 'AbortError') throw e;
+      return {
+        ok: false,
+        results: [],
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
-    const json = (await res.json()) as {
-      results?: Array<{ title?: string; url?: string; content?: string }>;
-    };
-    const results: WebSearchHit[] = (json.results ?? []).map((r) => ({
-      title: r.title ?? '',
-      url: r.url ?? '',
-      snippet: (r.content ?? '').slice(0, 300),
-    }));
-    return { results };
   },
 };
 
