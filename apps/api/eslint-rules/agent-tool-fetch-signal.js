@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * M1f #3：禁止 `apps/api/src/lib/agent/tools/` 下的 `fetch()` 调用不带 signal。
  *
@@ -25,7 +23,7 @@
  * 待后续 lint pipeline 建立后 `eslint.config.js` / `.eslintrc.cjs` 注册即可）。
  */
 
-module.exports = {
+export default {
   meta: {
     type: 'problem',
     docs: {
