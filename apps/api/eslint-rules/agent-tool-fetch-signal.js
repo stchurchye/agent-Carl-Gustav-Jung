@@ -16,6 +16,11 @@
  * - 第二个参数是 SpreadElement / Identifier 等动态参数也不报（无法静态分析），
  *   留给人工 audit + 代码评审。
  *
+ * Known limitation: spread elements (`...defaults`) in options are not analyzed.
+ * If you write `fetch(url, { ...defaults, method: 'POST' })`, this rule cannot
+ * tell whether `defaults` already contains `signal`. Author must verify
+ * manually (or normalize to a plain object literal that includes `signal:`).
+ *
  * 配置：本规则只对 `src/lib/agent/tools/**` 生效（apps/api 当前未启用 ESLint 流水线，
  * 待后续 lint pipeline 建立后 `eslint.config.js` / `.eslintrc.cjs` 注册即可）。
  */

@@ -52,13 +52,15 @@ describe('magiSystemRead tool', () => {
     expect(queryMagiSystem).toHaveBeenCalledOnce();
   });
 
-  it('M1f #5: on upstream error: ok=false + error + friendly answer, does not throw', async () => {
+  it('M1f #5 + F2 followup: on upstream error: ok=false + error，answer 留空（不向用户暴露 upstream 错误）', async () => {
     queryMagiSystem.mockRejectedValue(new Error('boom'));
     const out = await magiSystemReadTool.handler({ question: 'x' }, fakeCtx);
     expect(out.ok).toBe(false);
     expect(out.error).toBe('boom');
-    expect(out.answer).toContain('MAGI 查询失败');
-    expect(out.answer).toContain('boom');
+    // M1f Task 3 followup F2：answer 不能再含 upstream 错误串——
+    // replyGen 会把 answer 拼到用户终稿，soft-fail 走 planner replan 而非 user-facing。
+    expect(out.answer).toBe('');
+    expect(out.enabled).toBe(true);
   });
 
   it('M1f: AbortError re-thrown so runtime sees cancel', async () => {

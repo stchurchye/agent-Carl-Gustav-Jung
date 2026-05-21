@@ -96,6 +96,85 @@ describe('M1f runtime soft-fail recognition (#5)', () => {
     expect(finalRun?.status).toBe('completed');
   });
 
+  // M1f Task 3 followup (review blocker 1)：连续 2 次 soft-fail 必须触发 critique
+  // → critique stub 标 shouldReplan → run 状态变 replanning（让 worker 重新规划）。
+  // 修复前 critique gate 只 count `kind === 'tool_error'`，soft-fail 永远进不来，
+  // 多步全 soft-fail 一路 completed。
+  it('M1f blocker 1: 2 连续 soft-fail → critique 触发、run 进 replanning', async () => {
+    const probeName = 'softfail_replan_' + randomUUID().slice(0, 8);
+    let calls = 0;
+    const probe: ToolDef<{ q: string }, { ok: boolean; error: string }> = {
+      name: probeName,
+      description: 'always-soft-fail probe（用于测 critique gate）',
+      inputSchema: {
+        type: 'object',
+        properties: { q: { type: 'string' } },
+        required: ['q'],
+      },
+      approvalMode: 'auto',
+      hasSideEffects: false,
+      idempotent: false, // 避免幂等缓存吞掉第二次调用
+      async handler() {
+        calls += 1;
+        return { ok: false, error: `simulated fail #${calls}` };
+      },
+    };
+    toolRegistry.register(probe);
+
+    const user = await ensureUser('sfreplan');
+    const session = await createChatSession(user.id, 'sfreplan');
+    const { run } = await createAgentRun({
+      ownerId: user.id,
+      channel: 'private',
+      sessionId: session.id,
+      inputText: 'force critique',
+      apiKey: 'fake',
+      apiKeySource: 'server',
+    });
+
+    // 3 步 plan：第 1、2 步走 probe → 2 次 soft-fail 累计 → critique gate 触发；
+    // 第 3 步本应跑但 critique shouldReplan=true 后 run 进 replanning 提前 return。
+    const plan: Plan = {
+      intentSummary: 'force critique on soft-fail',
+      steps: [
+        { toolName: probeName, input: { q: 'a' }, reason: 'p1', todoId: 't1' },
+        { toolName: probeName, input: { q: 'b' }, reason: 'p2', todoId: 't2' },
+        { toolName: probeName, input: { q: 'c' }, reason: 'p3', todoId: 't3' },
+      ],
+      todos: [
+        { id: 't1', text: 'p1', status: 'pending', stepRefs: [] },
+        { id: 't2', text: 'p2', status: 'pending', stepRefs: [] },
+        { id: 't3', text: 'p3', status: 'pending', stepRefs: [] },
+      ],
+      finalReplyHint: 'done',
+      reasoning: null,
+      version: 1,
+    };
+    await updateAgentRun(run.id, {
+      plan,
+      todos: plan.todos,
+      status: 'running',
+    });
+
+    await executeRun(run.id);
+
+    const steps = await listSteps(run.id);
+    // 第 3 步不应该被执行 —— critique 在第 2 步后就让 run 进 replanning 提前 return。
+    expect(calls).toBe(2);
+    // critique step 存在
+    const critiqueSteps = steps.filter((s) => s.kind === 'critique');
+    expect(critiqueSteps.length).toBeGreaterThanOrEqual(1);
+    // 至少有一个 critique 输出 shouldReplan: true
+    const replanCritique = critiqueSteps.find((s) => {
+      const out = s.output as { shouldReplan?: boolean } | null;
+      return out?.shouldReplan === true;
+    });
+    expect(replanCritique).toBeDefined();
+    // run 此时应在 replanning（等 worker 下次 pickup 重做 plan）
+    const finalRun = await getAgentRun(run.id);
+    expect(finalRun?.status).toBe('replanning');
+  });
+
   it('tool returns ok=true / 无 ok 字段 → step.error 为 null（向后兼容）', async () => {
     const probeName = 'softfail_okay_' + randomUUID().slice(0, 8);
     const probe: ToolDef<{ q: string }, { ok: boolean; data: string }> = {

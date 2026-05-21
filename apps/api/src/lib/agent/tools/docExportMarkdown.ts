@@ -137,8 +137,22 @@ export const docExportMarkdownTool: ToolDef<
       // Fallback: 仅更新 globalSummary 字段
       await updateDocument(ownerId, docId, { globalSummary: input.markdown });
     }
-    // M1e Task 13.2：记录本次 agent 写入的 hash，下次再调本工具时用于检测用户编辑。
-    await updateDocument(ownerId, docId, { agentLastExportHash: newHash });
+    // M1f Task 3 followup（reviewer F1）：内容已写入 = 越过 point of no return。
+    // hash 是为下次「用户编辑检测」服务的元数据：缺失会让下次同 title 写入误判为
+    // 用户原稿 → 自动 version 走 v2（更保守，不会丢数据）；落下了 hash 更准。
+    // 因此 hash 写入采取 best-effort：失败 / cancel pending 都不再 throw，
+    // 防止已写入的内容 + 缺失 hash 引发的下次 "原稿误判 → 写到 v2" 反而比
+    // "本次 throw 后 caller 重试 → 双写" 更稳。abort check 必须 **挪到这之后**，
+    // 不能放在 hash 写入之前——否则 content 写完了 hash 漏写，下次必然走 v2 分支。
+    try {
+      await updateDocument(ownerId, docId, { agentLastExportHash: newHash });
+    } catch (e) {
+      console.warn(
+        '[docExportMarkdown] agentLastExportHash 写入失败（content 已落盘，继续）',
+        e,
+      );
+    }
+    if (ctx.signal.aborted) throw new Error('aborted');
 
     return { ok: true, documentId: docId, title: versionedTitle, created };
   },

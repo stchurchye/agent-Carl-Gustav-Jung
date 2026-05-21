@@ -11,7 +11,7 @@
 - DB 操作 / 长循环 / 多步 `await`：在每轮 await 之间穿插 `if (ctx.signal.aborted) throw new Error('aborted')`
 - 内部包了 AbortController（如 urlFetch 的超时控制）：用 `ctx.signal.addEventListener('abort', () => innerAc.abort(), { once: true })`，并在 `finally` 里 `removeEventListener` 防泄漏
 
-ESLint local rule `agent-tool-rules/fetch-signal`（`apps/api/eslint-rules/agent-tool-fetch-signal.js`）会拦不带 signal 的 fetch。apps/api 尚未启用 ESLint 流水线，等启用后此 rule 自动生效；目前作为 audit checklist 保留。
+> ⚠️ **ESLint 状态（M1f 当前）：** `apps/api` **尚未配置 ESLint pipeline**（无 `.eslintrc*` / `eslint.config.*`，`package.json` 无 lint script）。规则文件 `apps/api/eslint-rules/agent-tool-fetch-signal.js` 已 land 但**不会自动执行**。在 lint 接入前，「fetch 必须带 signal」**只能作为人工 code review checklist**。新工具评审时务必手动 grep 自己的代码确认 `fetch(...)` 第二个参数对象里有 `signal: ctx.signal`。Lint pipeline 启用后此 rule 会自动生效，不需要重写。
 
 ### 关键不变量：AbortError 必须透传
 

@@ -49,9 +49,14 @@ export const magiSystemReadTool: ToolDef<MagiSystemReadInput, MagiSystemReadOutp
       // M1f #5：AbortError 透传，让 runtime 看到 cancel；其它错误 soft-fail。
       if (e instanceof Error && e.name === 'AbortError') throw e;
       const msg = e instanceof Error ? e.message : String(e);
+      // M1f Task 3 followup（reviewer F2）：原本 answer = `MAGI 查询失败：${msg}`
+      // 会被 replyGen text-summary 拉进用户终稿（"已为你做了：MAGI 查询失败：connection refused"），
+      // 把内部 upstream 错误暴露给用户。soft-fail 的语义是"planner 看 error 决定 replan"，
+      // 用户不该看到原始上游错误。这里 answer 改空串：replyGen 的 default-text kind 会
+      // 把空字符串截到长度 0，等价 silent；planner 仍通过 step.error 看到原因。
       return {
         ok: false,
-        answer: `MAGI 查询失败：${msg}`,
+        answer: '',
         enabled,
         error: msg,
       };

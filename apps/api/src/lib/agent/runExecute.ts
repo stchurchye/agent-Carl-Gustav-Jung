@@ -18,7 +18,7 @@ import {
   AgentCancelled,
   type TodoItem,
 } from './types.js';
-import { runCritique } from './critique.js';
+import { runCritique, isToolFailure } from './critique.js';
 import { agentHookBus } from './hooks.js';
 import { recordStep, incrementUsage, startHeartbeat } from './stepRecorder.js';
 import { toolRegistry } from './toolRegistry.js';
@@ -36,6 +36,34 @@ import {
 } from './runExecuteHelpers.js';
 
 export { resolveToolCallKey } from './runExecuteHelpers.js';
+
+/**
+ * M1f Task 3 followup（review blocker 2）：把任意 tool-returned error 安全
+ * 落到 step.error TEXT 列。
+ *
+ * 历史 cast `(o as { error?: string }).error` 只是编译期断言：buggy 工具
+ * 返回 `{ ok: false, error: { code: 500, msg: 'x' } }` 时，对象会被 pg
+ * driver 直接 `toString()` 成 `[object Object]`，遮蔽真因；某些 driver
+ * 版本甚至抛 type 错。
+ *
+ * 这里强制把 `error` 抹平成 string，并截断 2KB 防意外巨型 stack。
+ */
+function coerceErrorToString(raw: unknown, fallback: string): string {
+  const CAP = 2000;
+  if (typeof raw === 'string') return raw.slice(0, CAP);
+  if (raw == null) return fallback;
+  if (raw instanceof Error) {
+    return (raw.message && raw.message.length > 0 ? raw.message : fallback).slice(
+      0,
+      CAP,
+    );
+  }
+  try {
+    return JSON.stringify(raw).slice(0, CAP);
+  } catch {
+    return fallback;
+  }
+}
 
 export async function executeRun(runId: string): Promise<void> {
   const fetched = await store.getAgentRun(runId);
@@ -227,14 +255,20 @@ export async function executeRun(runId: string): Promise<void> {
       // M1f #5：tool output { ok: false, error } 视为 soft-fail。
       // 不抛错（避免触发 hard-retry / fail run），但把 error 写到 step.error，
       // 下一轮 planner / critique 能在 snapshot 里看到，从而 replan 或跳过。
+      //
+      // M1f Task 3 followup（review blocker 2）：error 字段经过 coerceErrorToString
+      // 兜底，防止 buggy 工具返回 `{ error: SomeObject }` 把 TEXT 列污染成
+      // `[object Object]`。
       const softFailed =
         output != null &&
         typeof output === 'object' &&
         'ok' in (output as Record<string, unknown>) &&
         (output as { ok: unknown }).ok === false;
       const softError = softFailed
-        ? ((output as { error?: string }).error ??
-          'soft-fail (tool returned ok=false)')
+        ? coerceErrorToString(
+            (output as { error?: unknown }).error,
+            'soft-fail (tool returned ok=false)',
+          )
         : null;
 
       await recordStep({
@@ -279,9 +313,10 @@ export async function executeRun(runId: string): Promise<void> {
         await recordStep({ runId, kind: 'critique', output: c });
       }
       const allSteps = await store.listSteps(runId);
-      const recentFailures = allSteps
-        .slice(-4)
-        .filter((s) => s.kind === 'tool_error').length;
+      // M1f Task 3 followup（review blocker 1）：用 isToolFailure 把 soft-fail
+      // （kind='tool_call' + 非空 error）也算进 critique gate；否则 soft-fail
+      // 链路永远进不了 replan，多步全 soft-fail 会一路 completed。
+      const recentFailures = allSteps.slice(-4).filter(isToolFailure).length;
       if (recentFailures >= 2) {
         const c = runCritique({
           plan,
