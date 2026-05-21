@@ -7,11 +7,43 @@
  */
 import { snapshotForAgent } from './contextAdapter.js';
 import { generatePlanForEcho, generatePlanWithLlm } from './planner.js';
-import type { AgentRun, Plan } from './types.js';
+import type { AgentRun, AgentStep, Plan } from './types.js';
 import { resolveLlmClient, resolveEffectiveApiKeyForProvider } from './runLlmClient.js';
 import { runControllers } from './runtimeRegistry.js';
 import { recordStep } from './stepRecorder.js';
 import { emitNotice } from './notices.js';
+import { listSteps } from './store.js';
+
+/**
+ * M1f polish #1：把最近的 step 失败摘要给 planner 看，避免 replan 复现同样错。
+ *
+ * 优先级：`tool_error` step（hard throw 后落地的）+ `tool_call` step 带非空 error
+ * （M1f #5 soft-fail：ok=false 但没 throw）。最近 3 个就够，再多 token 浪费。
+ *
+ * 设计：吃 steps 数组而不是 runId —— caller（`buildInitialPlan`）已经 listSteps
+ * 过一次，避免重复 DB roundtrip。
+ *
+ * 返回 undefined（不是空串）以匹配 planner.ts `previousFailure?: string` 的
+ * "未传 ↔ 没失败" 语义；`buildPlannerUserPrompt` 在 undefined 时不会渲染相关段落。
+ */
+export function buildPreviousFailureSummary(
+  steps: AgentStep[],
+): string | undefined {
+  const failed = steps
+    .filter(
+      (s) =>
+        s.kind === 'tool_error' ||
+        (s.kind === 'tool_call' && s.error !== null && s.error.length > 0),
+    )
+    .slice(-3);
+  if (failed.length === 0) return undefined;
+  return failed
+    .map(
+      (s, i) =>
+        `${i + 1}. tool=${s.toolName ?? '<unknown>'} error=${s.error ?? '<no message>'}`,
+    )
+    .join('\n');
+}
 
 /**
  * M1c：选择初始 plan 来源。
@@ -49,11 +81,20 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
     // cancel 路径：从 runtimeRegistry 取该 run 的 AbortController；如果没有就用一个永不 abort 的（防御）
     const signal =
       runControllers.get(run.id)?.signal ?? new AbortController().signal;
+    // M1f polish #1：把上一轮 step failures 拼成摘要传给 planner。
+    // initial fresh run（无任何 step）→ helper 返回 undefined → planner 用旧 prompt，
+    // 行为完全等价 M1f 之前；replan 场景才会真正起作用。
+    // 不区分 run.status：applyReplanningIfNeeded 已经把 status 改回 'running'，
+    // 这里没法靠 status 判断；改成"有 failed step 就传"，语义更稳。
+    const previousFailure = buildPreviousFailureSummary(
+      await listSteps(run.id),
+    );
     return await generatePlanWithLlm({
       inputText: text,
       snapshot,
       llm,
       signal,
+      previousFailure,
     });
   } catch (e) {
     // M1e Task 13.4：之前 catch 后静默 fallback echo plan，用户毫无感知。现在写一条
