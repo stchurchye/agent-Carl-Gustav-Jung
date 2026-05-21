@@ -333,6 +333,61 @@ describe('POST /api/agent/runs/:id/retry (M1d)', () => {
     );
     expect(res.status).toBe(403);
   });
+
+  it('M1e blocker 1: retry copies sealed user_api_key_enc from old run', async () => {
+    const owner = await ensureUser('rt-sealed');
+    const sess = await (await import('../../store/pg.js')).createChatSession(owner.id, 's');
+    const oldRun = await store.insertAgentRun({
+      ownerId: owner.id, channel: 'private', sessionId: sess.id, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'failed',
+      inputText: 'sealed retry', budget: DEFAULT_BUDGET,
+      apiKeyOwnerId: owner.id, apiKeySource: 'user',
+      userApiKeyEnc: 'fake-sealed-blob-from-m1d',
+    });
+    expect(await store.getUserApiKeyEnc(oldRun.id)).toBe('fake-sealed-blob-from-m1d');
+
+    const token = await tokenFor(owner);
+    const res = await makeApp().fetch(
+      new Request(`http://test/api/agent/runs/${oldRun.id}/retry`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { runId: string } };
+    const newSealed = await store.getUserApiKeyEnc(body.data.runId);
+    expect(newSealed).toBe('fake-sealed-blob-from-m1d');
+  });
+
+  it('M1e blocker 2: two retries within 10s → 409 AGENT_RETRY_DEDUPED with existingRunId', async () => {
+    const owner = await ensureUser('rt-dedup');
+    const oldId = await mkTerminalPrivateRun(owner.id, 'failed');
+    const token = await tokenFor(owner);
+    const app = makeApp();
+
+    // 第一次成功
+    const res1 = await app.fetch(
+      new Request(`http://test/api/agent/runs/${oldId}/retry`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res1.status).toBe(200);
+    const body1 = (await res1.json()) as { data: { runId: string } };
+    const firstNewId = body1.data.runId;
+
+    // 立即第二次：应 409 + existingRunId 等于上一次的新 run
+    const res2 = await app.fetch(
+      new Request(`http://test/api/agent/runs/${oldId}/retry`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res2.status).toBe(409);
+    const body2 = (await res2.json()) as { error: { code: string; existingRunId?: string } };
+    expect(body2.error.code).toBe('AGENT_RETRY_DEDUPED');
+    expect(body2.error.existingRunId).toBe(firstNewId);
+  });
 });
 
 /**

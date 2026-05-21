@@ -159,9 +159,13 @@ agentRouter.post('/runs/:id/cancel', async (c) => {
 });
 
 /**
- * M1d Task 3：把一个终态 run 重跑——克隆 inputText / channel / budget，
- * 创建一个新的 run（不复用旧 run id、不接续 step），返回新 runId。
- * 只允许 terminal 状态调用；非 terminal 状态返回 409。
+ * M1d Task 3 + M1e Task 3/4：把一个终态 run 重跑——克隆 inputText / channel / budget /
+ * sealed user key，创建一个新的 run（不复用旧 run id、不接续 step），返回新 runId。
+ *
+ * - 只允许 terminal 状态调用；非 terminal 状态返回 409。
+ * - M1e blocker 1+3：复制旧 run 的 user_api_key_enc（如有），避免新 run 走 server key
+ *   而旧 run 是 user key 的语义漂移。
+ * - M1e blocker 2 (task 4)：10s 窗口去重，同 (ownerId, inputText) 已 retry 过则 409。
  */
 agentRouter.post('/runs/:id/retry', async (c) => {
   const userId = c.get('userId')!;
@@ -177,6 +181,41 @@ agentRouter.post('/runs/:id/retry', async (c) => {
     run.status === 'budget_exhausted';
   if (!isTerminal) return jsonError(c, ErrorCodes.VALIDATION, 409);
 
+  // M1e Task 4：10s 窗口去重——如果过去 10s 内已经为同 (ownerId, inputText) 创建过另一个
+  // run（excluding 旧 run 本身），返回 409 + 现有的 runId。前端依然 disable retry 按钮做
+  // optimistic 防连点；这是后端最终防线（多设备 / 网络重试也兜得住）。
+  const dedup = await getPool().query(
+    `SELECT id FROM agent_runs
+      WHERE owner_id = $1 AND input_text = $2
+        AND created_at > now() - interval '10 seconds'
+        AND id <> $3
+      ORDER BY created_at DESC LIMIT 1`,
+    [run.ownerId, run.inputText, run.id],
+  );
+  if (dedup.rows.length > 0) {
+    const existingRunId = dedup.rows[0].id as string;
+    const { emitNotice } = await import('../lib/agent/notices.js');
+    await emitNotice({
+      runId: existingRunId,
+      severity: 'info',
+      code: 'RETRY_DEDUPED',
+      message: '10 秒内已发起过同一任务的重试，已忽略本次。',
+      context: { triggeredFromRunId: run.id },
+    });
+    return c.json(
+      {
+        ok: false,
+        error: {
+          code: 'AGENT_RETRY_DEDUPED',
+          message: '10 秒内已重试过，请稍后再试。',
+          existingRunId,
+        },
+        requestId: c.get('requestId'),
+      },
+      409,
+    );
+  }
+
   const result = await createAgentRun({
     ownerId: run.ownerId,
     channel: run.channel,
@@ -184,11 +223,22 @@ agentRouter.post('/runs/:id/retry', async (c) => {
     groupId: run.groupId ?? undefined,
     topicId: run.topicId ?? undefined,
     inputText: run.inputText,
-    // Worker 自己根据 apiKeySource 解析 key（M1d Task 6 才接 per-user key 取用）。
     apiKey: '',
     apiKeySource: run.apiKeySource,
     budget: run.budget,
   });
+
+  // M1e blocker 1：复制旧 run 的 sealed user key（M1d 漏做，导致 user → server 静默降级）。
+  if (run.apiKeySource === 'user') {
+    const oldSealed = await store.getUserApiKeyEnc(run.id);
+    if (oldSealed) {
+      await getPool().query(
+        `UPDATE agent_runs SET user_api_key_enc = $1 WHERE id = $2`,
+        [oldSealed, result.run.id],
+      );
+    }
+  }
+
   return c.json({
     ok: true,
     data: {
