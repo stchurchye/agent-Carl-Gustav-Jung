@@ -91,6 +91,25 @@ describe('agent notices channel', () => {
     expect(all.map((n) => n.message)).toEqual(['x', 'y']);
   });
 
+  // M1e review fix #1: stale / missing / malformed afterId falls back to "all".
+  it('listNoticesAfter(unknown-uuid) returns ALL in asc order (not empty)', async () => {
+    const runId = 'r-notice-stale-' + Date.now();
+    await emitNotice({ runId, severity: 'info', code: 'RETRY_DEDUPED', message: 'p' });
+    await emitNotice({ runId, severity: 'info', code: 'RETRY_DEDUPED', message: 'q' });
+
+    // A valid-looking UUID that doesn't match any row
+    const ghostId = '00000000-0000-4000-8000-000000000000';
+    const tail = await listNoticesAfter(runId, ghostId);
+    expect(tail.map((n) => n.message).sort()).toEqual(['p', 'q']);
+  });
+
+  it('listNoticesAfter(malformed-id) returns ALL (treated as null)', async () => {
+    const runId = 'r-notice-bad-' + Date.now();
+    await emitNotice({ runId, severity: 'info', code: 'RETRY_DEDUPED', message: 'm' });
+    const tail = await listNoticesAfter(runId, 'not-a-uuid');
+    expect(tail.map((n) => n.message)).toEqual(['m']);
+  });
+
   it('emit failure is swallowed (does not throw)', async () => {
     // 用一个 SQL injection-resistant ridiculous runId，依赖 emitNotice 内部 try/catch
     // 实际上让它写入空 runId 会因 schema runId TEXT NULL 允许，所以这里换种验证：

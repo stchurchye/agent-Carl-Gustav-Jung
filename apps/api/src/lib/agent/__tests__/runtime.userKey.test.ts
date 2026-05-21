@@ -183,6 +183,40 @@ describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e bl
     expect(notices.map((n) => n.code)).toContain('NO_API_KEY');
   });
 
+  it('M1e review #6: decrypt success but plaintext only-whitespace → emits USER_KEY_DECRYPT_FAILED + falls back', async () => {
+    process.env.AGENT_KEY_SECRET = 'unit-test-secret-must-be-long-enough';
+    process.env.DEEPSEEK_API_KEY = 'sk-server-fb-empty';
+    const user = await ensureUser('uk-empty');
+    const sess = await createChatSession(user.id, 'e');
+    // 用 sealUserApiKey 加密 "   " 几个空格——decrypt 成功但 trim 后为空，
+    // 触发 review #6 关注的"非异常但可用 key 为空"分支。
+    const { sealUserApiKey } = await import('../secretBox.js');
+    const sealedWhitespace = sealUserApiKey('   ');
+    expect(sealedWhitespace).toBeTruthy();
+    const { run } = await createAgentRun({
+      ownerId: user.id,
+      channel: 'private',
+      sessionId: sess.id,
+      inputText: 'empty plaintext',
+      apiKey: 'placeholder-will-be-replaced',
+      apiKeySource: 'user',
+    });
+    await getPool().query(
+      `UPDATE agent_runs SET user_api_key_enc = $1 WHERE id = $2`,
+      [sealedWhitespace, run.id],
+    );
+    const { resolveEffectiveApiKey } = await import('../runtimeShared.js');
+    const dbRun = await (await import('../store.js')).getAgentRun(run.id);
+    const key = await resolveEffectiveApiKey(dbRun!);
+    expect(key).toBe('sk-server-fb-empty');
+
+    const { listNoticesForRun } = await import('../notices.js');
+    const notices = await listNoticesForRun(run.id);
+    const decrypt = notices.find((n) => n.code === 'USER_KEY_DECRYPT_FAILED');
+    expect(decrypt).toBeDefined();
+    expect(decrypt?.context).toMatchObject({ reason: 'empty_plaintext' });
+  });
+
   it('same notice code emitted only once per run (process-local dedup)', async () => {
     process.env.AGENT_KEY_SECRET = 'unit-test-secret-must-be-long-enough';
     process.env.DEEPSEEK_API_KEY = 'sk-server';

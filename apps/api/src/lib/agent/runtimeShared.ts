@@ -82,6 +82,14 @@ export async function resolveEffectiveApiKey(
         const { openUserApiKey } = await import('./secretBox.js');
         const key = openUserApiKey(sealed).trim();
         if (key) return key;
+        // M1e review followup #6：之前 decrypt 成功但 plaintext 为空时静默回 server key，
+        // 用户毫无感知。当作和 decrypt 失败一样处理 —— 任何"sealed 数据存在但取不到可用 key"
+        // 的情况都 emit 同一个 notice 让用户知道得去重新填写。
+        await emitOnce(run.id, 'USER_KEY_DECRYPT_FAILED', {
+          severity: 'warn',
+          message: '你的 DeepSeek key 解密成功但内容为空（可能存盘时出过错），本次跑退回服务端 key。请到设置里重新填写。',
+          context: { reason: 'empty_plaintext' },
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.warn('[agent.resolveEffectiveApiKey] failed to open user key', msg);

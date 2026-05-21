@@ -510,6 +510,70 @@ describe('GET /api/agent/runs (M1d task panel)', () => {
     expect(text).toContain('NO_API_KEY');
   });
 
+  it('M1e review #2a: SSE last-event-id=n:<existing> only replays notices AFTER that one', async () => {
+    const me = await ensureUser('notice-resume');
+    const sess = await (await import('../../store/pg.js')).createChatSession(me.id, 'r');
+    const r = await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: sess.id, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+      inputText: 'notice resume', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    const { emitNotice, listNoticesForRun } = await import('../../lib/agent/notices.js');
+    await emitNotice({ runId: r.id, severity: 'warn', code: 'USER_KEY_MISSING', message: 'first' });
+    await new Promise((r) => setTimeout(r, 5));
+    await emitNotice({ runId: r.id, severity: 'warn', code: 'USER_KEY_MISSING', message: 'second' });
+    await new Promise((r) => setTimeout(r, 5));
+    await emitNotice({ runId: r.id, severity: 'warn', code: 'USER_KEY_MISSING', message: 'third' });
+
+    const all = await listNoticesForRun(r.id); // desc
+    const firstNotice = all[all.length - 1]; // 'first'
+
+    const token = await tokenFor(me);
+    const sse = await makeApp().fetch(
+      new Request(`http://test/api/agent/runs/${r.id}/stream`, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          'last-event-id': `n:${firstNotice.id}`,
+        },
+      }),
+    );
+    expect(sse.status).toBe(200);
+    const text = await readSseUntilEnd(sse);
+    // 应只收到 second + third（asc 顺序），不再发 first
+    expect(text).not.toContain('"message":"first"');
+    expect(text).toContain('"message":"second"');
+    expect(text).toContain('"message":"third"');
+  });
+
+  it('M1e review #2b: SSE last-event-id=n:<missing-uuid> falls back to ALL notices (no silent drop)', async () => {
+    const me = await ensureUser('notice-stale');
+    const sess = await (await import('../../store/pg.js')).createChatSession(me.id, 's');
+    const r = await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: sess.id, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+      inputText: 'notice stale', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    const { emitNotice } = await import('../../lib/agent/notices.js');
+    await emitNotice({ runId: r.id, severity: 'warn', code: 'USER_KEY_MISSING', message: 'one' });
+    await emitNotice({ runId: r.id, severity: 'warn', code: 'USER_KEY_MISSING', message: 'two' });
+
+    const token = await tokenFor(me);
+    const sse = await makeApp().fetch(
+      new Request(`http://test/api/agent/runs/${r.id}/stream`, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          // valid UUID syntax，但不存在于 DB
+          'last-event-id': 'n:00000000-0000-4000-8000-000000000000',
+        },
+      }),
+    );
+    expect(sse.status).toBe(200);
+    const text = await readSseUntilEnd(sse);
+    // 漏 notice 是更严重的失败 → fallback 必须全发
+    expect(text).toContain('"message":"one"');
+    expect(text).toContain('"message":"two"');
+  });
+
   it('SSE stream resumes from Last-Event-ID, skipping prior steps', async () => {
     const me = await ensureUser('sse-resume');
     const sess = await (await import('../../store/pg.js')).createChatSession(me.id, 'sse');

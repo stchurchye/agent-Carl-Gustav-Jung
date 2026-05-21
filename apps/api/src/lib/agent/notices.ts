@@ -21,7 +21,6 @@ export type NoticeCode =
   // key / 鉴权
   | 'USER_KEY_MISSING'
   | 'USER_KEY_DECRYPT_FAILED'
-  | 'KEY_FALLBACK_TO_SERVER'
   | 'NO_API_KEY'
   // retry / 幂等
   | 'RETRY_DEDUPED'
@@ -123,13 +122,31 @@ export async function listNoticesForRun(
 
 /**
  * SSE 续传用：拉 notice 表里 created_at > 给定 id 的那条之后的所有 notice，按时间正序。
- * 若 afterId 不存在或不属于该 run，等价于"全部"。
+ *
+ * 若 afterId 为 null / 不是合法 UUID / 在 DB 找不到（被清理或 client 拿到了脏值），
+ * 退回"全部 asc"——客户端按 `id` 在本地去重便宜，而漏 notice 不可接受。
+ *
+ * 注：M1e review 修复——之前的实现里 SQL `created_at > (SELECT ... WHERE id=$3)`
+ * 在子查询无行时返回 NULL，使 outer WHERE 评估为 UNKNOWN → 实际返回空集，
+ * 与本函数 doc-comment 描述相反。现在显式两步查找。
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function listNoticesAfter(
   runId: string,
   afterId: string | null,
 ): Promise<UserNotice[]> {
-  if (!afterId) {
+  let anchorExists = false;
+  if (afterId && UUID_RE.test(afterId)) {
+    const anchor = await getPool().query(
+      `SELECT 1 FROM agent_event_logs
+        WHERE id = $1 AND event_type = $2 LIMIT 1`,
+      [afterId, NOTICE_EVENT_TYPE],
+    );
+    anchorExists = anchor.rows.length > 0;
+  }
+
+  if (!anchorExists) {
     const { rows } = await getPool().query(
       `SELECT id, run_id, payload, created_at
          FROM agent_event_logs
@@ -139,6 +156,9 @@ export async function listNoticesAfter(
     );
     return rows.map(rowToNotice);
   }
+
+  // Anchor 存在 → 用 subquery 比较 created_at，让 PG 全程在 μs 精度比，
+  // 避免经 JS Date (ms 精度) 中转丢精度导致同 μs 内的 notice 被多发。
   const { rows } = await getPool().query(
     `SELECT id, run_id, payload, created_at
        FROM agent_event_logs

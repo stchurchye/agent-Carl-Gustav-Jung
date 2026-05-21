@@ -77,13 +77,17 @@ export type SkillSeverity = 'high' | 'low';
 const SUSPICIOUS_PATTERNS: { re: RegExp; reason: string; severity: SkillSeverity }[] = [
   // ===== HIGH severity：明显 jailbreak / role-override，必须 reject =====
   {
-    // 中文 "忽略以上指令 / 忘掉之前要求"——加名词限定，不再裸匹配 "忘[掉记]"
-    re: /忽略\s*(以上|上面|之前|前面)\s*(指令|要求|系统|提示|prompt)/i,
+    // 中文 "忽略以上指令 / 忘掉前面的设定 / 忽略上面的人设"——加名词限定，不再裸匹配 "忘[掉记]"。
+    // M1e review followup：补 规则/设定/人设/上下文/对话 等常见 jailbreak 用名词；同时允许动词与
+    // 名词之间夹 ≤8 字符（覆盖 "前面的 / 以上所有 / 上面的"）。
+    // 不放裸 "话"——会把 "忘记客户偏好这种话题" 之类合法句子误杀。
+    re: /(忽略|忘[掉记]).{0,8}?(指令|要求|系统|提示|prompt|规则|设定|人设|上下文|对话)/i,
     reason: 'IGNORE_INSTRUCTIONS_ZH',
     severity: 'high',
   },
   {
-    re: /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions|prompt|messages|system)/i,
+    // M1e review followup：加 'any' 覆盖 "ignore any prior instructions" 这种常见变体。
+    re: /ignore\s+(all|any)?\s*(previous|prior|above|earlier)\s+(instructions|prompt|messages|system|rules)/i,
     reason: 'IGNORE_INSTRUCTIONS_EN',
     severity: 'high',
   },

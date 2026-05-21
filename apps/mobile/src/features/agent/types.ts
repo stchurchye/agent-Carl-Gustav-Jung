@@ -95,7 +95,6 @@ export type AgentRun = {
 export type NoticeCode =
   | 'USER_KEY_MISSING'
   | 'USER_KEY_DECRYPT_FAILED'
-  | 'KEY_FALLBACK_TO_SERVER'
   | 'NO_API_KEY'
   | 'RETRY_DEDUPED'
   | 'PLANNER_LLM_FALLBACK'

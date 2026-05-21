@@ -9,7 +9,11 @@ import * as store from '../lib/agent/store.js';
 import { cancelRun, confirmRun, createAgentRun } from '../lib/agent/runtime.js';
 import type { AgentRun, AgentRunStatus } from '../lib/agent/types.js';
 import * as topicSkills from '../lib/agent/topicSkills.js';
-import { listNoticesAfter, listNoticesForRun } from '../lib/agent/notices.js';
+import {
+  emitNotice,
+  listNoticesAfter,
+  listNoticesForRun,
+} from '../lib/agent/notices.js';
 
 export const agentRouter = new Hono<{ Variables: AppVariables }>();
 
@@ -194,7 +198,6 @@ agentRouter.post('/runs/:id/retry', async (c) => {
   );
   if (dedup.rows.length > 0) {
     const existingRunId = dedup.rows[0].id as string;
-    const { emitNotice } = await import('../lib/agent/notices.js');
     await emitNotice({
       runId: existingRunId,
       severity: 'info',
