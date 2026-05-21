@@ -47,14 +47,23 @@ export type UpsertSkillInput = {
 };
 
 /**
- * M1d Task 7：prompt-injection 防御。topic skill 会被注入到 agent system
- * prompt 里（snapshotForAgent / planner），所以任何看起来像"override
- * instructions"、"忽略上面"、"reveal API key" 的 pattern 都要拒掉。
+ * M1d Task 7 + M1e Task 5：prompt-injection 防御（high/low severity 分级）。
  *
- * 这是 defense-in-depth：planner system prompt 自己也带 anti-jailbreak
- * 段落；但 skill 是 *持久化* 的危险源，宁可在写入时拦截。
+ * 背景：M1d 实现的是 fail-closed，凡是命中 SUSPICIOUS_PATTERNS 一律 reject。Code-review
+ * 反馈 false-positive 太多（例如 "记住客户的 API key 放 1Password"、"别忘记客户偏好"
+ * 都被误杀），让用户根本写不进合法的 skill。
  *
- * 触发即抛 SkillValidationError，上层路由把它映射成 400 + 可读消息。
+ * M1e 改成两档：
+ * - high：明显的 jailbreak 标志（role override、ignore previous instructions、inject
+ *   system role 等）→ 仍然 reject 400
+ * - low：仅关键词（如 "api[_- ]?key" / "secret"）→ warn-log 但不 reject，将来 task 10
+ *   时由 `listForAgent` 二次过滤把含 high pattern 的 skill drop + emit notice。
+ *
+ * 收紧动作：
+ * - 删 `/忘[掉记]/` 纯字符（误杀率太高）
+ * - `IGNORE_INSTRUCTIONS_ZH` 加 "指令/要求/系统/提示" 名词限定
+ *
+ * 触发 high 即抛 SkillValidationError，上层路由把它映射成 400 + 可读消息。
  */
 export class SkillValidationError extends Error {
   constructor(message: string) {
@@ -63,46 +72,107 @@ export class SkillValidationError extends Error {
   }
 }
 
-const SUSPICIOUS_PATTERNS: { re: RegExp; reason: string }[] = [
-  // 中英文 "忽略上面 / 忘掉之前 / 不要听 system / disregard prior"
-  { re: /忽略(以上|上面|之前|前面|系统)|忘[掉记]/i, reason: 'IGNORE_INSTRUCTIONS_ZH' },
-  { re: /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions|prompt|messages)/i, reason: 'IGNORE_INSTRUCTIONS_EN' },
-  { re: /disregard\s+(all\s+)?(prior|previous|above|system)/i, reason: 'DISREGARD_EN' },
-  { re: /system\s*[:：]/i, reason: 'INJECT_SYSTEM_ROLE' },
-  // 让 LLM 角色互换 / 拒绝过滤
-  { re: /(扮演|装作|你现在是).{0,12}(管理员|开发者|无审查|jailbreak)/i, reason: 'ROLE_OVERRIDE_ZH' },
-  { re: /you\s+are\s+now\s+(?:an?\s+)?(?:dan|jailbroken|uncensored|developer\s+mode)/i, reason: 'ROLE_OVERRIDE_EN' },
-  // 直接索要敏感字段
-  { re: /(api[_\- ]?key|deepseek\s*key|access[_\- ]?token|secret)/i, reason: 'SECRET_DISCLOSURE' },
-  // 强制执行任意工具（特别是 magi_content_ingest / doc_export 这种有副作用的）
-  { re: /(必须|一定要|always|must)\s*(执行|调用|call|invoke|run).{0,20}(magi_content_ingest|doc_export|tool)/i, reason: 'FORCE_TOOL_CALL' },
+export type SkillSeverity = 'high' | 'low';
+
+const SUSPICIOUS_PATTERNS: { re: RegExp; reason: string; severity: SkillSeverity }[] = [
+  // ===== HIGH severity：明显 jailbreak / role-override，必须 reject =====
+  {
+    // 中文 "忽略以上指令 / 忘掉之前要求"——加名词限定，不再裸匹配 "忘[掉记]"
+    re: /忽略\s*(以上|上面|之前|前面)\s*(指令|要求|系统|提示|prompt)/i,
+    reason: 'IGNORE_INSTRUCTIONS_ZH',
+    severity: 'high',
+  },
+  {
+    re: /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions|prompt|messages|system)/i,
+    reason: 'IGNORE_INSTRUCTIONS_EN',
+    severity: 'high',
+  },
+  {
+    re: /disregard\s+(all\s+)?(prior|previous|above|system)/i,
+    reason: 'DISREGARD_EN',
+    severity: 'high',
+  },
+  {
+    // 在 skill 内部假冒 system role 注入
+    re: /^\s*system\s*[:：]/im,
+    reason: 'INJECT_SYSTEM_ROLE',
+    severity: 'high',
+  },
+  {
+    re: /(扮演|装作|你现在是).{0,12}(管理员|开发者|无审查|jailbreak)/i,
+    reason: 'ROLE_OVERRIDE_ZH',
+    severity: 'high',
+  },
+  {
+    re: /you\s+are\s+now\s+(?:an?\s+)?(?:dan|jailbroken|uncensored|developer\s+mode)/i,
+    reason: 'ROLE_OVERRIDE_EN',
+    severity: 'high',
+  },
+  {
+    // 强制执行有副作用的工具（M1d 原来是 high，保留）
+    re: /(必须|一定要|always|must)\s*(执行|调用|call|invoke|run).{0,20}(magi_content_ingest|doc_export|tool)/i,
+    reason: 'FORCE_TOOL_CALL',
+    severity: 'high',
+  },
+
+  // ===== LOW severity：仅关键词，warn-log 但不 reject =====
+  {
+    // 单独出现 api_key / deepseek key / secret 仍想留痕，但允许写入（用户可能在合法描述 secret 管理流程）
+    re: /(api[_\- ]?key|deepseek\s*key|access[_\- ]?token|secret)/i,
+    reason: 'SECRET_KEYWORD',
+    severity: 'low',
+  },
 ];
 
 const MAX_TITLE_LEN = 80;
 const MAX_CONTENT_LEN = 2000;
 
+export type SkillValidationIssue = {
+  reason: string;
+  field: 'title' | 'content';
+  severity: SkillSeverity;
+};
+
 /**
- * 公开导出：路由 / 测试可单独验证 input。返回错误数组（空数组即通过）。
+ * 公开导出：路由 / 测试可单独验证 input。返回 issue 数组（空数组即通过）。
+ * 每条 issue 带 severity；length-violation 视为 high。
  */
-export function validateSkillInput(input: { title: string; content: string }): { reason: string; field: 'title' | 'content' }[] {
-  const errors: { reason: string; field: 'title' | 'content' }[] = [];
+export function validateSkillInput(input: { title: string; content: string }): SkillValidationIssue[] {
+  const issues: SkillValidationIssue[] = [];
   const title = input.title ?? '';
   const content = input.content ?? '';
-  if (title.trim().length === 0) errors.push({ reason: 'EMPTY_TITLE', field: 'title' });
-  if (title.length > MAX_TITLE_LEN) errors.push({ reason: 'TITLE_TOO_LONG', field: 'title' });
-  if (content.length > MAX_CONTENT_LEN) errors.push({ reason: 'CONTENT_TOO_LONG', field: 'content' });
-  for (const { re, reason } of SUSPICIOUS_PATTERNS) {
-    if (re.test(title)) errors.push({ reason, field: 'title' });
-    if (re.test(content)) errors.push({ reason, field: 'content' });
+  if (title.trim().length === 0) {
+    issues.push({ reason: 'EMPTY_TITLE', field: 'title', severity: 'high' });
   }
-  return errors;
+  if (title.length > MAX_TITLE_LEN) {
+    issues.push({ reason: 'TITLE_TOO_LONG', field: 'title', severity: 'high' });
+  }
+  if (content.length > MAX_CONTENT_LEN) {
+    issues.push({ reason: 'CONTENT_TOO_LONG', field: 'content', severity: 'high' });
+  }
+  for (const { re, reason, severity } of SUSPICIOUS_PATTERNS) {
+    if (re.test(title)) issues.push({ reason, field: 'title', severity });
+    if (re.test(content)) issues.push({ reason, field: 'content', severity });
+  }
+  return issues;
 }
 
 export async function upsertSkill(input: UpsertSkillInput): Promise<TopicSkill> {
-  const errs = validateSkillInput(input);
-  if (errs.length > 0) {
+  const issues = validateSkillInput(input);
+  const highs = issues.filter((i) => i.severity === 'high');
+  if (highs.length > 0) {
     throw new SkillValidationError(
-      `topic skill rejected: ${errs.map((e) => `${e.field}:${e.reason}`).join(', ')}`,
+      `topic skill rejected: ${highs.map((e) => `${e.field}:${e.reason}`).join(', ')}`,
+    );
+  }
+  const lows = issues.filter((i) => i.severity === 'low');
+  if (lows.length > 0) {
+    // M1e Task 5：低风险关键词（如 "api_key"）允许写入但留痕。Task 10 之后
+    // `listForAgent` 会再扫一遍含 high 的历史 skill 并 drop；low 不会被 drop。
+    console.warn(
+      '[topicSkill] low-severity match (allowed):',
+      input.title.slice(0, 40),
+      lows.map((l) => `${l.field}:${l.reason}`).join(', '),
     );
   }
   const id = input.id ?? randomUUID();
