@@ -3,6 +3,7 @@ import {
   _buildPlannerSystemPromptForTest,
   _buildPlannerUserPromptForTest,
   generatePlanForEcho,
+  parsePlannerJson,
 } from '../planner.js';
 import { toolRegistry } from '../toolRegistry.js';
 import { registerEchoSleep } from '../tools/echoSleep.js';
@@ -87,5 +88,63 @@ describe('M1f planner prompt 升级 (#1)', () => {
     expect(usr).toMatch(/上一步失败原因/);
     expect(usr).toMatch(/web_search HTTP 429/);
     expect(usr).toMatch(/重新规划/);
+  });
+});
+
+describe('M1f parsePlannerJson 宽容化 (#4)', () => {
+  beforeAll(() => {
+    registerEchoSleep();
+    registerWebSearch();
+    registerUrlFetch();
+    registerDocExportMarkdown();
+    registerMagiSystemRead();
+    registerMagiContentIngest();
+  });
+
+  const validBody = `{
+  "intentSummary": "test",
+  "steps": [{"toolName":"echo_after_sleep","input":{"text":"hi"},"reason":"x","todoId":"t1"}],
+  "todos": [{"id":"t1","text":"t","status":"pending","stepRefs":[]}],
+  "finalReplyHint": "done"
+}`;
+
+  const trailingCommaBody = `{
+  "intentSummary": "test",
+  "steps": [{"toolName":"echo_after_sleep","input":{"text":"hi"},"reason":"x","todoId":"t1"},],
+  "todos": [{"id":"t1","text":"t","status":"pending","stepRefs":[]},],
+  "finalReplyHint": "done",
+}`;
+
+  const braceInStringBody = `{
+  "intentSummary": "what about } in strings?",
+  "steps": [{"toolName":"echo_after_sleep","input":{"text":"hi"},"reason":"x","todoId":"t1"}],
+  "todos": [{"id":"t1","text":"t","status":"pending","stepRefs":[]}],
+  "finalReplyHint": "done"
+}`;
+
+  const cases: Array<{ name: string; raw: string; expectedIntent?: string }> = [
+    { name: 'fenced ```json block', raw: '```json\n' + validBody + '\n```' },
+    { name: 'fenced ``` block (no language)', raw: '```\n' + validBody + '\n```' },
+    { name: 'leading prose then JSON', raw: "Here's the plan:\n" + validBody },
+    { name: 'trailing prose after JSON', raw: validBody + '\n\nLet me know if you need more.' },
+    { name: 'trailing comma in steps[] / todos[] / object', raw: trailingCommaBody },
+    { name: 'CRLF line endings', raw: validBody.replace(/\n/g, '\r\n') },
+    {
+      name: 'brace `}` inside string literal',
+      raw: braceInStringBody,
+      expectedIntent: 'what about } in strings?',
+    },
+  ];
+
+  it.each(cases)('parses dirty input: $name', ({ raw, expectedIntent }) => {
+    const tools = toolRegistry.list();
+    const plan = parsePlannerJson(raw, tools);
+    expect(plan).not.toBeNull();
+    expect(plan?.intentSummary).toBe(expectedIntent ?? 'test');
+  });
+
+  it('still returns null on pure garbage', () => {
+    const tools = toolRegistry.list();
+    expect(parsePlannerJson('hello world this is not json', tools)).toBeNull();
   });
 });

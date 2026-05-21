@@ -237,20 +237,61 @@ type LoosePlan = {
   finalReplyHint?: unknown;
 };
 
+/**
+ * M1f #4：宽容解析 LLM 输出。处理常见污染：
+ * - markdown 围栏（```json / ``` 都剥）
+ * - 前后散文（截取第一个 { 到对应 } 的子串）
+ * - 尾随逗号（,} → } / ,] → ]）
+ * - CRLF（normalize 到 LF）
+ *
+ * 不引入 JSON5；只做 regex / bracket-counter 预处理 + 一次 JSON.parse。
+ */
 function tryParseJson(raw: string): LoosePlan | null {
-  // LLM 偶尔会包 ```json ... ```，宽松剥一下
-  const trimmed = raw
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/```$/i, '')
-    .trim();
+  const candidate = extractJsonCandidate(raw);
+  if (!candidate) return null;
   try {
-    const v = JSON.parse(trimmed) as LoosePlan;
+    const v = JSON.parse(candidate) as LoosePlan;
     if (!v || typeof v !== 'object') return null;
     return v;
   } catch {
     return null;
   }
+}
+
+function extractJsonCandidate(raw: string): string | null {
+  let s = raw.replace(/\r\n/g, '\n').trim();
+
+  const fenceMatch = s.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/i);
+  if (fenceMatch) {
+    s = fenceMatch[1].trim();
+  }
+
+  // 截取第一个 { ... } 平衡子串（应对前后散文 / string 内含 }）
+  const start = s.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let end = -1;
+  let inStr = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\') { escape = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) return null;
+  let body = s.slice(start, end + 1);
+
+  // 去尾随逗号：,} / ,] / ,\s*}
+  body = body.replace(/,(\s*[}\]])/g, '$1');
+
+  return body;
 }
 
 export function parsePlannerJson(raw: string, tools: ToolDef[]): Plan | null {
