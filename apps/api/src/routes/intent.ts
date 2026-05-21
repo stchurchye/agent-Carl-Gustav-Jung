@@ -9,8 +9,12 @@ import type { IntentKind, MemoryIntentSlots } from '@xzz/shared';
 import type { AppVariables } from '../types.js';
 import { jsonError } from '../lib/errors.js';
 import { requireAuth } from '../middleware/auth.js';
-import { getDeepSeekKey } from '../lib/ai-handler.js';
-import { getZenMuxKey, handleZenMuxError } from '../lib/zenmux-handler.js';
+import { getDeepSeekKey, getDeepSeekKeyWithSource } from '../lib/ai-handler.js';
+import {
+  getZenMuxKey,
+  getZenMuxKeyWithSource,
+  handleZenMuxError,
+} from '../lib/zenmux-handler.js';
 import { parseReplyDialect } from '../lib/deepseek.js';
 import {
   analyzeIntentUnified,
@@ -87,6 +91,7 @@ intentRouter.post('/execute', async (c) => {
   const kind = body.kind;
   if (!text || !kind) return jsonError(c, ErrorCodes.VALIDATION, 400);
 
+  // chat / writing 流程一直要 ZenMux key；缺就 400。
   let apiKey: string;
   try {
     apiKey = getZenMuxKey(c);
@@ -94,12 +99,24 @@ intentRouter.post('/execute', async (c) => {
     return handleZenMuxError(c, e);
   }
 
+  // 老的 deepseekApiKey 字段：legacy 路径（memory / context）仍然继续读这个，
+  // 它依旧是 header-or-env 的混合值（pre-existing 行为，不动）。
   let deepseekApiKey: string | undefined;
   try {
     deepseekApiKey = getDeepSeekKey(c);
   } catch {
     deepseekApiKey = undefined;
   }
+
+  // M1e review followup：agent_run 路径必须能分辨"user header key" vs "server env key"，
+  // 否则 server key 会被当作 user key 加密落到 agent_runs.user_api_key_enc。
+  // 只有 source='user' 时才传 user-scoped 字段，否则 intentExecute 会推导成 'user'。
+  const dsResolved = getDeepSeekKeyWithSource(c);
+  const zmResolved = getZenMuxKeyWithSource(c);
+  const userDeepseekKey =
+    dsResolved?.source === 'user' ? dsResolved.key : undefined;
+  const userZenmuxKey =
+    zmResolved?.source === 'user' ? zmResolved.key : undefined;
 
   const dialect = parseReplyDialect(c.req.header(REPLY_DIALECT_HEADER));
   const model = resolveZenmuxChatModel(
@@ -119,10 +136,10 @@ intentRouter.post('/execute', async (c) => {
       topicId: body.topicId,
       apiKey,
       deepseekApiKey,
-      // M1e Task 12: ZenMux key 沿用 OpenAI 协议 header（getZenMuxKey）—— `apiKey`
-      // 就是 ZenMux key（header X-ZenMux-API-Key 解出来的）。当 providerId=zenmux
-      // 且 user 在 mobile "我的"页填了自己的 ZenMux key 时，这就是 user key。
-      zenmuxApiKey: apiKey,
+      // M1e review followup: 只传 user-source 的 key 给 agent；server env key 由
+      // runLlmClient.resolveEffectiveApiKeyForProvider 在 worker 里独立取。
+      userDeepseekKey,
+      userZenmuxKey,
       model,
       dialect,
       contextSelection: parseContextSelectionFromBody(body),

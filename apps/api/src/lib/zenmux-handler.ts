@@ -15,6 +15,25 @@ export function getZenMuxKey(c: Context<{ Variables: AppVariables }>): string {
   }
 }
 
+/**
+ * M1e review followup：同 ai-handler.getDeepSeekKeyWithSource —— 区分 header（user）
+ * vs env（server），避免 agent_run 路径把 server key 当作 user key 加密落库。
+ */
+export type ResolvedZenMuxKey = {
+  key: string;
+  source: 'user' | 'server';
+};
+
+export function getZenMuxKeyWithSource(
+  c: Context<{ Variables: AppVariables }>,
+): ResolvedZenMuxKey | null {
+  const headerKey = c.req.header('X-ZenMux-Api-Key')?.trim();
+  if (headerKey) return { key: headerKey, source: 'user' };
+  const envKey = process.env.ZENMUX_API_KEY?.trim();
+  if (envKey) return { key: envKey, source: 'server' };
+  return null;
+}
+
 export function handleZenMuxError(c: Context<{ Variables: AppVariables }>, e: unknown) {
   if (e instanceof ZenMuxError) {
     if (e.message === 'ZENMUX_KEY_MISSING') {

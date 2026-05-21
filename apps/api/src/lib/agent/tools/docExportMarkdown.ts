@@ -71,29 +71,38 @@ export const docExportMarkdownTool: ToolDef<
     let versionedTitle = title;
 
     if (existing) {
-      // M1e Task 13.2：用户编辑保护。如果当前 block.content 的 hash 与上次 agent
-      // 写入时存的 hash 不一致，说明用户改过文档。这次不覆盖，改成创建一个 v2 标题
-      // 的新文档，并 emit DOC_EXPORT_VERSIONED notice 告诉用户。
+      // M1e Task 13.2 + review followup：用户编辑保护。
+      // - 已有 `agentLastExportHash` 且 hash 对不上当前内容 → 用户改过 → 走 v2
+      // - **从未有 agentLastExportHash**（lastHash=null）且当前文档非空 → 这文档
+      //   是用户自己手写的（不是 agent 写的），同样不能覆盖 → 也走 v2。
+      //   reviewer 指出的"first-touch overwrite" 就是 fix 这里。
+      // - lastHash=null 但当前文档为空 → 几乎肯定是空 shell（如手动创建后没填内容），
+      //   允许覆盖。
       const lastHash = existing.agentLastExportHash ?? null;
       const currentText =
         existing.chapters?.[0]?.blocks?.[0]?.content ?? '';
       const currentHash = currentText
         ? createHash('sha256').update(currentText).digest('hex')
         : null;
-      const userEdited = lastHash !== null && currentHash !== null && lastHash !== currentHash;
+      const userEditedKnownAgentDoc =
+        lastHash !== null && currentHash !== null && lastHash !== currentHash;
+      const userOwnedExistingDoc = lastHash === null && currentHash !== null;
+      const protect = userEditedKnownAgentDoc || userOwnedExistingDoc;
 
-      if (userEdited) {
+      if (protect) {
         versionedTitle = await pickVersionedTitle(all, title);
         const doc = await createDocument(ownerId, versionedTitle);
         docId = doc.id;
         created = true;
         const { emitNotice } = await import('../notices.js');
+        const reason = userEditedKnownAgentDoc ? 'user_edited' : 'pre_existing_user_doc';
+        const userVisibleReason = userEditedKnownAgentDoc ? '已被你编辑过' : '不是 agent 创建的';
         await emitNotice({
           runId: ctx.runId,
           severity: 'info',
           code: 'DOC_EXPORT_VERSIONED',
-          message: `检测到《${title}》已被你编辑过，本次写入存为新文档《${versionedTitle}》，未覆盖你原稿。`,
-          context: { originalDocumentId: existing.id, versionedTitle },
+          message: `检测到《${title}》${userVisibleReason}，本次写入存为新文档《${versionedTitle}》，未覆盖你原稿。`,
+          context: { originalDocumentId: existing.id, versionedTitle, reason },
         });
       } else {
         docId = existing.id;

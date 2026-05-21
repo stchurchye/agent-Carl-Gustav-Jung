@@ -10,8 +10,11 @@
  * 取代了原 `runtimeShared.resolveEffectiveApiKey`（DeepSeek-only），但 后者
  * 暂时保留供尚未迁移的调用点 + 让 M1d 老 fixtures 不需要立刻改。
  *
- * Notice 去重策略：(runId, providerId, code) 维度，process-local Set，
+ * Notice 去重策略：(runId, providerId, code) 维度，process-local **bounded LRU**，
  * 进程重启会再 emit 一次，可接受。
+ *
+ * M1e review followup：原来用裸 `Set<string>`，长跑 worker 里 runId 不断累加 → 内存
+ * 无界增长。改成 LRU + cap 防止泄漏（同时保留 dedup 语义）。
  */
 
 import * as store from './store.js';
@@ -20,8 +23,14 @@ import { emitNotice } from './notices.js';
 import { buildLlmClient } from '../llm/factory.js';
 import type { LlmChatClient, LlmProviderId } from '../llm/types.js';
 
-/** @internal exported for tests to reset between cases. */
-const _emittedKeys = new Set<string>();
+/**
+ * @internal 简单 LRU：Map 保留插入顺序，超过 cap 时淘汰最早的 key。
+ * cap=10000 → 即便每 run 触发 4-5 个不同 code 也能容纳 2000 个 run，远大于
+ * worker 单 tick 处理量；老的 runId 早就 terminal 了，淘汰它们的 dedup-key
+ * 不会重复 emit notice（因为 terminal run 不会再被 resolve）。
+ */
+const EMIT_CACHE_CAP = 10000;
+const _emittedKeys = new Map<string, true>();
 export function _resetRunLlmClientNoticeDedup(): void {
   _emittedKeys.clear();
 }
@@ -33,8 +42,18 @@ async function emitOnce(
   payload: Omit<Parameters<typeof emitNotice>[0], 'runId' | 'code'>,
 ): Promise<void> {
   const key = `${runId}:${providerId}:${code}`;
-  if (_emittedKeys.has(key)) return;
-  _emittedKeys.add(key);
+  if (_emittedKeys.has(key)) {
+    // bump to most-recently-used
+    _emittedKeys.delete(key);
+    _emittedKeys.set(key, true);
+    return;
+  }
+  _emittedKeys.set(key, true);
+  if (_emittedKeys.size > EMIT_CACHE_CAP) {
+    // 删除最早插入的 key（Map iterator 顺序 = 插入顺序）
+    const oldest = _emittedKeys.keys().next().value;
+    if (oldest !== undefined) _emittedKeys.delete(oldest);
+  }
   await emitNotice({ runId, code, ...payload });
 }
 

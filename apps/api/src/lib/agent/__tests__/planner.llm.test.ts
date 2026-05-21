@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   generatePlanWithLlm,
   parsePlannerJson,
-  generatePlanForEcho,
+  PlannerJsonParseError,
 } from '../planner.js';
 import { toolRegistry } from '../toolRegistry.js';
 import { registerEchoSleep } from '../tools/echoSleep.js';
@@ -168,29 +168,32 @@ describe('generatePlanWithLlm (LlmChatClient interface, M1e Task 11d)', () => {
     expect(messages[1].content).toContain('帮我研究家族信托');
   });
 
-  it('falls back to echo planner if LLM throws', async () => {
+  it('M1e review followup: LLM error propagates (caller handles fallback + notice)', async () => {
     const llm = makeMockLlm(() => {
       throw new Error('llm down');
     });
-    const plan = await generatePlanWithLlm({
-      inputText: '跑两步 echo',
-      snapshot: snapshot(),
-      llm,
-      signal: new AbortController().signal,
-    });
-    expect(plan.steps[0].toolName).toBe('echo_after_sleep');
-    expect(plan.steps.length).toBe(generatePlanForEcho('跑两步 echo').steps.length);
+    // 之前是 silently fall back to echo plan，但那让 buildInitialPlan 的 emit-notice
+    // 代码路径成了死代码。修复后：直接 throw，由 buildInitialPlan 决定 fallback + notice。
+    await expect(
+      generatePlanWithLlm({
+        inputText: '跑两步 echo',
+        snapshot: snapshot(),
+        llm,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow('llm down');
   });
 
-  it('falls back to echo planner if LLM returns invalid JSON', async () => {
+  it('M1e review followup: invalid JSON throws PlannerJsonParseError (caller handles fallback)', async () => {
     const llm = makeMockLlm(() => 'not json at all');
-    const plan = await generatePlanWithLlm({
-      inputText: '跑三步 echo',
-      snapshot: snapshot(),
-      llm,
-      signal: new AbortController().signal,
-    });
-    expect(plan.steps[0].toolName).toBe('echo_after_sleep');
+    await expect(
+      generatePlanWithLlm({
+        inputText: '跑三步 echo',
+        snapshot: snapshot(),
+        llm,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBeInstanceOf(PlannerJsonParseError);
   });
 
   it('propagates the caller-provided AbortSignal into llm.chat opts', async () => {

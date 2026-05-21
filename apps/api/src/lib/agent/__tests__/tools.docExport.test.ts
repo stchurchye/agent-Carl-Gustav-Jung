@@ -135,6 +135,62 @@ describe('docExportMarkdown tool', () => {
     expect(typeof listNoticesForRun).toBe('function');
   });
 
+  it('M1e review followup: first agent write to user-pre-existing doc (no agentLastExportHash) → versions, does NOT overwrite', async () => {
+    // reviewer 指出的"first-touch overwrite"。场景：用户在写作页手动建了一篇文档
+    // 并写了内容，agent 后来想以同 title export → 老代码会**静默覆盖用户原稿**，
+    // 因为 lastHash=null 走 else 分支。修复后：lastHash=null 且当前内容非空时
+    // 也走 v2 路径保护用户原稿。
+    const user = await ensureUser('preExist');
+    const title = '我自己写的文档 ' + randomUUID().slice(0, 6);
+
+    // 1. 用户手动创建并写入内容（不经 agent，因此 agentLastExportHash=null）
+    const { createDocument, saveDocumentContent } = await import('../../../store/pg.js');
+    const userDoc = await createDocument(user.id, title);
+    const fresh = await getDocument(user.id, userDoc.id);
+    const ch = fresh?.chapters[0];
+    const block = ch?.blocks[0];
+    await saveDocumentContent(
+      user.id,
+      userDoc.id,
+      ch!.id,
+      block!.id,
+      '# 用户原稿\n这是我手动写的，不要被覆盖',
+    );
+
+    // 2. agent 第一次 export 到同 title → 应当 version 而不是覆盖
+    const out = await docExportMarkdownTool.handler(
+      { title, markdown: '# agent 生成内容\n应当存到 v2 而不是覆盖' },
+      { ...ctxFor(user.id), runId: 'r-firsttouch-' + randomUUID() },
+    );
+    expect(out.created).toBe(true);
+    expect(out.documentId).not.toBe(userDoc.id);
+    expect(out.title).toMatch(new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} v2$`));
+
+    // 3. 用户原稿完整保留
+    const original = await getDocument(user.id, userDoc.id);
+    expect(original?.chapters[0]?.blocks[0]?.content).toContain('用户原稿');
+    expect(original?.chapters[0]?.blocks[0]?.content).not.toContain('agent 生成内容');
+  });
+
+  it('M1e review followup: first agent write to EMPTY pre-existing doc → still overwrites (shell case)', async () => {
+    // 边界：用户/系统建了一个 title 但完全空白（典型场景：刚 createDocument 没填）。
+    // 此时 lastHash=null 且 currentText='' → 不算"用户原稿"，允许覆盖。
+    const user = await ensureUser('preEmpty');
+    const title = '空白文档 ' + randomUUID().slice(0, 6);
+    const { createDocument } = await import('../../../store/pg.js');
+    const shell = await createDocument(user.id, title);
+
+    const out = await docExportMarkdownTool.handler(
+      { title, markdown: '# agent 填充\n这次允许覆盖空 shell' },
+      ctxFor(user.id),
+    );
+    expect(out.created).toBe(false);
+    expect(out.documentId).toBe(shell.id);
+    expect(out.title).toBe(title);
+    const fresh = await getDocument(user.id, shell.id);
+    expect(fresh?.chapters[0]?.blocks[0]?.content).toContain('agent 填充');
+  });
+
   it('M1e 13.2: re-export when user did NOT edit → still overwrites in-place', async () => {
     const user = await ensureUser('docOver');
     const title = '研究：未改 ' + randomUUID().slice(0, 6);

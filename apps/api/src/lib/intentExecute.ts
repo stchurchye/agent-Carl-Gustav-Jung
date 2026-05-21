@@ -38,10 +38,18 @@ export type ExecuteIntentInput = {
   apiKey: string;
   deepseekApiKey?: string;
   /**
-   * M1e Task 12: user-provided ZenMux key 同 deepseekApiKey 一道走 sealed 落库。
-   * 当 agentOptions.providerId='zenmux' 时优先用这个。
+   * @deprecated M1e review followup：原来是 header-or-env 混合值，会把 server key
+   * 误当 user key 加密落库。已废弃，新代码请用 `userDeepseekKey` / `userZenmuxKey`。
+   * 暂时保留是因为有测试还在用，下次清理。
    */
   zenmuxApiKey?: string;
+  /**
+   * M1e review followup: **只在 user 真正传 header 时**才有值。worker 会把它 sealed
+   * 落到 `agent_runs.user_api_key_enc`（providerId=deepseek 时）。
+   */
+  userDeepseekKey?: string;
+  /** 同 userDeepseekKey，但对应 providerId=zenmux，落到 user_zenmux_key_enc。 */
+  userZenmuxKey?: string;
   model?: string;
   dialect?: import('@xzz/shared').ReplyDialect;
   contextSelection?: ContextSelection;
@@ -161,11 +169,15 @@ export async function executeIntent(
   if (input.kind === 'agent_run') {
     const { createAgentRun } = await import('./agent/runtime.js');
     const providerId = input.agentOptions?.providerId; // undefined → DB default 'deepseek'
-    // 根据 providerId 选 user key 字段：zenmux 用 zenmuxApiKey，否则用 deepseekApiKey。
+    // M1e review followup：**只取 user-source 的 key**（即 caller 用 userDeepseekKey
+    // / userZenmuxKey 显式传过来的）；server env key 由 worker 端 runLlmClient 取，
+    // 永远不会被错误地加密落到 user_*_key_enc 列。
     const userKey =
-      providerId === 'zenmux' ? input.zenmuxApiKey : input.deepseekApiKey;
-    const apiKey = userKey ?? input.apiKey;
-    const apiKeySource = userKey ? 'user' : 'server';
+      providerId === 'zenmux' ? input.userZenmuxKey : input.userDeepseekKey;
+    // 给 createAgentRun 的 apiKey 仅在 apiKeySource='user' 时被使用；source='server'
+    // 时 createAgentRun 不会读它，但需要传一个 string 占位 → 给 ''（落库为 null）。
+    const apiKey = userKey ?? '';
+    const apiKeySource: 'user' | 'server' = userKey ? 'user' : 'server';
     const modelId = input.agentOptions?.modelId;
 
     if (input.channel === 'private') {
