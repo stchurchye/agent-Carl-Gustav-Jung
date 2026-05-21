@@ -238,11 +238,19 @@ export async function listOwnSkills(userId: string): Promise<TopicSkill[]> {
  * - group-scope：group_id = groupId（不限 owner）
  * - topic-scope：topic_id = topicId（不限 owner）
  * 全部仅返回 enabled=true。
+ *
+ * M1e Task 10：read 路径 defense-in-depth —— 写入 path（`upsertSkill`）只在 task 5 后才
+ * 严格 reject high；M1d 老数据可能含 high pattern。这里返回前再跑一次 `validateSkillInput`，
+ * 若命中 high 则 drop + 若提供了 `runId` 就 emit 一条 `SKILL_DROPPED` notice，让用户能在
+ * UI 看到"你那条危险 skill 被运行时丢了，请改一下"。
+ *
+ * `runId` optional：测试 / 非 agent run 路径调用时不需要 surface notice。
  */
 export async function listForAgent(params: {
   userId: string;
   groupId?: string;
   topicId?: string;
+  runId?: string;
 }): Promise<TopicSkill[]> {
   const ors: string[] = [];
   const values: unknown[] = [];
@@ -265,5 +273,42 @@ export async function listForAgent(params: {
      ORDER BY updated_at DESC`,
     values,
   );
-  return rows.map(parseRow);
+  const all = rows.map(parseRow);
+
+  // M1e Task 10：二次过滤。命中 high pattern 的 skill drop 掉、不向 LLM 注入。
+  // 同时（如果有 runId）emit 一条 SKILL_DROPPED notice 给 UI banner 用。
+  const safe: TopicSkill[] = [];
+  const dropped: { skill: TopicSkill; issues: SkillValidationIssue[] }[] = [];
+  for (const s of all) {
+    const issues = validateSkillInput({ title: s.title, content: s.content });
+    const highs = issues.filter((i) => i.severity === 'high');
+    if (highs.length > 0) {
+      dropped.push({ skill: s, issues: highs });
+    } else {
+      safe.push(s);
+    }
+  }
+  if (dropped.length > 0 && params.runId) {
+    const { emitNotice } = await import('./notices.js');
+    await emitNotice({
+      runId: params.runId,
+      severity: 'warn',
+      code: 'SKILL_DROPPED',
+      message: `已丢弃 ${dropped.length} 条含 jailbreak 风险的 topic skill，请到设置里修改它们。`,
+      context: {
+        droppedSkills: dropped.map((d) => ({
+          id: d.skill.id,
+          title: d.skill.title.slice(0, 40),
+          reasons: d.issues.map((i) => `${i.field}:${i.reason}`),
+        })),
+      },
+    });
+  } else if (dropped.length > 0) {
+    console.warn(
+      '[topicSkills.listForAgent] dropped',
+      dropped.length,
+      'high-pattern skills (no runId → no UI notice)',
+    );
+  }
+  return safe;
 }
