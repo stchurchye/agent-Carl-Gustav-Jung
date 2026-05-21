@@ -11,7 +11,7 @@
 - DB 操作 / 长循环 / 多步 `await`：在每轮 await 之间穿插 `if (ctx.signal.aborted) throw new Error('aborted')`
 - 内部包了 AbortController（如 urlFetch 的超时控制）：用 `ctx.signal.addEventListener('abort', () => innerAc.abort(), { once: true })`，并在 `finally` 里 `removeEventListener` 防泄漏
 
-> ⚠️ **ESLint 状态（M1f 当前）：** `apps/api` **尚未配置 ESLint pipeline**（无 `.eslintrc*` / `eslint.config.*`，`package.json` 无 lint script）。规则文件 `apps/api/eslint-rules/agent-tool-fetch-signal.js` 已 land 但**不会自动执行**。在 lint 接入前，「fetch 必须带 signal」**只能作为人工 code review checklist**。新工具评审时务必手动 grep 自己的代码确认 `fetch(...)` 第二个参数对象里有 `signal: ctx.signal`。Lint pipeline 启用后此 rule 会自动生效，不需要重写。
+> Lint: 跑 `npm run lint:agent-tools`（或 `npm run lint`），CI 暂未接，本地写工具前/PR 前手动跑一次。规则文件在 `apps/api/eslint-rules/agent-tool-fetch-signal.js`。
 
 ### 关键不变量：AbortError 必须透传
 
@@ -70,4 +70,4 @@ replyMeta: {
 - 工具实现：`apps/api/src/lib/agent/tools/<name>.ts`
 - 工具测试：`apps/api/src/lib/agent/__tests__/tools.<name>.test.ts`
 - 注册入口：`apps/api/src/lib/agent/registerAgentTools.ts`
-- ESLint rule：`apps/api/eslint-rules/agent-tool-fetch-signal.js`（待 lint pipeline 启用）
+- ESLint rule：`apps/api/eslint-rules/agent-tool-fetch-signal.js`（已接入 `apps/api/eslint.config.js`，跑 `npm run lint:agent-tools`）

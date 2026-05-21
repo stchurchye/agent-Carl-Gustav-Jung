@@ -10,7 +10,9 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint:agent-tools": "eslint 'src/lib/agent/tools/**/*.ts'",
+    "lint": "npm run lint:agent-tools"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.4",
@@ -29,6 +31,8 @@
     "@types/json-schema": "^7.0.15",
     "@types/node": "^22.15.21",
     "@types/pg": "^8.20.0",
+    "@typescript-eslint/parser": "^8.59.4",
+    "eslint": "^10.4.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
