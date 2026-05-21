@@ -7,6 +7,17 @@
 
 ---
 
+> ## ⚠️ 历史变更（M1f 起需注意）
+>
+> 本文档为 M1a-M1d 阶段的现行设计基线，**仅作历史参考**。后续里程碑对若干设计点做了调整，本文档未原地更新。读代码 / 接 M2 时请优先参考实际实现 + 后续 spec：
+>
+> - **`awaiting_confirm` 状态已删除（M1f #6）**：本文 §3.1 §6 §11 §12 §15 多处提到的 `awaiting_confirm` 状态、`POST /agent/runs/:id/confirm` 路由、worker 处理分支均已在 M1f 移除。原因：M1d 引入但 mobile 从未接对应 UI，worker 路径不可达。如未来需要"先确认参数再 run" → 重新加 enum value 即可。详见 `docs/superpowers/specs/2026-05-21-agent-runtime-m1f-design.md` §6。
+> - **工具 output `{ok, ...}` 软约定（M1f #5）**：本文未提及；工具失败现在通过 `ok:false` 软回避 throw，让 planner replan。详见 M1f spec §3/§5。
+> - **ToolDef.replyMeta（M1f #2）**：本文未提及；replyGen 已去硬编码 toolName。详见 M1f spec §2。
+> - **`previousFailure` 注入 + critique-replan loop 闭环（M1f polish #1）**：replan 路径现在会把上一步失败原因喂给 planner LLM。详见 polish merge commit。
+
+---
+
 ## 1. 背景与目标
 
 ### 1.1 问题陈述
