@@ -5,7 +5,9 @@
  * M1e task 1：拆出，零行为变更。
  * - resolveToolCallKey：idempotency key 拼接
  * - applyReplanningIfNeeded：进入 replanning 状态时重写 plan + reset usage.steps
- * - recordReclaimIfNeeded：M1d T5 reclaim 检测 + 写 heartbeat step
+ * - recordReclaimIfNeeded：M1d T5 reclaim 检测 + 写 reclaim step（M1e task 6
+ *   把 step kind 从 'heartbeat' 改成 'reclaim'，语义更准；老 DB 行的 'heartbeat'
+ *   仍是合法 kind，read path 兼容）
  * - detectPendingGrantBypass：approve 后 re-pickup 跳过 approval gate 一次
  */
 import * as store from './store.js';
@@ -81,15 +83,19 @@ export async function recordReclaimIfNeeded(
     return { run, completedCount: run.usage.steps };
   }
   const allStepsForReclaim = await store.listSteps(run.id);
+  // M1e task 6：approval_deny 在 approvalMode='never' 路径会推进 plan 指针（worker 跳过该
+  // step 不调 tool），所以也应该算作 advancing。否则 worker A 写完 deny 崩溃后，worker B
+  // 会 spurious-emit 一条 reclaim step，看起来像 B 在重写历史。
   const dbAdvancing = allStepsForReclaim.filter(
-    (s) => s.kind === 'tool_call' || s.kind === 'observe',
+    (s) => s.kind === 'tool_call' || s.kind === 'observe' || s.kind === 'approval_deny',
   ).length;
   if (dbAdvancing <= run.usage.steps) {
     return { run, completedCount: run.usage.steps };
   }
+  // M1e task 6：kind 从 'heartbeat' 改为 'reclaim'，更准确（heartbeat = 心跳，与此场景无关）。
   await recordStep({
     runId: run.id,
-    kind: 'heartbeat',
+    kind: 'reclaim',
     output: {
       reclaim: true,
       prevUsageSteps: run.usage.steps,
@@ -115,6 +121,7 @@ export async function detectPendingGrantBypass(runId: string): Promise<boolean> 
     .find(
       (s) =>
         s.kind !== 'heartbeat' &&
+        s.kind !== 'reclaim' &&
         s.kind !== 'approval_timeout',
     );
   return lastMeaningful?.kind === 'approval_grant';

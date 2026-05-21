@@ -10,8 +10,10 @@ export type AgentRunStatus =
   | 'cancelled'
   | 'budget_exhausted';
 
+// 必须与后端 `apps/api/src/lib/agent/types.ts` 的 StepKind 联合类型对齐（M1e task 6/7）。
 export type AgentStepKind =
   | 'plan'
+  | 'replan'
   | 'tool_call'
   | 'tool_error'
   | 'observe'
@@ -21,7 +23,11 @@ export type AgentStepKind =
   | 'approval_request'
   | 'approval_grant'
   | 'approval_deny'
-  | 'approval_timeout';
+  | 'approval_timeout'
+  | 'cancel'
+  | 'reclaim'
+  | 'heartbeat' // 老 run 兼容
+  | 'system_error';
 
 export type AgentStep = {
   id: string;

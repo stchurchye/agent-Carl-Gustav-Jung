@@ -105,6 +105,9 @@ export type StepKind =
   | 'approval_timeout'
   | 'cancel'
   | 'steer'
+  // 'reclaim' (M1e task 6) 替代旧的 'heartbeat'：worker 接管 crashed run 时写一条审计步。
+  // 老 DB 行里仍可能存在 'heartbeat'，保留为合法值以便读取历史 run。
+  | 'reclaim'
   | 'heartbeat'
   | 'system_error';
 
