@@ -5,7 +5,7 @@ import { toolRegistry, type ToolDef, type ToolReplyMeta } from './toolRegistry.j
 const REPLY_SYSTEM = `你是 agent 任务的收尾发言人。
 读取已完成的工具调用结果，用 1-3 段中文给用户回复：
 - 简要总结做了什么、得到什么
-- 如果生成了文档（doc_export_markdown），明确告知文档标题
+- 如果 user 段里"已写入资源"非空，明确告知每个资源的 label
 - 别复述全部 raw 数据，只给关键结论
 - 末尾不需要 emoji 或客套话`;
 
@@ -28,6 +28,9 @@ export function collectReplyRefs(
   toolMap: Map<string, ToolDef>,
 ): ReplyRef[] {
   const refs: ReplyRef[] = [];
+  // M1f followup：runtime 里 tool_call + observe 两条 step 可能引用同一份 output，
+  // 不去重的话 ref 清单会出现重复。按 `${kind}:${id}` 维护一个 seen Set。
+  const seen = new Set<string>();
   for (const s of steps) {
     if (!s.toolName) continue;
     const tool = toolMap.get(s.toolName);
@@ -37,7 +40,11 @@ export function collectReplyRefs(
       (s.output as { result?: unknown } | null)?.result ?? s.output;
     try {
       const ref = extractRef(raw);
-      if (ref) refs.push(ref);
+      if (!ref) continue;
+      const key = `${ref.kind}:${ref.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      refs.push(ref);
     } catch {
       // tool extractRef throw 不应让 reply 整体崩
     }
@@ -57,7 +64,7 @@ export function summarizeStepOutput(
   kind: ToolReplyMeta['summaryKind'] = 'text',
 ): string {
   if (kind === 'silent') return '';
-  if (kind === 'export_ref') return '[已写入文档，详见下方文档清单]';
+  if (kind === 'export_ref') return '[已写入资源，详见下方资源清单]';
   if (kind === 'list') {
     const arr =
       (out as { results?: unknown[]; items?: unknown[] } | null)?.results ??

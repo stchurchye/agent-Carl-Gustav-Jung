@@ -75,11 +75,37 @@ describe('M1f collectReplyRefs / summarizeStepOutput', () => {
 
   it('summarizeStepOutput: export_ref kind returns short marker only', () => {
     const s = summarizeStepOutput({ documentId: 'd1', title: 't' }, 'export_ref');
-    expect(s).toMatch(/^\[已写入文档/);
+    expect(s).toMatch(/^\[已写入资源/);
   });
 
   it('summarizeStepOutput: default text kind truncates to 200 chars', () => {
     const long = 'x'.repeat(500);
     expect(summarizeStepOutput(long, 'text').length).toBeLessThanOrEqual(200);
+  });
+
+  it("summarizeStepOutput: list kind with neither 'results' nor 'items' falls back to text path", () => {
+    const out = { something: 'else', payload: 'data' };
+    const summary = summarizeStepOutput(out, 'list');
+    // 应该 fallback 到 text 路径 (JSON.stringify 截断)
+    expect(summary).toMatch(/\{|\"/);
+  });
+
+  it('collectReplyRefs: extractRef that throws is swallowed (does not poison reply)', () => {
+    const buggyTool: Pick<ToolDef, 'name' | 'replyMeta'> = {
+      name: 'buggy',
+      replyMeta: {
+        summaryKind: 'export_ref',
+        extractRef: () => { throw new Error('boom'); },
+      },
+    };
+    const refs = collectReplyRefs(
+      [fakeStep('buggy', { x: 1 })],
+      new Map([[buggyTool.name, buggyTool as ToolDef]]),
+    );
+    expect(refs).toEqual([]);
+  });
+
+  it('summarizeStepOutput: primitive number output stringifies', () => {
+    expect(summarizeStepOutput(42, 'text')).toBe('42');
   });
 });

@@ -40,12 +40,8 @@ export const magiContentIngestTool: ToolDef<MagiContentIngestInput, MagiContentI
     summaryKind: 'silent',
     extractRef: (output) => {
       const o = output as { title?: string; videoUrl?: string } | null;
-      if (!o?.title) return null;
-      return {
-        kind: 'magi_card',
-        id: o.videoUrl ?? o.title,
-        label: o.title,
-      };
+      if (!o?.videoUrl) return null; // 没有稳定 id 就不进 reply refs
+      return { kind: 'magi_card', id: o.videoUrl, label: o.title };
     },
     failureHint: 'MAGI Content 写入失败可能是上游 5xx 或鉴权问题。可跳过本 URL 继续其它任务。',
   },
