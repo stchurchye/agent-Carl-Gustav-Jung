@@ -771,9 +771,9 @@ feat(agent-mobile): per-run model selection UI + intentExecute agentOptions wiri
 
 ---
 
-## 14. Task 13：M1c 高优先级 followups
+## 14. Task 13：M1c 高优先级 followups ✅ DONE (commit 01b47db)
 
-来自 M1c code review（2026-05-21），含 1 个 🔴 必修 + 4 个 🟡 高优。
+来自 M1c code review（2026-05-21），含 1 个 🔴 必修 + 4 个 🟡 高优。**全部完成**。
 
 ### 14.1 urlFetch HTML size cap（🔴 必修）
 
