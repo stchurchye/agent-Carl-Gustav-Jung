@@ -25,8 +25,24 @@
 | 10 | `listForAgent` 二次 validate + DB 历史 skills lazy scan + README/docs 收尾 | M | topicSkills + 文档 | review T7/T9 |
 | 11 | **LLM provider 抽象**（`LlmChatClient` 接口 + DeepSeek/ZenMux 两个实现 + `agent_runs.model_id` 列） | L | task 1 + task 9 | 用户需求："整体要能切换模型" |
 | 12 | per-run / per-topic 模型选择 UI + 鉴权（user-key per provider） | M | task 11 | 用户需求 |
+| 13 | **M1c 高优先级 followups**：urlFetch size cap、docExport 不覆盖用户编辑、idempotency key 加 ownerId、planner LLM 失败 emit notice、orchestrator 死代码清理 | M | task 1 + task 2 (notice) | M1c review 必修 + 高优 #1-5 |
 
-**预估总工时**：22-28h，task 1 / 11 各占半天，task 11 是 M1e 最大单点。
+**预估总工时**：26-32h，task 1 / 11 各占半天，task 11 / 13 是 M1e 两大单点。
+
+### M1c review followups 已并入 / 推后情况
+
+| review 项 | 处理 |
+|----------|------|
+| 🔴 `urlFetch` size cap | M1e task 13 |
+| 🟡 `docExportMarkdown` 覆盖用户编辑 | M1e task 13 |
+| 🟡 `docExportMarkdown` idempotency key 漏 ownerId | M1e task 13 |
+| 🟡 planner LLM 失败静默回 echo | M1e task 13（emit notice 走 task 2 通道） |
+| 🟡 orchestrator.ts 死代码 `analyzeIntent` | M1e task 13（删 dead code） |
+| 🟡 web_search 失败 planner 不识别（system prompt 缺约定） | **M2 推迟**（M2 真工具洪水时一并改 prompt 模板） |
+| 🟡 replyGen `collectExportedDocs` 硬编码 | **M2 推迟**（M2 加 docExportFeishu / docExportPdf 时同时改） |
+| 🟡 replyGen `summarizeOutput` 摘要丢信息 | **M2 推迟**（同上，按 tool 走分策略） |
+| 🟡 parsePlannerJson 尾随逗号 / 多余文字 | **M2 推迟**（节点小、可在 M2 计划里顺手做） |
+| 🟡 magiSystemRead 错误吃掉 → output 加 `ok` | **M2 推迟**（属于 MAGI 工具集合统一治理） |
 
 ### 不在 M1e 范围（推后到 M2 / 单独里程碑）
 
@@ -546,25 +562,131 @@ feat(agent-mobile): per-run model selection UI + intentExecute agentOptions wiri
 
 ---
 
-## 14. 合并 & tag
+## 14. Task 13：M1c 高优先级 followups
+
+来自 M1c code review（2026-05-21），含 1 个 🔴 必修 + 4 个 🟡 高优。
+
+### 14.1 urlFetch HTML size cap（🔴 必修）
+
+`apps/api/src/lib/agent/tools/urlFetch.ts:52-72`
+
+修改：
+```ts
+const MAX_BYTES = 4 * 1024 * 1024;          // 4MB 上限
+const ALLOWED_CT = /^(text\/html|application\/xhtml\+xml|text\/plain)/i;
+
+const res = await fetch(input.url, { signal: ctx.signal, headers: { Accept: 'text/html,application/xhtml+xml' }});
+const ct = res.headers.get('content-type') ?? '';
+if (!ALLOWED_CT.test(ct)) throw new Error(`unsupported content-type: ${ct}`);
+const cl = Number(res.headers.get('content-length'));
+if (cl && cl > MAX_BYTES) throw new Error(`payload too large: ${cl}`);
+
+// 边读边累计 byteLength，超阈值 abort
+const reader = res.body!.getReader();
+const decoder = new TextDecoder();
+let html = '';
+let bytes = 0;
+while (true) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  bytes += value.byteLength;
+  if (bytes > MAX_BYTES) { try { await reader.cancel(); } catch {} throw new Error('payload exceeded MAX_BYTES'); }
+  html += decoder.decode(value, { stream: true });
+}
+html += decoder.decode();
+// ... 然后 new JSDOM(html, ...)
+```
+
+测试 `tools.urlFetch.test.ts` 新增 3 例：
+- content-type 不允许 → throw
+- content-length > 4MB → throw（mock fetch 返回 headers + 大 body 不会真的传完）
+- 实际累计超阈值 → throw + reader.cancel 被调
+
+### 14.2 docExportMarkdown 不覆盖用户编辑（🟡）
+
+`apps/api/src/lib/agent/tools/docExportMarkdown.ts:60-91`
+
+改造：
+- upsert 命中已有 doc 时，先取当前 first-block 的 text；与"agent 上次写入的内容 hash"比对（hash 存在 `documents.payload.agentLastExportHash`）。
+- 若不一致（说明用户改过），**不覆盖**，而是创建一个新文档 title 形如 `${input.title} v2`，并 emitNotice 告诉用户。
+- 一致则正常覆盖 + 更新 hash。
+
+需要在 `documents.payload` 加 `agentLastExportHash?: string` 字段（已是 JSONB，无 migration 成本）。
+
+### 14.3 docExportMarkdown idempotency key 加 ownerId（🟡）
+
+`apps/api/src/lib/agent/tools/docExportMarkdown.ts:50-53`
+
+```ts
+computeIdempotencyKey: (input, ctx) =>
+  'doc:' + createHash('sha256').update(`${ctx.ownerId}:${input.title.trim().toLowerCase()}`).digest('hex'),
+```
+
+注意 `computeIdempotencyKey` 当前签名只接 `input` 不接 `ctx` —— 看 `toolRegistry.ts` 是否需要扩签名。若不便扩，临时方案：把 ownerId 拼到 toolCallKey 外层（在 `resolveToolCallKey` 里加 `${run.ownerId}:`）。
+
+测试加：同 input、不同 ownerId → idempotency key 应不同。
+
+### 14.4 planner LLM 失败 emit notice + system_error step（🟡）
+
+`apps/api/src/lib/agent/runPlanGlue.ts`（task 1 拆完后的位置）的 `buildInitialPlan` catch 分支：
+
+```ts
+try {
+  return await generatePlanWithLlm({ inputText: text, snapshot, llm });
+} catch (e) {
+  await recordStep({ runId: run.id, kind: 'system_error', error: `planner_llm_fallback: ${msg(e)}` });
+  await emitNotice({
+    runId: run.id, severity: 'warn', code: 'PLANNER_LLM_FALLBACK',
+    message: 'AI 规划暂时不可用，已退回到 echo 计划。建议稍后重试或检查 LLM 配置。',
+    context: { providerId: llm.providerId, modelId: llm.modelId, error: msg(e) },
+  });
+  return generatePlanForEcho(text);
+}
+```
+
+测试 `runtime.research.e2e.test.ts` 或新 fixture：mock llm.chat throw → run 完成后 listNotices(run.id) 应含 `PLANNER_LLM_FALLBACK`。
+
+### 14.5 删 orchestrator 死代码 `analyzeIntent`（🟡）
+
+`apps/api/src/lib/orchestrator.ts:78-83` 的 `top.kind !== 'agent_run'` 守卫在 `analyzeIntent` 函数里，**没有任何 production 调用点**（生产走 `intentAnalyzer.pickAutoExecute`）。
+
+两个动作：
+1. 删 `analyzeIntent` 函数 + 它专属的 `__tests__/orchestrator.agent.test.ts`（已无现实意义）；
+2. 把 "agent_run 不 autoExecute" 的真守卫加到 `intentAnalyzer.pickAutoExecute` 里（哪怕 `forceChips:true` 兜得住，这里加一道明确守卫做 defense-in-depth）：
+   ```ts
+   if (candidate.kind === 'agent_run') return false;
+   ```
+
+测试 `intentAnalyzer.test.ts` 新增 1 case：agent_run 即使 confidence=1.0 也不会 autoExecute。
+
+### 14.6 Commit
+
+```
+fix(agent): M1c review followups — urlFetch size cap, docExport safety, planner fallback notice, orchestrator dead code
+```
+
+---
+
+## 15. 合并 & tag
 
 ```bash
 git checkout main
-git merge --no-ff feat/agent-runtime-m1e -m "Merge M1e: tech-debt cleanup + LLM provider abstraction"
+git merge --no-ff feat/agent-runtime-m1e -m "Merge M1e: tech-debt cleanup + LLM provider abstraction + M1c followups"
 git tag v0.m1e
 ```
 
 验收清单：
-- ✅ 4 个 review blocker 全修
+- ✅ 4 个 M1d review blocker 全修
+- ✅ M1c review 1 必修 + 4 高优全修
 - ✅ runtime.ts 拆完（每文件 ≤ 250 行）
 - ✅ LLM provider 抽象就绪：DeepSeek + ZenMux 都能跑 agent，用户可在 UI 选 provider
-- ✅ 169 → ~210 tests 全绿（每 task 至少 +1 case）
+- ✅ 169 → ~215 tests 全绿（每 task 至少 +1 case）
 - ✅ `tsc -p apps/{api,mobile}` clean
 - ✅ README / spec / `.env.example` 一致
 
 ---
 
-## 15. 风险与 fallback
+## 16. 风险与 fallback
 
 - **Task 1（拆 runtime.ts）是最大风险**：如果拆完测试挂，回退方式 = `git checkout main -- apps/api/src/lib/agent/runtime.ts` 再 rebase，必要时 task 1 单独拉一个 PR 让 reviewer 先 sign-off。
 - **Task 2（notice 通道）**：DB 写入失败时绝对不能阻塞 agent run，所有 `emitNotice` 必须 try/catch + console.warn。
@@ -574,10 +696,10 @@ git tag v0.m1e
 
 ---
 
-## 16. 与后续里程碑的衔接
+## 17. 与后续里程碑的衔接
 
 | 里程碑 | 主题 | 依赖 M1e 的什么 |
 |--------|------|---------------|
-| **M2** | 真工具洪水：pdf_reader / wikipedia / youtube_transcript / docExportFeishu / docExportPdf / mapsPlaces / jsRender | 拆模块后的 runApiKey + notice 通道（feishu 401 时 surface） |
+| **M2** | 真工具洪水：pdf_reader / wikipedia / youtube_transcript / docExportFeishu / docExportPdf / mapsPlaces / jsRender；同时收 M1c review 推迟的 5 项（web_search planner 约定、replyGen tags、summarizeOutput 分策略、parsePlannerJson 宽松、magiSystemRead `ok` 字段） | 拆模块后的 runApiKey + notice 通道（feishu 401 时 surface）+ LLM provider 抽象（每个工具可指定首选 model） |
 | **M3** | browserUse（Stagehand + Playwright + Docker Chromium） | secretBox 版本化（远端浏览器 session token 也要 seal）+ MCP stdio（可考虑把 browser 包成 MCP server） |
 | **B 子项目** | 群聊 agent 并发协调 | runExecute 已收敛，加 `topic_locks` 表 + `acquireTopicLock` hook 即可 |
