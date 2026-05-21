@@ -1,6 +1,5 @@
 export type AgentRunStatus =
   | 'draft'
-  | 'awaiting_confirm'
   | 'planning'
   | 'running'
   | 'awaiting_approval'

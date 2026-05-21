@@ -6,6 +6,7 @@ type EchoSleepInput = {
 };
 
 type EchoSleepOutput = {
+  ok: boolean;
   text: string;
   sleptMs: number;
 };
@@ -25,6 +26,7 @@ export const echoSleepTool: ToolDef<EchoSleepInput, EchoSleepOutput> = {
   costHint: 'low',
   hasSideEffects: false,
   idempotent: true,
+  replyMeta: { summaryKind: 'silent' },
   async handler(input, ctx) {
     const ms = Math.max(0, Math.min(input.sleepMs ?? 1000, 30_000));
     await new Promise<void>((resolve, reject) => {
@@ -38,7 +40,7 @@ export const echoSleepTool: ToolDef<EchoSleepInput, EchoSleepOutput> = {
         { once: true },
       );
     });
-    return { text: input.text, sleptMs: ms };
+    return { ok: true, text: input.text, sleptMs: ms };
   },
 };
 

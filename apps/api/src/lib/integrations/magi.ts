@@ -9,7 +9,10 @@ export function magiSystemEnabled(): boolean {
   return process.env.MAGI_SYSTEM_ENABLED === '1' && Boolean(MAGI_SYSTEM_URL);
 }
 
-export async function queryMagiSystem(question: string): Promise<string> {
+export async function queryMagiSystem(
+  question: string,
+  signal?: AbortSignal,
+): Promise<string> {
   if (!magiSystemEnabled()) {
     return 'MAGI 知识库未启用。请在服务端配置 MAGI_SYSTEM_ENABLED=1 与 MAGI_SYSTEM_URL。';
   }
@@ -20,6 +23,7 @@ export async function queryMagiSystem(question: string): Promise<string> {
       Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
     },
     body: JSON.stringify({ question }),
+    signal,
   });
   if (!res.ok) {
     throw new Error(`magi-system HTTP ${res.status}`);
@@ -28,7 +32,10 @@ export async function queryMagiSystem(question: string): Promise<string> {
   return json.answer ?? json.text ?? '（无回复）';
 }
 
-export async function ingestMagiContent(url: string): Promise<{
+export async function ingestMagiContent(
+  url: string,
+  signal?: AbortSignal,
+): Promise<{
   title: string;
   summary: string;
   videoUrl?: string;
@@ -46,6 +53,7 @@ export async function ingestMagiContent(url: string): Promise<{
       Authorization: `Bearer ${process.env.MAGI_CONTENT_TOKEN ?? ''}`,
     },
     body: JSON.stringify({ url }),
+    signal,
   });
   if (!res.ok) {
     throw new Error(`magi-content HTTP ${res.status}`);

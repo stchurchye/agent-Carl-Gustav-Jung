@@ -8,12 +8,18 @@ type UrlFetchInput = {
 };
 
 type UrlFetchOutput = {
+  ok: boolean;
   url: string;
   title: string;
   excerpt: string;
   text: string;
   truncated: boolean;
+  error?: string;
 };
+
+function softFail(url: string, error: string): UrlFetchOutput {
+  return { ok: false, url, title: '', excerpt: '', text: '', truncated: false, error };
+}
 
 const DEFAULT_MAX_CHARS = 8000;
 const FETCH_TIMEOUT_MS = 30_000;
@@ -45,6 +51,10 @@ export const urlFetchTool: ToolDef<UrlFetchInput, UrlFetchOutput> = {
   costHint: 'low',
   hasSideEffects: false,
   idempotent: true,
+  replyMeta: {
+    summaryKind: 'text',
+    failureHint: '该 URL 可能 404 / 超时 / 非 HTML。可跳过此 URL 用其他搜索结果，或换 web_search 重新搜更可靠的来源。',
+  },
   computeIdempotencyKey: (input) => `url:${(input as UrlFetchInput).url.trim()}`,
   async handler(input, ctx) {
     const ac = new AbortController();
@@ -64,17 +74,20 @@ export const urlFetchTool: ToolDef<UrlFetchInput, UrlFetchOutput> = {
         redirect: 'follow',
       });
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status} for ${input.url}`);
+        return softFail(input.url, `HTTP ${res.status} for ${input.url}`);
       }
       // M1e Task 13.1：内容类型守卫 + 大小上限（header + 真实读流双重防御）
       const ct = res.headers.get('content-type') ?? '';
       if (ct && !ALLOWED_CT.test(ct)) {
-        throw new Error(`unsupported content-type: ${ct}`);
+        return softFail(input.url, `unsupported content-type: ${ct}`);
       }
       const clHeader = res.headers.get('content-length');
       const cl = clHeader ? Number(clHeader) : 0;
       if (cl > 0 && cl > MAX_BYTES) {
-        throw new Error(`payload too large per content-length: ${cl} > ${MAX_BYTES}`);
+        return softFail(
+          input.url,
+          `payload too large per content-length: ${cl} > ${MAX_BYTES}`,
+        );
       }
 
       const html = await readBodyWithCap(res, MAX_BYTES);
@@ -84,12 +97,26 @@ export const urlFetchTool: ToolDef<UrlFetchInput, UrlFetchOutput> = {
       const max = Math.max(500, Math.min(input.maxChars ?? DEFAULT_MAX_CHARS, 30_000));
       const truncated = rawText.length > max;
       return {
+        ok: true,
         url: input.url,
         title: article?.title ?? '',
         excerpt: (article?.excerpt ?? '').slice(0, 300),
         text: truncated ? rawText.slice(0, max) : rawText,
         truncated,
       };
+    } catch (e) {
+      // M1f #5: 区分 outer-cancel（ctx.signal.aborted）vs timeout（仅 ac.signal.aborted）。
+      // outer-cancel → 抛出让 runtime 看到；timeout / 其他错误 → soft-fail。
+      if (ctx.signal.aborted) {
+        throw e;
+      }
+      if (e instanceof Error && e.name === 'AbortError') {
+        return softFail(input.url, 'request timeout');
+      }
+      return softFail(
+        input.url,
+        e instanceof Error ? e.message : String(e),
+      );
     } finally {
       clearTimeout(t);
       ctx.signal.removeEventListener('abort', onOuterAbort);

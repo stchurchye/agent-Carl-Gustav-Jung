@@ -1,5 +1,5 @@
 /**
- * Agent run lifecycle —— create / softComplete / cancel / confirm。
+ * Agent run lifecycle —— create / softComplete / cancel。
  *
  * M1e task 1：从原 `runtime.ts` 拆出，零行为变更。
  * 依赖关系：
@@ -267,10 +267,4 @@ export async function cancelRun(
       }
     }
   }
-}
-
-export async function confirmRun(runId: string): Promise<void> {
-  const run = await store.getAgentRun(runId);
-  if (!run || run.status !== 'awaiting_confirm') return;
-  await store.updateAgentRun(runId, { status: 'running' });
 }

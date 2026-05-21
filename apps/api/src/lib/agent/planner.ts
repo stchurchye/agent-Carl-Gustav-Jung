@@ -101,6 +101,11 @@ export type LlmPlannerInput = {
   signal: AbortSignal;
   /** 默认 generalist。M1c 暂不区分 role。 */
   role?: string;
+  /**
+   * M1f #1：replan 场景下传入。让 LLM 知道上一步失败原因并避免重复同样错误。
+   * caller（runPlanGlue / steer / approval_deny replan）按需填。
+   */
+  previousFailure?: string;
 };
 
 /**
@@ -177,13 +182,25 @@ JSON 结构必须是：
 - 不要发明不存在的 toolName
 - steps 数量控制在 1-6 之间
 - 若任务完全是闲聊或单步问答，可只放 1 个 step
+
+工具调用约定（必读）：
+- 调用前阅读 tool description 的 inputSchema
+- 收到 observation 时检查 \`ok\` 字段：ok=false 或 error 字段非空 → 当前 step 失败
+- 失败处理：
+  a. 可以换参数重试（如不同搜索词 / 备选 url）→ 在新 plan 里补一个相同 tool 的 step
+  b. 该工具能力本身不可用（持续 4xx/5xx）→ 跳过该工具，用其他工具达成目标
+  c. 整条路径不可行 → 把已查到的部分写成 reply，明确告诉用户「X 不可达」
+- 不要忽略 ok=false 直接进下一步
 `;
 
 function buildPlannerSystemPrompt(tools: ToolDef[]): string {
   const toolBlock = tools
     .map((t) => {
       const schema = JSON.stringify(t.inputSchema).slice(0, 400);
-      return `- ${t.name}: ${t.description}\n  inputSchema: ${schema}`;
+      const hint = t.replyMeta?.failureHint
+        ? `\n  失败常见原因：${t.replyMeta.failureHint}`
+        : '';
+      return `- ${t.name}: ${t.description}\n  inputSchema: ${schema}${hint}`;
     })
     .join('\n');
   return `${PLANNER_INSTRUCTION}\n\n可用工具：\n${toolBlock}`;
@@ -193,7 +210,10 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   const summary = input.snapshot.shortSummary
     ? `\n\n# 当前上下文摘要\n${input.snapshot.shortSummary}`
     : '';
-  return `# 用户请求\n${input.inputText}${summary}`;
+  const failure = input.previousFailure
+    ? `\n\n# 上一步失败原因\n${input.previousFailure}\n请基于这个失败重新规划剩余步骤，避免重复同样错误。`
+    : '';
+  return `# 用户请求\n${input.inputText}${summary}${failure}`;
 }
 
 type LooseStep = {
@@ -217,20 +237,61 @@ type LoosePlan = {
   finalReplyHint?: unknown;
 };
 
+/**
+ * M1f #4：宽容解析 LLM 输出。处理常见污染：
+ * - markdown 围栏（```json / ``` 都剥）
+ * - 前后散文（截取第一个 { 到对应 } 的子串）
+ * - 尾随逗号（,} → } / ,] → ]）
+ * - CRLF（normalize 到 LF）
+ *
+ * 不引入 JSON5；只做 regex / bracket-counter 预处理 + 一次 JSON.parse。
+ */
 function tryParseJson(raw: string): LoosePlan | null {
-  // LLM 偶尔会包 ```json ... ```，宽松剥一下
-  const trimmed = raw
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/```$/i, '')
-    .trim();
+  const candidate = extractJsonCandidate(raw);
+  if (!candidate) return null;
   try {
-    const v = JSON.parse(trimmed) as LoosePlan;
+    const v = JSON.parse(candidate) as LoosePlan;
     if (!v || typeof v !== 'object') return null;
     return v;
   } catch {
     return null;
   }
+}
+
+function extractJsonCandidate(raw: string): string | null {
+  let s = raw.replace(/\r\n/g, '\n').trim();
+
+  const fenceMatch = s.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/i);
+  if (fenceMatch) {
+    s = fenceMatch[1].trim();
+  }
+
+  // 截取第一个 { ... } 平衡子串（应对前后散文 / string 内含 }）
+  const start = s.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let end = -1;
+  let inStr = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\') { escape = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) return null;
+  let body = s.slice(start, end + 1);
+
+  // 去尾随逗号：,} / ,] / ,\s*}
+  body = body.replace(/,(\s*[}\]])/g, '$1');
+
+  return body;
 }
 
 export function parsePlannerJson(raw: string, tools: ToolDef[]): Plan | null {
@@ -278,3 +339,14 @@ export function parsePlannerJson(raw: string, tools: ToolDef[]): Plan | null {
     version: 1,
   };
 }
+
+// =====================================================================
+// M1f：仅测试用 export
+//
+// 命名约定（M1f 起）：`_<name>ForTest` 表示"该 export 仅供单元测试访问 module
+// 内部 helper，不属于稳定 public API"。生产代码请不要 import；如果发现需要
+// 在生产里用，先把它升级为正式 export（去 `_` 前缀和 `ForTest` 后缀）。
+// 后续模块如有同样需求请沿用此约定。
+// =====================================================================
+export const _buildPlannerSystemPromptForTest = buildPlannerSystemPrompt;
+export const _buildPlannerUserPromptForTest = buildPlannerUserPrompt;

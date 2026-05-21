@@ -14,6 +14,26 @@ export type ToolCtx = {
   apiKey?: string;
 };
 
+/**
+ * M1f：把 replyGen 里硬编码的 `if (toolName === 'doc_export_markdown')` 模式
+ * 反转过来 —— tool 自己声明"我应该怎么进 final reply"。
+ *
+ * - `summaryKind`：摘要策略；replyGen 按这个决定如何渲染 step.output。
+ * - `extractRef`：当 tool 产出可引用 artifact（document/url/magi_card）时，
+ *   返回结构化 ref，replyGen 统一渲染成"已写入文档：xxx (id: yyy)"之类。
+ * - `failureHint`：失败时给 planner 看的提示文本（M1f Task 2 planner prompt
+ *   引用此字段告诉 LLM 失败常见原因）。
+ */
+export type ToolReplyMeta = {
+  summaryKind?: 'text' | 'list' | 'export_ref' | 'silent';
+  extractRef?: (output: unknown) => {
+    kind: 'document' | 'url' | 'magi_card';
+    id: string;
+    label?: string;
+  } | null;
+  failureHint?: string;
+};
+
 export type ToolDef<I = unknown, O = unknown> = {
   name: string;
   description: string;
@@ -24,6 +44,8 @@ export type ToolDef<I = unknown, O = unknown> = {
   hasSideEffects: boolean;
   idempotent: boolean;
   computeIdempotencyKey?: (input: I) => string;
+  /** M1f：reply / planner prompt 用的工具元数据。可选，默认 'text'。 */
+  replyMeta?: ToolReplyMeta;
   handler: (input: I, ctx: ToolCtx) => Promise<O>;
 };
 

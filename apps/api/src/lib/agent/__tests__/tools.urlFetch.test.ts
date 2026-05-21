@@ -44,6 +44,7 @@ describe('urlFetch tool', () => {
       { url: 'https://example.com/trust', maxChars: 500 },
       fakeCtx,
     );
+    expect(out.ok).toBe(true);
     expect(out.title).toContain('家族信托');
     expect(out.text.length).toBeLessThanOrEqual(500);
     expect(out.truncated).toBe(true);
@@ -68,14 +69,36 @@ describe('urlFetch tool', () => {
     expect(out.truncated).toBe(false);
   });
 
-  it('non-2xx throws', async () => {
+  it('M1f #5: non-2xx → { ok: false, error: HTTP xxx }, does not throw', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('boom', { status: 404 })),
     );
-    await expect(
-      urlFetchTool.handler({ url: 'https://example.com/x' }, fakeCtx),
-    ).rejects.toThrow(/HTTP 404/);
+    const out = await urlFetchTool.handler(
+      { url: 'https://example.com/x' },
+      fakeCtx,
+    );
+    expect(out.ok).toBe(false);
+    expect(out.error).toMatch(/HTTP 404/);
+    expect(out.text).toBe('');
+  });
+
+  it('M1f #5: happy path has ok: true', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(htmlPage('OK', 'body'), {
+            status: 200,
+            headers: { 'Content-Type': 'text/html' },
+          }),
+      ),
+    );
+    const out = await urlFetchTool.handler(
+      { url: 'https://example.com/ok' },
+      fakeCtx,
+    );
+    expect(out.ok).toBe(true);
   });
 
   it('idempotency key by url', () => {
@@ -85,7 +108,7 @@ describe('urlFetch tool', () => {
   });
 
   // ========== M1e Task 13.1 ==========
-  it('M1e 13.1: rejects disallowed content-type (application/pdf)', async () => {
+  it('M1e 13.1 + M1f #5: disallowed content-type (application/pdf) → ok: false', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -96,12 +119,15 @@ describe('urlFetch tool', () => {
           }),
       ),
     );
-    await expect(
-      urlFetchTool.handler({ url: 'https://example.com/file.pdf' }, fakeCtx),
-    ).rejects.toThrow(/unsupported content-type/i);
+    const out = await urlFetchTool.handler(
+      { url: 'https://example.com/file.pdf' },
+      fakeCtx,
+    );
+    expect(out.ok).toBe(false);
+    expect(out.error).toMatch(/unsupported content-type/i);
   });
 
-  it('M1e 13.1: rejects when content-length header exceeds 4MB', async () => {
+  it('M1e 13.1 + M1f #5: content-length header > 4MB → ok: false', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -115,12 +141,15 @@ describe('urlFetch tool', () => {
           }),
       ),
     );
-    await expect(
-      urlFetchTool.handler({ url: 'https://example.com/big' }, fakeCtx),
-    ).rejects.toThrow(/payload too large/);
+    const out = await urlFetchTool.handler(
+      { url: 'https://example.com/big' },
+      fakeCtx,
+    );
+    expect(out.ok).toBe(false);
+    expect(out.error).toMatch(/payload too large/);
   });
 
-  it('M1e 13.1: aborts mid-stream when actual bytes exceed cap', async () => {
+  it('M1e 13.1 + M1f #5: stream actual bytes > cap → ok: false', async () => {
     // 流式喂 > 4MB（每块 1MB × 5 块），中间应当 abort
     const oneMB = 'a'.repeat(1024 * 1024);
     const stream = new ReadableStream<Uint8Array>({
@@ -143,8 +172,35 @@ describe('urlFetch tool', () => {
           }),
       ),
     );
-    await expect(
-      urlFetchTool.handler({ url: 'https://example.com/huge' }, fakeCtx),
-    ).rejects.toThrow(/MAX_BYTES/);
+    const out = await urlFetchTool.handler(
+      { url: 'https://example.com/huge' },
+      fakeCtx,
+    );
+    expect(out.ok).toBe(false);
+    expect(out.error).toMatch(/MAX_BYTES/);
+  });
+
+  it('M1f #3: outer ctx.signal abort re-throws so runtime sees cancel', async () => {
+    const ac = new AbortController();
+    const ctxAborted = { ...fakeCtx, signal: ac.signal };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          (init.signal as AbortSignal).addEventListener(
+            'abort',
+            () => {
+              const err = new Error('aborted');
+              err.name = 'AbortError';
+              reject(err);
+            },
+            { once: true },
+          );
+        });
+      }),
+    );
+    const p = urlFetchTool.handler({ url: 'https://example.com/slow' }, ctxAborted);
+    ac.abort();
+    await expect(p).rejects.toThrow();
   });
 });

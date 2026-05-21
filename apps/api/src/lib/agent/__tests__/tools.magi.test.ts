@@ -46,16 +46,30 @@ describe('magiSystemRead tool', () => {
       { question: '我喜欢什么' },
       fakeCtx,
     );
+    expect(out.ok).toBe(true);
     expect(out.answer).toBe('已知用户喜欢小猫');
     expect(out.enabled).toBe(true);
     expect(queryMagiSystem).toHaveBeenCalledOnce();
   });
 
-  it('on upstream error: returns friendly stub, does not throw', async () => {
+  it('M1f #5 + F2 followup: on upstream error: ok=false + error，answer 留空（不向用户暴露 upstream 错误）', async () => {
     queryMagiSystem.mockRejectedValue(new Error('boom'));
     const out = await magiSystemReadTool.handler({ question: 'x' }, fakeCtx);
-    expect(out.answer).toContain('MAGI 查询失败');
-    expect(out.answer).toContain('boom');
+    expect(out.ok).toBe(false);
+    expect(out.error).toBe('boom');
+    // M1f Task 3 followup F2：answer 不能再含 upstream 错误串——
+    // replyGen 会把 answer 拼到用户终稿，soft-fail 走 planner replan 而非 user-facing。
+    expect(out.answer).toBe('');
+    expect(out.enabled).toBe(true);
+  });
+
+  it('M1f: AbortError re-thrown so runtime sees cancel', async () => {
+    const err = new Error('aborted');
+    err.name = 'AbortError';
+    queryMagiSystem.mockRejectedValue(err);
+    await expect(
+      magiSystemReadTool.handler({ question: 'x' }, fakeCtx),
+    ).rejects.toThrow(/aborted/);
   });
 
   it('computeIdempotencyKey hashes trimmed question', () => {
@@ -92,12 +106,37 @@ describe('magiContentIngest tool', () => {
       fakeCtx,
     );
     expect(out).toMatchObject({
+      ok: true,
       title: 'foo',
       summary: 'sum',
       videoUrl: 'https://v',
       enabled: true,
     });
-    expect(ingestMagiContent).toHaveBeenCalledWith('https://example.com/page');
+    // M1f: tool 应把 ctx.signal 透传给 integration
+    expect(ingestMagiContent).toHaveBeenCalledWith(
+      'https://example.com/page',
+      fakeCtx.signal,
+    );
+  });
+
+  it('M1f #5: ingestMagiContent throws → ok=false + error, does not throw', async () => {
+    ingestMagiContent.mockRejectedValue(new Error('magi 503'));
+    const out = await magiContentIngestTool.handler(
+      { url: 'https://example.com/page' },
+      fakeCtx,
+    );
+    expect(out.ok).toBe(false);
+    expect(out.error).toMatch(/magi 503/);
+    expect(out.title).toBe('');
+  });
+
+  it('M1f: AbortError re-thrown so runtime sees cancel', async () => {
+    const err = new Error('aborted');
+    err.name = 'AbortError';
+    ingestMagiContent.mockRejectedValue(err);
+    await expect(
+      magiContentIngestTool.handler({ url: 'https://example.com/page' }, fakeCtx),
+    ).rejects.toThrow(/aborted/);
   });
 
   it('idempotency key is stable sha256 of url', () => {

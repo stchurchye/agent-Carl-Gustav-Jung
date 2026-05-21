@@ -3,7 +3,7 @@
  *
  * M1e task 1：拆分前的 `runtime.ts` 是 762 行的单文件。已拆为：
  *   - `runtimeShared.ts`：TOOL_TIMEOUT_MS / withTimeout / resolveEffectiveApiKey
- *   - `runLifecycle.ts`：createAgentRun / softComplete / cancelRun / confirmRun
+ *   - `runLifecycle.ts`：createAgentRun / softComplete / cancelRun
  *   - `runReply.ts`：pickFallbackFinalContent / formatBudgetExhaustedReply / buildFinalContent
  *   - `runPlanGlue.ts`：buildInitialPlan
  *   - `runExecute.ts`：executeRun + resolveToolCallKey
@@ -17,6 +17,5 @@ export type {
 export {
   createAgentRun,
   cancelRun,
-  confirmRun,
 } from './runLifecycle.js';
 export { executeRun, resolveToolCallKey } from './runExecute.js';

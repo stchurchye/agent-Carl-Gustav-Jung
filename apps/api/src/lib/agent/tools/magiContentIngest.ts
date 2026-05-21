@@ -7,10 +7,12 @@ type MagiContentIngestInput = {
 };
 
 type MagiContentIngestOutput = {
+  ok: boolean;
   title: string;
   summary: string;
   videoUrl?: string;
   enabled: boolean;
+  error?: string;
 };
 
 /**
@@ -36,17 +38,39 @@ export const magiContentIngestTool: ToolDef<MagiContentIngestInput, MagiContentI
   costHint: 'medium',
   hasSideEffects: true,
   idempotent: false,
+  replyMeta: {
+    summaryKind: 'silent',
+    extractRef: (output) => {
+      const o = output as { title?: string; videoUrl?: string } | null;
+      if (!o?.videoUrl) return null; // 没有稳定 id 就不进 reply refs
+      return { kind: 'magi_card', id: o.videoUrl, label: o.title };
+    },
+    failureHint: 'MAGI Content 写入失败可能是上游 5xx 或鉴权问题。可跳过本 URL 继续其它任务。',
+  },
   computeIdempotencyKey: (input) =>
     'url-sha256:' + createHash('sha256').update((input as MagiContentIngestInput).url.trim()).digest('hex'),
-  async handler(input) {
+  async handler(input, ctx) {
     const enabled = magiContentEnabled();
-    const res = await ingestMagiContent(input.url);
-    return {
-      title: res.title,
-      summary: res.summary,
-      videoUrl: res.videoUrl,
-      enabled,
-    };
+    try {
+      const res = await ingestMagiContent(input.url, ctx.signal);
+      return {
+        ok: true,
+        title: res.title,
+        summary: res.summary,
+        videoUrl: res.videoUrl,
+        enabled,
+      };
+    } catch (e) {
+      // M1f #5：AbortError 透传；其它错误 soft-fail 让 planner 决定 retry / 跳过。
+      if (e instanceof Error && e.name === 'AbortError') throw e;
+      return {
+        ok: false,
+        title: '',
+        summary: '',
+        enabled,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
   },
 };
 
