@@ -11,13 +11,29 @@
 import { registerMagiSystemRead } from './tools/magiSystemRead.js';
 import { registerMagiContentIngest } from './tools/magiContentIngest.js';
 import { registerWebSearch } from './tools/webSearch.js';
-import { registerUrlFetch } from './tools/urlFetch.js';
+import { registerFetchUrl } from './tools/fetchUrl.js';
 import { registerDocExportMarkdown } from './tools/docExportMarkdown.js';
+import { registerRunPython } from './tools/runPython.js';
+import { registerSearchPapers } from './tools/searchPapers.js';
+import { registerCritiqueLastAnswer } from './tools/critiqueLastAnswer.js';
+import { registerDatetimeNow } from './tools/datetimeNow.js';
+import { registerRenderDiagram } from './tools/renderDiagram.js';
+import { registerWikipedia } from './tools/wikipedia.js';
+import { registerGetEconomicSeries } from './tools/getEconomicSeries.js';
+import { registerDocumentReader } from './tools/documentReader.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
   registerMagiContentIngest();
   registerWebSearch();
-  registerUrlFetch();
+  registerFetchUrl();
   registerDocExportMarkdown();
+  registerRunPython();
+  registerSearchPapers();
+  registerCritiqueLastAnswer();
+  registerDatetimeNow();
+  registerRenderDiagram();
+  registerWikipedia();
+  registerGetEconomicSeries();
+  registerDocumentReader();
 }

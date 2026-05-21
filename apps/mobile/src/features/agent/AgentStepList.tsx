@@ -16,6 +16,58 @@ const KIND_LABEL: Partial<Record<AgentStep['kind'], string>> = {
   approval_timeout: '授权超时',
 };
 
+type DiagramStepResult = {
+  ok: boolean;
+  diagramId: string;
+  title: string;
+  validationWarnings: string[];
+};
+
+function extractDiagramResult(output: unknown): DiagramStepResult | null {
+  if (!output || typeof output !== 'object') return null;
+  const wrapped = output as { result?: unknown };
+  const raw = wrapped.result ?? output;
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<DiagramStepResult>;
+  if (typeof r.ok !== 'boolean' || typeof r.diagramId !== 'string') return null;
+  return {
+    ok: r.ok,
+    diagramId: r.diagramId,
+    title: typeof r.title === 'string' ? r.title : '',
+    validationWarnings: Array.isArray(r.validationWarnings) ? r.validationWarnings : [],
+  };
+}
+
+function DiagramStepCard({ step }: { step: AgentStep }) {
+  const result = extractDiagramResult(step.output);
+  if (!result) return null;
+  if (!result.ok) return null;
+  return (
+    <View
+      style={{
+        marginTop: 4,
+        padding: 8,
+        backgroundColor: '#f0f7ff',
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#cde',
+      }}
+    >
+      <Text style={{ fontSize: 12, fontWeight: '600', color: '#336' }}>
+        📊 {result.title || '图表'}
+      </Text>
+      <Text style={{ fontSize: 10, color: '#669', marginTop: 2 }}>
+        id: {result.diagramId}
+      </Text>
+      {result.validationWarnings.length > 0 ? (
+        <Text style={{ fontSize: 10, color: '#a60', marginTop: 2 }}>
+          ⚠ {result.validationWarnings[0]}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export function AgentStepList({ steps }: { steps: AgentStep[] }) {
   if (!steps.length) return null;
   return (
@@ -28,6 +80,9 @@ export function AgentStepList({ steps }: { steps: AgentStep[] }) {
           </Text>
           {s.error ? (
             <Text style={{ fontSize: 11, color: '#c33', marginTop: 2 }}>{s.error}</Text>
+          ) : null}
+          {s.toolName === 'render_diagram' && s.kind === 'observe' ? (
+            <DiagramStepCard step={s} />
           ) : null}
         </View>
       ))}

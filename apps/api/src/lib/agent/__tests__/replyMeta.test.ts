@@ -37,7 +37,7 @@ describe('M1f collectReplyRefs / summarizeStepOutput', () => {
     };
     const steps = [
       fakeStep('doc_export_markdown', { documentId: 'd1', title: '研究信托' }),
-      fakeStep('web_search', { results: [] }),
+      fakeStep('search_web', { results: [] }),
     ];
     const refs = collectReplyRefs(steps, new Map([[docTool.name, docTool as ToolDef]]));
     expect(refs).toHaveLength(1);

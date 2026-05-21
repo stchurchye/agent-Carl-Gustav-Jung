@@ -10,8 +10,9 @@ describe('registerAgentTools (M1c)', () => {
     for (const name of [
       'magi_system_read',
       'magi_content_ingest',
-      'web_search',
-      'url_fetch',
+      'search_web',
+      'fetch_url',
+      'datetime_now',
       'doc_export_markdown',
     ]) {
       expect(toolRegistry.get(name), `tool ${name}`).toBeDefined();

@@ -10,7 +10,7 @@ const REPLY_SYSTEM = `你是 agent 任务的收尾发言人。
 - 末尾不需要 emoji 或客套话`;
 
 export type ReplyRef = {
-  kind: 'document' | 'url' | 'magi_card';
+  kind: 'document' | 'url' | 'magi_card' | 'diagram';
   id: string;
   label?: string;
 };

@@ -89,7 +89,7 @@ describe('buildReplyMessages', () => {
     const steps: AgentStep[] = [
       stepBase({
         idx: 0,
-        toolName: 'web_search',
+        toolName: 'search_web',
         output: { result: { results: [{ title: 'A', url: 'u', snippet: 's' }] } },
       }),
       stepBase({
@@ -101,7 +101,7 @@ describe('buildReplyMessages', () => {
     const msgs = buildReplyMessages({ run: baseRun, plan, steps });
     expect(msgs[0].role).toBe('system');
     expect(msgs[1].content).toContain('研究家族信托');
-    expect(msgs[1].content).toContain('web_search');
+    expect(msgs[1].content).toContain('search_web');
     expect(msgs[1].content).toContain('doc_export_markdown');
     expect(msgs[1].content).toContain('家族信托研究');
     expect(msgs[1].content).toContain('doc-1');

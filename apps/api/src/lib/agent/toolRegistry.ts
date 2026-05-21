@@ -27,7 +27,7 @@ export type ToolCtx = {
 export type ToolReplyMeta = {
   summaryKind?: 'text' | 'list' | 'export_ref' | 'silent';
   extractRef?: (output: unknown) => {
-    kind: 'document' | 'url' | 'magi_card';
+    kind: 'document' | 'url' | 'magi_card' | 'diagram';
     id: string;
     label?: string;
   } | null;

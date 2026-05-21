@@ -8,7 +8,7 @@ import {
 import { toolRegistry } from '../toolRegistry.js';
 import { registerEchoSleep } from '../tools/echoSleep.js';
 import { registerWebSearch } from '../tools/webSearch.js';
-import { registerUrlFetch } from '../tools/urlFetch.js';
+import { registerFetchUrl } from '../tools/fetchUrl.js';
 import { registerDocExportMarkdown } from '../tools/docExportMarkdown.js';
 import { registerMagiSystemRead } from '../tools/magiSystemRead.js';
 import { registerMagiContentIngest } from '../tools/magiContentIngest.js';
@@ -51,7 +51,7 @@ describe('M1f planner prompt 升级 (#1)', () => {
   beforeAll(() => {
     registerEchoSleep();
     registerWebSearch();
-    registerUrlFetch();
+    registerFetchUrl();
     registerDocExportMarkdown();
     registerMagiSystemRead();
     registerMagiContentIngest();
@@ -95,7 +95,7 @@ describe('M1f parsePlannerJson 宽容化 (#4)', () => {
   beforeAll(() => {
     registerEchoSleep();
     registerWebSearch();
-    registerUrlFetch();
+    registerFetchUrl();
     registerDocExportMarkdown();
     registerMagiSystemRead();
     registerMagiContentIngest();

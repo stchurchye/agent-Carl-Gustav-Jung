@@ -23,7 +23,7 @@ describe('webSearch tool', () => {
   it('registers idempotently', () => {
     registerWebSearch();
     registerWebSearch();
-    expect(toolRegistry.get('web_search')).toBeDefined();
+    expect(toolRegistry.get('search_web')).toBeDefined();
   });
 
   it('no TAVILY_API_KEY: returns empty results + note, does not throw', async () => {

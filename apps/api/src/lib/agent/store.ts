@@ -43,6 +43,8 @@ function parseRun(row: Row): AgentRun {
     apiKeySource: row.api_key_source as ApiKeySource,
     providerId: (row.provider_id as 'deepseek' | 'zenmux' | null) ?? 'deepseek',
     modelId: (row.model_id as string | null) ?? 'deepseek-v4-pro',
+    sandboxId: (row.sandbox_id as string | null) ?? null,
+    userApiKeysEnc: (row.user_api_keys_enc as Record<string, string>) ?? {},
     resultMessageId: (row.result_message_id as string | null) ?? null,
     invokeMessageId: (row.invoke_message_id as string | null) ?? null,
     lastHeartbeatAt: (row.last_heartbeat_at as Date | null) ?? null,
@@ -80,6 +82,7 @@ function parseStep(row: Row): AgentStep {
 const RUN_COLUMNS = `id, owner_id, channel, session_id, group_id, topic_id,
   intent_turn_id, role, status, input_text, plan, todos, budget, usage,
   api_key_owner_id, api_key_source, provider_id, model_id,
+  sandbox_id, user_api_keys_enc,
   result_message_id, invoke_message_id,
   last_heartbeat_at, awaiting_approval_until, awaiting_approval_step_idx,
   pending_approval_tool_name, cancelled_by_user_id, cancel_reason,
@@ -118,6 +121,8 @@ export type InsertAgentRunInput = {
   providerId?: 'deepseek' | 'zenmux';
   /** M1e Task 11d: per-run LLM model id。不传走 DB default 'deepseek-v4-pro'。 */
   modelId?: string;
+  /** M2 Task 7A: sealed JSONB bag of per-service user API keys (E2B/FRED/Jina etc.). */
+  userApiKeysEnc?: Record<string, string>;
 };
 
 export async function insertAgentRun(
@@ -132,11 +137,12 @@ export async function insertAgentRun(
        id, owner_id, channel, session_id, group_id, topic_id,
        intent_turn_id, role, status, input_text, budget,
        api_key_owner_id, api_key_source, user_api_key_enc,
-       user_zenmux_key_enc, provider_id, model_id
+       user_zenmux_key_enc, provider_id, model_id, user_api_keys_enc
      ) VALUES (
        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
        COALESCE($16, 'deepseek'),
-       COALESCE($17, 'deepseek-v4-pro')
+       COALESCE($17, 'deepseek-v4-pro'),
+       COALESCE($18::jsonb, '{}')
      )
      RETURNING ${RUN_COLUMNS}`,
     [
@@ -157,6 +163,7 @@ export async function insertAgentRun(
       input.userZenmuxKeyEnc ?? null,
       input.providerId ?? null,
       input.modelId ?? null,
+      input.userApiKeysEnc ? JSON.stringify(input.userApiKeysEnc) : null,
     ],
   );
   return parseRun(rows[0]);
@@ -240,6 +247,10 @@ export type UpdateAgentRunInput = Partial<{
   plan: Plan | null;
   todos: TodoItem[];
   usage: AgentUsage;
+  /** M2 Task 1A: E2B sandbox ID — set on first run_python call, cleared to null in softComplete. */
+  sandboxId: string | null;
+  /** M2 Task 1A: encrypted JSONB bag of user-supplied API keys. */
+  userApiKeysEnc: Record<string, string>;
   resultMessageId: string | null;
   invokeMessageId: string | null;
   lastHeartbeatAt: Date | null;
@@ -269,6 +280,13 @@ export async function updateAgentRun(
     usage: [
       'usage',
       patch.usage === undefined ? undefined : JSON.stringify(patch.usage),
+    ],
+    sandboxId: ['sandbox_id', patch.sandboxId],
+    userApiKeysEnc: [
+      'user_api_keys_enc',
+      patch.userApiKeysEnc === undefined
+        ? undefined
+        : JSON.stringify(patch.userApiKeysEnc),
     ],
     resultMessageId: ['result_message_id', patch.resultMessageId],
     invokeMessageId: ['invoke_message_id', patch.invokeMessageId],

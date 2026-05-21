@@ -25,6 +25,8 @@ import {
 } from './messageBridge.js';
 import { runControllers } from './runtimeRegistry.js';
 import { buildFinalContent } from './runReply.js';
+import { killSandboxForRun } from './sandbox.js';
+import { sealUserApiKeys } from './userApiKeys.js';
 
 export type CreateAgentRunInput = {
   ownerId: string;
@@ -43,6 +45,8 @@ export type CreateAgentRunInput = {
    */
   providerId?: 'deepseek' | 'zenmux';
   modelId?: string;
+  /** M2 Task 7A: per-service user-supplied API keys (E2B/FRED/Jina). Sealed before write. */
+  userApiKeys?: Record<string, string>;
 };
 
 export type CreateAgentRunResult = {
@@ -79,6 +83,12 @@ export async function createAgentRun(
     }
   }
 
+  const userApiKeysSealedRaw = sealUserApiKeys(input.userApiKeys ?? {});
+  const userApiKeysEnc =
+    Object.keys(userApiKeysSealedRaw).length > 0
+      ? (userApiKeysSealedRaw as Record<string, string>)
+      : undefined;
+
   const run = await store.insertAgentRun({
     ownerId: input.ownerId,
     channel: input.channel,
@@ -96,6 +106,7 @@ export async function createAgentRun(
     userZenmuxKeyEnc,
     providerId,
     modelId: input.modelId,
+    userApiKeysEnc,
   });
 
   let userMessageId: string | null = null;
@@ -189,6 +200,9 @@ export async function softComplete(
     }
   }
 
+  // M2 Task 1B: free E2B sandbox on terminal status (no-op if run never called run_python)
+  await killSandboxForRun(run.id);
+
   await store.updateAgentRun(run.id, {
     status,
     endedAt: new Date(),
@@ -224,7 +238,14 @@ export async function cancelRun(
   byUserId: string,
 ): Promise<void> {
   const controller = runControllers.get(runId);
-  if (controller) controller.abort('user_cancel');
+  if (controller) {
+    controller.abort('user_cancel');
+  } else {
+    // M2 Task 1B: best-effort sandbox cleanup on dead-worker cancel path.
+    // When no active controller exists the worker never reaches softComplete (which normally
+    // calls killSandboxForRun), so we must kill it here to avoid a sandbox leak.
+    await killSandboxForRun(runId);
+  }
   const run = await store.getAgentRun(runId);
   if (!run) return;
   if (
