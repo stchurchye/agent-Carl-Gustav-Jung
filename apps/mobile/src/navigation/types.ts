@@ -47,6 +47,8 @@ export type BrainStackParamList = {
   ApiKeyDetail: { kind: ApiKeyKindParam };
   BrainAgentTasks: undefined;
   BrainAgentTaskDetail: { runId: string };
+  /** M1e Task 12: Agent 默认 provider+model 选择 */
+  BrainAgentDefaultModel: undefined;
   SettingsMemory: {
     scope?: 'user' | 'topic' | 'session';
     groupId?: string;

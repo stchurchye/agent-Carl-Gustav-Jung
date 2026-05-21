@@ -14,6 +14,7 @@ type DocExportMarkdownInput = {
 
 type DocExportMarkdownOutput = {
   documentId: string;
+  /** 写入实际使用的 title（命中用户编辑保护时可能是 "原 title v2"）。 */
   title: string;
   created: boolean;
 };
@@ -59,17 +60,53 @@ export const docExportMarkdownTool: ToolDef<
   async handler(input, ctx) {
     const title = input.title.trim();
     const ownerId = ctx.ownerId;
+    const newHash = createHash('sha256').update(input.markdown).digest('hex');
 
     // upsert by (ownerId, exact title)
-    const existing = (await listDocuments(ownerId)).find(
-      (d) => d.title === title && !d.hiddenAt,
-    );
+    const all = await listDocuments(ownerId);
+    const existing = all.find((d) => d.title === title && !d.hiddenAt);
 
     let docId: string;
     let created = false;
+    let versionedTitle = title;
 
     if (existing) {
-      docId = existing.id;
+      // M1e Task 13.2 + review followup：用户编辑保护。
+      // - 已有 `agentLastExportHash` 且 hash 对不上当前内容 → 用户改过 → 走 v2
+      // - **从未有 agentLastExportHash**（lastHash=null）且当前文档非空 → 这文档
+      //   是用户自己手写的（不是 agent 写的），同样不能覆盖 → 也走 v2。
+      //   reviewer 指出的"first-touch overwrite" 就是 fix 这里。
+      // - lastHash=null 但当前文档为空 → 几乎肯定是空 shell（如手动创建后没填内容），
+      //   允许覆盖。
+      const lastHash = existing.agentLastExportHash ?? null;
+      const currentText =
+        existing.chapters?.[0]?.blocks?.[0]?.content ?? '';
+      const currentHash = currentText
+        ? createHash('sha256').update(currentText).digest('hex')
+        : null;
+      const userEditedKnownAgentDoc =
+        lastHash !== null && currentHash !== null && lastHash !== currentHash;
+      const userOwnedExistingDoc = lastHash === null && currentHash !== null;
+      const protect = userEditedKnownAgentDoc || userOwnedExistingDoc;
+
+      if (protect) {
+        versionedTitle = await pickVersionedTitle(all, title);
+        const doc = await createDocument(ownerId, versionedTitle);
+        docId = doc.id;
+        created = true;
+        const { emitNotice } = await import('../notices.js');
+        const reason = userEditedKnownAgentDoc ? 'user_edited' : 'pre_existing_user_doc';
+        const userVisibleReason = userEditedKnownAgentDoc ? '已被你编辑过' : '不是 agent 创建的';
+        await emitNotice({
+          runId: ctx.runId,
+          severity: 'info',
+          code: 'DOC_EXPORT_VERSIONED',
+          message: `检测到《${title}》${userVisibleReason}，本次写入存为新文档《${versionedTitle}》，未覆盖你原稿。`,
+          context: { originalDocumentId: existing.id, versionedTitle, reason },
+        });
+      } else {
+        docId = existing.id;
+      }
     } else {
       const doc = await createDocument(ownerId, title);
       docId = doc.id;
@@ -86,10 +123,28 @@ export const docExportMarkdownTool: ToolDef<
       // Fallback: 仅更新 globalSummary 字段
       await updateDocument(ownerId, docId, { globalSummary: input.markdown });
     }
+    // M1e Task 13.2：记录本次 agent 写入的 hash，下次再调本工具时用于检测用户编辑。
+    await updateDocument(ownerId, docId, { agentLastExportHash: newHash });
 
-    return { documentId: docId, title, created };
+    return { documentId: docId, title: versionedTitle, created };
   },
 };
+
+/**
+ * 在已有 doc list 里找一个不冲突的 v2/v3/... 标题。
+ * @internal exported for tests.
+ */
+export function pickVersionedTitle(
+  existingDocs: Array<{ title: string }>,
+  baseTitle: string,
+): string {
+  const taken = new Set(existingDocs.map((d) => d.title));
+  for (let v = 2; v < 100; v++) {
+    const candidate = `${baseTitle} v${v}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${baseTitle} v${Date.now()}`;
+}
 
 export function registerDocExportMarkdown(): void {
   if (!toolRegistry.get(docExportMarkdownTool.name)) {

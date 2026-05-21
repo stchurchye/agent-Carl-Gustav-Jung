@@ -14,15 +14,18 @@ import type { McpClient, McpToolDescriptor, McpCallResult } from './types.js';
  * - request id 单调自增，按 id 维护 pending promise map
  * - stdout 按 `\n` 切行，逐行 JSON.parse
  * - stderr 用 console.error 透传，便于排查
- * - close() 关掉子进程；如果有 pending request 全部 reject
+ * - close() 立即 reject 所有 pending（防止调用方挂死），再关 stdin / kill 子进程
+ * - sendRequest 注册的 abort listener 在 settle 时 removeEventListener，防止泄漏
+ *
+ * M1e task 8：删了 M1d 写死的 `handshakeTimeoutMs` 字段（没人用），等真要 handshake
+ * timeout 再加；close() 显式 reject pending 而不是依赖 'exit' 事件竞速；abort listener
+ * 在 settle 时主动清理（之前 `{ once: true }` 只覆盖触发场景，正常 settle 不会清）。
  */
 export type StdioClientOpts = {
   serverName: string;
   command: string;
   args?: string[];
   env?: Record<string, string>;
-  /** spawn 后多久内 listTools 必须握手成功，超时 reject。默认 5s。 */
-  handshakeTimeoutMs?: number;
 };
 
 type PendingResolver = {
@@ -86,19 +89,39 @@ export class McpStdioClient implements McpClient {
     const id = this.nextId++;
     const payload = JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n';
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      let abortListener: (() => void) | null = null;
+      const cleanup = () => {
+        if (signal && abortListener) {
+          signal.removeEventListener('abort', abortListener);
+          abortListener = null;
+        }
+      };
+      const wrappedResolve = (v: unknown) => {
+        cleanup();
+        resolve(v);
+      };
+      const wrappedReject = (e: Error) => {
+        cleanup();
+        reject(e);
+      };
+      this.pending.set(id, { resolve: wrappedResolve, reject: wrappedReject });
       this.proc.stdin.write(payload, (err) => {
         if (err) {
           this.pending.delete(id);
-          reject(err);
+          wrappedReject(err);
         }
       });
       if (signal) {
-        const onAbort = () => {
-          if (this.pending.delete(id)) reject(new Error('aborted'));
+        if (signal.aborted) {
+          if (this.pending.delete(id)) wrappedReject(new Error('aborted'));
+          return;
+        }
+        abortListener = () => {
+          if (this.pending.delete(id)) wrappedReject(new Error('aborted'));
         };
-        if (signal.aborted) onAbort();
-        else signal.addEventListener('abort', onAbort, { once: true });
+        // M1e task 8：去掉 { once: true } —— 正常 settle 也要 removeEventListener，
+        // 否则同一个 signal 复用 N 次 callTool 会泄漏 N 个 listener。
+        signal.addEventListener('abort', abortListener);
       }
     });
   }
@@ -125,6 +148,11 @@ export class McpStdioClient implements McpClient {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    // M1e task 8：在 kill 前显式 reject 所有 pending —— 避免 'exit' 事件迟到时
+    // 调用方 await 挂死。重复 reject 由 wrappedReject 的 cleanup 幂等保护。
+    const err = new Error('mcp client closed');
+    for (const p of this.pending.values()) p.reject(err);
+    this.pending.clear();
     try {
       this.proc.stdin.end();
     } catch {}

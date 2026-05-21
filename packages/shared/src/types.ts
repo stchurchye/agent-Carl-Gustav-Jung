@@ -37,6 +37,12 @@ export interface Document {
   writingContextSummary?: string | null;
   writingContextSummaryUpToMessageId?: string | null;
   documentContextSummary?: string | null;
+  /**
+   * M1e Task 13.2：sha256(agent 上次写入的 markdown)。当 docExport 工具再次写入同一
+   * title 的文档时，先比对当前 block.content 的 hash 是否仍等于此值；若不等，说明
+   * 用户已编辑过文档，不应覆盖 —— 改为创建 v2 文档。
+   */
+  agentLastExportHash?: string | null;
 }
 
 export interface Revision {

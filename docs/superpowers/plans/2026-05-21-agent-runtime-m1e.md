@@ -468,7 +468,13 @@ feat(agent): defense-in-depth skill filter + historical scan + M1e docs
 
 ---
 
-## 12. Task 11：LLM provider 抽象（拆 4 个 subtask）
+## 12. Task 11：LLM provider 抽象（拆 4 个 subtask） ✅ DONE (11a–d)
+
+- 11a 完成（见下节）
+- 11b commit `bb05e35` — interface + factory + DeepSeek adapter
+- 11c commit `928a487` — ZenMux adapter (OpenAI + Anthropic)
+- 11d 完成 — migration 015 + runLlmClient + planner/replyGen 改 LlmChatClient
+
 
 ### 12.0 现状盘点
 
@@ -734,7 +740,7 @@ feat(agent): plumb LlmChatClient through planner/replyGen + migration 015 + per-
 
 ---
 
-## 13. Task 12：模型选择 UI + per-provider 鉴权
+## 13. Task 12：模型选择 UI + per-provider 鉴权 ✅ DONE
 
 ### 13.1 mobile 改造
 
@@ -771,9 +777,9 @@ feat(agent-mobile): per-run model selection UI + intentExecute agentOptions wiri
 
 ---
 
-## 14. Task 13：M1c 高优先级 followups
+## 14. Task 13：M1c 高优先级 followups ✅ DONE (commit 01b47db)
 
-来自 M1c code review（2026-05-21），含 1 个 🔴 必修 + 4 个 🟡 高优。
+来自 M1c code review（2026-05-21），含 1 个 🔴 必修 + 4 个 🟡 高优。**全部完成**。
 
 ### 14.1 urlFetch HTML size cap（🔴 必修）
 

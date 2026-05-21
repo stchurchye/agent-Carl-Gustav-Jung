@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchAgentRun } from '../agentApi';
-import type { AgentRun, AgentStep } from '../types';
+import type { AgentNotice, AgentRun, AgentStep } from '../types';
 
 const POLL_INTERVAL_MS = 1500;
 const TERMINAL_STATUSES: AgentRun['status'][] = [
@@ -23,12 +23,14 @@ const TERMINAL_STATUSES: AgentRun['status'][] = [
 export function useAgentRunPoll(runId: string | null) {
   const [run, setRun] = useState<AgentRun | null>(null);
   const [steps, setSteps] = useState<AgentStep[]>([]);
+  const [notices, setNotices] = useState<AgentNotice[]>([]);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     if (!runId) {
       setRun(null);
       setSteps([]);
+      setNotices([]);
       setConnected(false);
       return;
     }
@@ -38,10 +40,15 @@ export function useAgentRunPoll(runId: string | null) {
       setConnected(true);
       while (!stopped) {
         try {
-          const { run: nextRun, steps: nextSteps } = await fetchAgentRun(runId!);
+          const {
+            run: nextRun,
+            steps: nextSteps,
+            notices: nextNotices,
+          } = await fetchAgentRun(runId!);
           if (stopped) break;
           setRun(nextRun);
           setSteps(nextSteps);
+          setNotices(nextNotices ?? []);
           if (TERMINAL_STATUSES.includes(nextRun.status)) break;
         } catch {
           // 单次失败忽略,下轮重试。
@@ -57,5 +64,5 @@ export function useAgentRunPoll(runId: string | null) {
     };
   }, [runId]);
 
-  return { run, steps, connected };
+  return { run, steps, notices, connected };
 }

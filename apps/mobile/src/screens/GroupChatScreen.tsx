@@ -65,6 +65,7 @@ import {
   executeMessageIntent,
   shouldShowIntentChips,
 } from '../lib/intentFlow';
+import { getAgentDefaultModel } from '../lib/agentDefaultModel';
 import {
   applyAppNavigate,
   isClientNavigateKind,
@@ -376,6 +377,9 @@ export function GroupChatScreen({ route, navigation }: Props) {
       setPendingIntent(null);
       setSending(true);
       try {
+        // M1e Task 12: agent_run 走用户偏好（默认 DeepSeek V4 Pro）。
+        const agentOptions =
+          kind === 'agent_run' ? await getAgentDefaultModel() : undefined;
         const res = await executeMessageIntent({
           channel: 'group',
           aiMode: true,
@@ -387,6 +391,7 @@ export function GroupChatScreen({ route, navigation }: Props) {
           kind,
           slots,
           targetFragmentId,
+          agentOptions,
         });
         const data = res.data;
         if (data.type === 'skipped') {

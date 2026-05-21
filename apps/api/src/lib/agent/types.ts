@@ -78,6 +78,13 @@ export type AgentRun = {
   usage: AgentUsage;
   apiKeyOwnerId: string | null;
   apiKeySource: ApiKeySource;
+  /**
+   * M1e Task 11d：per-run 选 LLM provider + model。migration 015 给
+   * 老 run 加了 NOT NULL DEFAULT 'deepseek' / 'deepseek-v4-pro'，
+   * 所以这两个字段在 backend 永远非空。
+   */
+  providerId: 'deepseek' | 'zenmux';
+  modelId: string;
   resultMessageId: string | null;
   invokeMessageId: string | null;
   lastHeartbeatAt: Date | null;
@@ -105,6 +112,9 @@ export type StepKind =
   | 'approval_timeout'
   | 'cancel'
   | 'steer'
+  // 'reclaim' (M1e task 6) 替代旧的 'heartbeat'：worker 接管 crashed run 时写一条审计步。
+  // 老 DB 行里仍可能存在 'heartbeat'，保留为合法值以便读取历史 run。
+  | 'reclaim'
   | 'heartbeat'
   | 'system_error';
 

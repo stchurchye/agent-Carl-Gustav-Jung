@@ -83,4 +83,68 @@ describe('urlFetch tool', () => {
       urlFetchTool.computeIdempotencyKey!({ url: 'https://x.com/a' }),
     ).toBe('url:https://x.com/a');
   });
+
+  // ========== M1e Task 13.1 ==========
+  it('M1e 13.1: rejects disallowed content-type (application/pdf)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('PDF binary blob', {
+            status: 200,
+            headers: { 'Content-Type': 'application/pdf' },
+          }),
+      ),
+    );
+    await expect(
+      urlFetchTool.handler({ url: 'https://example.com/file.pdf' }, fakeCtx),
+    ).rejects.toThrow(/unsupported content-type/i);
+  });
+
+  it('M1e 13.1: rejects when content-length header exceeds 4MB', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('<html><body>small</body></html>', {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html',
+              'Content-Length': String(5 * 1024 * 1024),
+            },
+          }),
+      ),
+    );
+    await expect(
+      urlFetchTool.handler({ url: 'https://example.com/big' }, fakeCtx),
+    ).rejects.toThrow(/payload too large/);
+  });
+
+  it('M1e 13.1: aborts mid-stream when actual bytes exceed cap', async () => {
+    // 流式喂 > 4MB（每块 1MB × 5 块），中间应当 abort
+    const oneMB = 'a'.repeat(1024 * 1024);
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const enc = new TextEncoder();
+        for (let i = 0; i < 5; i++) {
+          controller.enqueue(enc.encode(oneMB));
+          await new Promise((r) => setTimeout(r, 1));
+        }
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/html' },
+          }),
+      ),
+    );
+    await expect(
+      urlFetchTool.handler({ url: 'https://example.com/huge' }, fakeCtx),
+    ).rejects.toThrow(/MAX_BYTES/);
+  });
 });

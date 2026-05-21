@@ -41,6 +41,8 @@ function parseRun(row: Row): AgentRun {
     },
     apiKeyOwnerId: (row.api_key_owner_id as string | null) ?? null,
     apiKeySource: row.api_key_source as ApiKeySource,
+    providerId: (row.provider_id as 'deepseek' | 'zenmux' | null) ?? 'deepseek',
+    modelId: (row.model_id as string | null) ?? 'deepseek-v4-pro',
     resultMessageId: (row.result_message_id as string | null) ?? null,
     invokeMessageId: (row.invoke_message_id as string | null) ?? null,
     lastHeartbeatAt: (row.last_heartbeat_at as Date | null) ?? null,
@@ -77,7 +79,8 @@ function parseStep(row: Row): AgentStep {
 
 const RUN_COLUMNS = `id, owner_id, channel, session_id, group_id, topic_id,
   intent_turn_id, role, status, input_text, plan, todos, budget, usage,
-  api_key_owner_id, api_key_source, result_message_id, invoke_message_id,
+  api_key_owner_id, api_key_source, provider_id, model_id,
+  result_message_id, invoke_message_id,
   last_heartbeat_at, awaiting_approval_until, awaiting_approval_step_idx,
   pending_approval_tool_name, cancelled_by_user_id, cancel_reason,
   created_at, started_at, ended_at`;
@@ -102,20 +105,39 @@ export type InsertAgentRunInput = {
   /**
    * M1d Task 6：user key 在 route 层用 `sealUserApiKey` 加密后传进来。
    * worker 用 `openUserApiKey` 解开。可选；缺省时 worker 退回 server key。
+   *
+   * M1e Task 11d 之后，这个字段语义 = user DeepSeek key（per-provider 字段）。
+   * ZenMux 走 userZenmuxKeyEnc 列。
    */
   userApiKeyEnc?: string | null;
+  /**
+   * M1e Task 11d: user ZenMux key (sealed)。和 userApiKeyEnc 是 per-provider 独立字段。
+   */
+  userZenmuxKeyEnc?: string | null;
+  /** M1e Task 11d: per-run LLM provider。不传走 DB default 'deepseek'。 */
+  providerId?: 'deepseek' | 'zenmux';
+  /** M1e Task 11d: per-run LLM model id。不传走 DB default 'deepseek-v4-pro'。 */
+  modelId?: string;
 };
 
 export async function insertAgentRun(
   input: InsertAgentRunInput,
 ): Promise<AgentRun> {
   const id = input.id ?? randomUUID();
+  // M1e Task 11d：provider_id / model_id 走 DB DEFAULT（'deepseek' / 'deepseek-v4-pro'）。
+  // 只有 caller 传了非 undefined 才覆盖默认；undefined 让 DB 决定，避免 backend
+  // 双重默认值漂移。
   const { rows } = await getPool().query(
     `INSERT INTO agent_runs (
        id, owner_id, channel, session_id, group_id, topic_id,
        intent_turn_id, role, status, input_text, budget,
-       api_key_owner_id, api_key_source, user_api_key_enc
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       api_key_owner_id, api_key_source, user_api_key_enc,
+       user_zenmux_key_enc, provider_id, model_id
+     ) VALUES (
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+       COALESCE($16, 'deepseek'),
+       COALESCE($17, 'deepseek-v4-pro')
+     )
      RETURNING ${RUN_COLUMNS}`,
     [
       id,
@@ -132,9 +154,23 @@ export async function insertAgentRun(
       input.apiKeyOwnerId,
       input.apiKeySource,
       input.userApiKeyEnc ?? null,
+      input.userZenmuxKeyEnc ?? null,
+      input.providerId ?? null,
+      input.modelId ?? null,
     ],
   );
   return parseRun(rows[0]);
+}
+
+/**
+ * M1e Task 11d：取出 user-provided ZenMux key（sealed）。和 getUserApiKeyEnc 对称。
+ */
+export async function getUserZenmuxKeyEnc(runId: string): Promise<string | null> {
+  const { rows } = await getPool().query(
+    `SELECT user_zenmux_key_enc FROM agent_runs WHERE id = $1`,
+    [runId],
+  );
+  return (rows[0]?.user_zenmux_key_enc as string | null) ?? null;
 }
 
 /**

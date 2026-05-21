@@ -9,6 +9,7 @@ export type BrainLogicScreenKey =
   | 'memoryPrefs'
   | 'catHealth'
   | 'homeKeys'
+  | 'agentDefaultModel'
   | 'llmLogs'
   | 'memoryDetail';
 
@@ -78,6 +79,12 @@ export const brainLogicHints: Record<BrainLogicScreenKey, BrainLogicHint> = {
       '三种凭证在「流浪猫通讯方式」里分别粘贴、点保存或清除，只留在本机，换手机或重装 App 要重新配。保存后服务器只知道「配好了」，看不到你的 key 明文，也不会同步给家人或其它设备。',
     howUse:
       '私聊、写作和大部分「小助手思考」走对话那份凭证；发图识字、按住说话转文字走听写那份；点消息的「朗读」走朗读那份。少配一种，对应功能就会提示用不了，其它功能不受影响。',
+  },
+  agentDefaultModel: {
+    howRemember:
+      'Agent 默认用哪个大模型，存在本机的安全存储里（同 API key 的存储路径），不上服务器、不跨设备同步。新开的 agent 任务会读这里的设置；老任务还是用它当初选的模型。',
+    howUse:
+      '触发 agent 任务时（"帮我研究"、"整理一份报告"等），后端按你这里选的 provider/model 调对应 API。选 ZenMux 系列时，请确保你在「家用钥匙」里也填了 ZenMux key；否则会自动走服务端 key。',
   },
   llmLogs: {
     howRemember:

@@ -129,7 +129,55 @@ describe('runtime reclaim after worker A crash (T5)', () => {
     expect((toolCalls[0].output as { result?: { n?: number } })?.result?.n).toBe(999);
   });
 
-  it('reclaim records a heartbeat step with reclaim=true for traceability', async () => {
+  it('M1e task 6: worker A wrote approval_deny then crashed → worker B counts deny as advancing, does NOT re-emit deny or spurious reclaim', async () => {
+    const user = await ensureUser('reclaim-deny');
+    const session = await createChatSession(user.id, 'reclaim-deny');
+    const { run } = await createAgentRun({
+      ownerId: user.id,
+      channel: 'private',
+      sessionId: session.id,
+      inputText: 'fixture: deny race',
+      apiKey: 'fake',
+      apiKeySource: 'server',
+    });
+    const plan = buildPlan();
+    await updateAgentRun(run.id, { plan, todos: plan.todos, status: 'running' });
+
+    // worker A：把第 0 步 tool_call + observe 都写了，然后第 1 步触发 approval_deny 后崩。
+    // 即 DB 推进步数 = 3 (tool_call+observe+approval_deny)，usage.steps 仍是 0。
+    let idx = (await maxStepIdx(run.id)) + 1;
+    await insertStep({
+      runId: run.id, idx: idx++, kind: 'tool_call',
+      toolName: 'reclaim_counted', input: { idx: 0 },
+      output: { result: { idx: 0, n: 1 }, retried: false }, durationMs: 10,
+    });
+    await insertStep({
+      runId: run.id, idx: idx++, kind: 'observe',
+      toolName: 'reclaim_counted', input: {}, output: { result: { idx: 0, n: 1 } },
+      durationMs: 0,
+    });
+    await insertStep({
+      runId: run.id, idx: idx++, kind: 'approval_deny',
+      toolName: 'reclaim_counted', input: { reason: 'manual deny' }, output: null,
+      durationMs: 0,
+    });
+
+    // worker B 接管
+    await executeRun(run.id);
+
+    const steps = await listSteps(run.id);
+    // 关键 assertion 1：worker B 应当承认 worker A 写的 approval_deny —— 只 1 条 deny
+    const denies = steps.filter((s) => s.kind === 'approval_deny');
+    expect(denies.length).toBe(1);
+    // 关键 assertion 2：completedCount 应包含 deny（3 条 advancing），所以 reclaim step
+    // 应该写出（因为 dbAdvancing=3 > usage.steps=0），但只写一条。
+    const reclaims = steps.filter((s) => s.kind === 'reclaim');
+    expect(reclaims.length).toBe(1);
+    // 关键 assertion 3：reclaim.output.dbAdvancing 应为 3（包含 deny）
+    expect((reclaims[0].output as { dbAdvancing?: number })?.dbAdvancing).toBe(3);
+  });
+
+  it('reclaim records a step (kind=reclaim, M1e task 6) with reclaim=true for traceability', async () => {
     const user = await ensureUser('trace');
     const session = await createChatSession(user.id, 'trace');
     const { run } = await createAgentRun({
@@ -158,11 +206,12 @@ describe('runtime reclaim after worker A crash (T5)', () => {
     await executeRun(run.id);
 
     const steps = await listSteps(run.id);
-    const heartbeat = steps.find(
+    // M1e task 6：kind 从 'heartbeat' 改为 'reclaim'
+    const reclaim = steps.find(
       (s) =>
-        s.kind === 'heartbeat' &&
+        s.kind === 'reclaim' &&
         (s.output as { reclaim?: boolean } | null)?.reclaim === true,
     );
-    expect(heartbeat).toBeDefined();
+    expect(reclaim).toBeDefined();
   });
 });

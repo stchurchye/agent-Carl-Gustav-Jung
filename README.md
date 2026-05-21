@@ -95,7 +95,9 @@ npm run dev:mobile
   - **任务面板**：`GET /api/agent/runs?status=&limit=` 返回 owner runs + 群成员 runs（不含外人）；`BrainAgentTasksScreen` 列表 + `BrainAgentTaskDetailScreen` 详情，已挂到 `BrainHubScreen` 入口。
   - **T16 SSE Last-Event-ID**：`/runs/:id/stream` 每条 step 带 SSE `id` 字段；客户端断线重连用 `Last-Event-ID` header 或 `?after=N` query 续传，跳过已收到的 step。Mobile 继续走轮询（full state read 天然续传）。
   - **Per-user DeepSeek key in worker**：用户在客户端填的 key 经 `secretBox.sealUserApiKey`（AES-256-GCM）落到 `agent_runs.user_api_key_enc`，worker 调 LLM 时 `resolveEffectiveApiKey(run)` 优先解开用户 key，缺则退回 env `DEEPSEEK_API_KEY`。**需要配置 `AGENT_KEY_SECRET`**（≥16 字符）才会启用；未配置则 user key 在写入时被丢弃 + warn。
-  - **Topic skill prompt-injection 防御**：`upsertSkill` 前用 `validateSkillInput` 拒掉常见 jailbreak pattern（"忽略以上"、"ignore previous instructions"、"you are now DAN"、明文索要 api key 等），HTTP 路由把 `SkillValidationError` 映射成 400 + 可读 reason 列表。
+    - **Rotation (M1e Task 9)**：sealed payload 升级为 v1 格式（带 `0x01` versionTag 头），同时新增 `AGENT_KEY_SECRET_PREV` env 用于平滑轮换。流程：把当前 `AGENT_KEY_SECRET` 复制到 `AGENT_KEY_SECRET_PREV`、生成新 SECRET、重启 API；老 sealed key 走 PREV 解，新写入走新 SECRET。read path 兼容 M1d v0（无 versionTag）的老数据。
+  - **Topic skill prompt-injection 防御**：`upsertSkill` 前用 `validateSkillInput` 检查；M1e Task 5 把 pattern 分两档 —— **high** severity（明显 jailbreak：忽略以上指令/规则/设定/人设/上下文/对话、you are now DAN、ignore any prior instructions、force-call magi_content_ingest 等）继续 reject 400；**low** severity（仅出现 `api_key` / `secret` 关键词）允许写入但 warn-log，避免合法的"密钥管理 SOP"被误杀。
+  - **User-facing notice 通道 (M1e Task 2)**：之前静默 fallback 的场景（user key 不可用、retry 被去重、planner LLM 失败、skill 注入被 reject…）现在统一写到 `agent_event_logs(event_type='user_facing_notice')`，UI 顶部 banner 展示。`GET /api/agent/runs/:id` 响应附带最新 20 条 notices；SSE 流的 event id 加了命名空间前缀 `s:<step_idx>` / `n:<event_log_id>`，断线重连按前缀 dispatch。`NoticeCode` enum 见 `apps/api/src/lib/agent/notices.ts`。
   - **MCP stdio transport**：`apps/api/src/lib/agent/mcp/stdioTransport.ts` 提供 `McpStdioClient`，按行式 JSON-RPC（`tools/list`、`tools/call`）与 stdio MCP server 通信；自带 `_demoEchoServer.mjs` smoke 测试，可作为接 Anthropic 官方 SDK 前的参考。
 
 **入口**：

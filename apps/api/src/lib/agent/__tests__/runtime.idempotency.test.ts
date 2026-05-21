@@ -73,7 +73,7 @@ describe('runtime idempotency gate (M1c, T10)', () => {
     counter.calls = 0;
   });
 
-  it('resolveToolCallKey 拼出 `tool:key` 形式', () => {
+  it('resolveToolCallKey 拼出 `tool:key` 形式（无 run，向后兼容）', () => {
     const planStep: PlanStep = {
       toolName: 'counted_tool',
       input: { tag: 'X' },
@@ -81,6 +81,22 @@ describe('runtime idempotency gate (M1c, T10)', () => {
       todoId: 't',
     };
     expect(resolveToolCallKey(countedTool as never, planStep)).toBe('counted_tool:tag:X');
+  });
+
+  it('M1e Task 13.3: resolveToolCallKey 带 run 时把 ownerId 加在最前面 (跨用户隔离)', () => {
+    const planStep: PlanStep = {
+      toolName: 'counted_tool',
+      input: { tag: 'X' },
+      reason: '',
+      todoId: 't',
+    };
+    const fakeRunA = { ownerId: 'user-alice' } as unknown as Parameters<typeof resolveToolCallKey>[2];
+    const fakeRunB = { ownerId: 'user-bob' } as unknown as Parameters<typeof resolveToolCallKey>[2];
+    const keyA = resolveToolCallKey(countedTool as never, planStep, fakeRunA);
+    const keyB = resolveToolCallKey(countedTool as never, planStep, fakeRunB);
+    expect(keyA).toBe('user-alice:counted_tool:tag:X');
+    expect(keyB).toBe('user-bob:counted_tool:tag:X');
+    expect(keyA).not.toBe(keyB);
   });
 
   it('两个 plan steps 用同一 idempotency key → handler 只调一次,第二次写 observe 命中', async () => {
@@ -111,12 +127,13 @@ describe('runtime idempotency gate (M1c, T10)', () => {
     const observes = steps.filter((s) => s.kind === 'observe' && s.toolName === 'counted_tool');
     expect(toolCalls.length).toBe(1);
     expect(observes.length).toBe(1);
-    expect(toolCalls[0].toolCallKey).toBe('counted_tool:tag:A');
+    // M1e Task 13.3: idempotency key 加 ownerId 前缀，避免跨用户碰撞
+    expect(toolCalls[0].toolCallKey).toBe(`${user.id}:counted_tool:tag:A`);
     // observe 不带 toolCallKey,避免和 tool_call 冲突 unique 索引
     expect(observes[0].toolCallKey).toBeNull();
     const obsInput = observes[0].input as { cached?: boolean; idempotencyKey?: string };
     expect(obsInput.cached).toBe(true);
-    expect(obsInput.idempotencyKey).toBe('counted_tool:tag:A');
+    expect(obsInput.idempotencyKey).toBe(`${user.id}:counted_tool:tag:A`);
   });
 
   it('crash recovery: 预先写入完成的 tool_call,executeRun 不重跑外部 handler', async () => {
@@ -165,14 +182,14 @@ describe('runtime idempotency gate (M1c, T10)', () => {
     // M1d T5 后契约：DB 里 tool_call 数 >= plan.steps.length 时，
     // reclaim 路径直接 skip 整个 for 循环，不会再写 observe。
     // （observe 只在"同 run 内 mid-execution 命中 idempotency 缓存"时写。）
-    // 取而代之地，会写一条 heartbeat reclaim step 表示接管发生过。
+    // 取而代之地，会写一条 reclaim step（M1e task 6 前叫 'heartbeat'）表示接管发生过。
     const steps = await listSteps(run.id);
-    const heartbeat = steps.find(
+    const reclaim = steps.find(
       (s) =>
-        s.kind === 'heartbeat' &&
+        s.kind === 'reclaim' &&
         (s.output as { reclaim?: boolean } | null)?.reclaim === true,
     );
-    expect(heartbeat).toBeDefined();
+    expect(reclaim).toBeDefined();
     const toolCalls = steps.filter((s) => s.kind === 'tool_call');
     expect(toolCalls.length).toBe(1);
     expect((toolCalls[0].output as { result?: { n?: number } })?.result?.n).toBe(999);

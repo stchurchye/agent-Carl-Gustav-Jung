@@ -29,6 +29,7 @@ export * from './prompts/assistantCopy.js';
 export * from './llm/deepseek.js';
 export * from './llm/zenmux.js';
 export * from './llm/zenmuxChatModels.js';
+export * from './llm/agentModelCatalog.js';
 export * from './llm/qwenTts.js';
 export * from './llm/qwenAsr.js';
 export * from './constants.js';

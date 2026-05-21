@@ -85,6 +85,9 @@ export async function snapshotForAgent(
       userId: params.userId,
       groupId: params.groupId,
       topicId: params.topicId,
+      // M1e Task 10：让 listForAgent 二次过滤命中 high pattern 时能 emit 一条
+      // SKILL_DROPPED notice 到当前 run。
+      runId: params.runId,
     }));
   if (params.channel === 'private') {
     if (!params.sessionId) {

@@ -39,6 +39,11 @@ export async function executeMessageIntent(
     kind: IntentKind;
     slots?: MemoryIntentSlots;
     targetFragmentId?: string;
+    /** M1e Task 12: agent run 选 provider/model */
+    agentOptions?: {
+      providerId?: 'deepseek' | 'zenmux';
+      modelId?: string;
+    };
   },
 ) {
   return api.executeIntent({
@@ -53,6 +58,7 @@ export async function executeMessageIntent(
     model: ctx.model,
     contextSelection: ctx.contextSelection,
     selectedMessageIds: ctx.selectedMessageIds,
+    agentOptions: ctx.agentOptions,
   });
 }
 

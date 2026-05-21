@@ -1,14 +1,14 @@
 import { api } from '../../lib/api';
-import type { AgentRun, AgentRunWithSteps, AgentStep } from './types';
+import type { AgentNotice, AgentRun, AgentRunWithSteps, AgentStep } from './types';
 
 function unwrapRun(data: unknown): AgentRunWithSteps {
-  // 后端 GET /api/agent/runs/:id 返回 { run, steps } (M1b-1 起);
+  // 后端 GET /api/agent/runs/:id 返回 { run, steps, notices? } (M1b-1 起；M1e task 2 加 notices);
   // 容错:旧实现可能直接返回 run 本体。
   if (data && typeof data === 'object' && 'run' in (data as Record<string, unknown>)) {
-    const d = data as { run: AgentRun; steps?: AgentStep[] };
-    return { run: d.run, steps: d.steps ?? [] };
+    const d = data as { run: AgentRun; steps?: AgentStep[]; notices?: AgentNotice[] };
+    return { run: d.run, steps: d.steps ?? [], notices: d.notices ?? [] };
   }
-  return { run: data as AgentRun, steps: [] };
+  return { run: data as AgentRun, steps: [], notices: [] };
 }
 
 export async function fetchAgentRun(id: string): Promise<AgentRunWithSteps> {

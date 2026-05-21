@@ -9,6 +9,11 @@ import * as store from '../lib/agent/store.js';
 import { cancelRun, confirmRun, createAgentRun } from '../lib/agent/runtime.js';
 import type { AgentRun, AgentRunStatus } from '../lib/agent/types.js';
 import * as topicSkills from '../lib/agent/topicSkills.js';
+import {
+  emitNotice,
+  listNoticesAfter,
+  listNoticesForRun,
+} from '../lib/agent/notices.js';
 
 export const agentRouter = new Hono<{ Variables: AppVariables }>();
 
@@ -38,12 +43,19 @@ agentRouter.get('/runs', async (c) => {
   const userId = c.get('userId')!;
   const status = c.req.query('status');
   const limitRaw = c.req.query('limit');
-  const limit = limitRaw ? Number(limitRaw) : undefined;
+  const limit = limitRaw ? Number(limitRaw) : 50;
   const runs = await store.listAgentRunsForUser(userId, {
     status: (status as AgentRunStatus) || undefined,
     limit,
   });
-  return c.json({ ok: true, data: { runs }, requestId: c.get('requestId') });
+  // M1e task 7：列表 API 暴露 hasMore（runs.length === limit 即可能还有下一页）。
+  // mobile 列表暂不渲染 load-more，但字段先备好，避免后续 schema 改动需要兼容老客户端。
+  const hasMore = runs.length === limit;
+  return c.json({
+    ok: true,
+    data: { runs, hasMore },
+    requestId: c.get('requestId'),
+  });
 });
 
 agentRouter.get('/runs/:id', async (c) => {
@@ -54,9 +66,11 @@ agentRouter.get('/runs/:id', async (c) => {
   if (!(await canAccessRun(run, userId)))
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   const steps = await store.listSteps(id);
+  // M1e task 2：附带 user-facing notice 列表（最新 20 条），UI 顶部 banner 展示
+  const notices = await listNoticesForRun(id, { limit: 20 });
   return c.json({
     ok: true,
-    data: { run, steps },
+    data: { run, steps, notices },
     requestId: c.get('requestId'),
   });
 });
@@ -69,19 +83,29 @@ agentRouter.get('/runs/:id/stream', async (c) => {
   if (!(await canAccessRun(run, userId)))
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
 
-  // M1d T16：支持 SSE 断线重连。客户端把上次收到的最后一个 step.idx 放在
-  // `Last-Event-ID` header（HTML5 标准）或 `?after=` query param 里，
-  // 服务端会跳过该 idx 之前的 step，先 catch-up 漏掉的，再进入实时循环。
+  // M1d T16 + M1e task 2：SSE 断线重连，事件 id 走两个命名空间：
+  //   step 事件   id = `s:${agent_steps.idx}`
+  //   notice 事件 id = `n:${agent_event_logs.id}`
+  // Last-Event-ID 重连时按前缀 dispatch。向后兼容：若收到裸数字（M1d 老客户端），
+  // 按 step idx 处理；notice 全部从 0 重发（数量上限 20，可接受）。
   const lastEventHeader = c.req.header('last-event-id');
   const afterQuery = c.req.query('after');
-  const resumeFromRaw = lastEventHeader ?? afterQuery;
-  const resumeFrom =
-    resumeFromRaw != null && !Number.isNaN(Number(resumeFromRaw))
-      ? Number(resumeFromRaw)
-      : -1;
+  const resumeRaw = lastEventHeader ?? afterQuery ?? '';
+  let resumeStepIdx = -1;
+  let resumeNoticeId: string | null = null;
+  if (resumeRaw.startsWith('s:')) {
+    const n = Number(resumeRaw.slice(2));
+    if (!Number.isNaN(n)) resumeStepIdx = n;
+  } else if (resumeRaw.startsWith('n:')) {
+    resumeNoticeId = resumeRaw.slice(2) || null;
+  } else if (resumeRaw && !Number.isNaN(Number(resumeRaw))) {
+    // M1d 老客户端：裸数字 = step idx
+    resumeStepIdx = Number(resumeRaw);
+  }
 
   return streamSSE(c, async (stream) => {
-    let lastStepIdx = resumeFrom;
+    let lastStepIdx = resumeStepIdx;
+    let lastNoticeId: string | null = resumeNoticeId;
     let lastStatus = run.status;
     let alive = true;
     stream.onAbort(() => {
@@ -96,11 +120,19 @@ agentRouter.get('/runs/:id/stream', async (c) => {
       for (const s of newSteps) {
         await stream.writeSSE({
           event: 'step',
-          // SSE id 字段：浏览器 EventSource 自动把它当 Last-Event-ID 在重连时回传。
-          id: String(s.idx),
+          id: `s:${s.idx}`,
           data: JSON.stringify(s),
         });
         lastStepIdx = s.idx;
+      }
+      const newNotices = await listNoticesAfter(id, lastNoticeId);
+      for (const n of newNotices) {
+        await stream.writeSSE({
+          event: 'notice',
+          id: `n:${n.id}`,
+          data: JSON.stringify(n),
+        });
+        lastNoticeId = n.id;
       }
       if (current.status !== lastStatus) {
         await stream.writeSSE({
@@ -138,9 +170,13 @@ agentRouter.post('/runs/:id/cancel', async (c) => {
 });
 
 /**
- * M1d Task 3：把一个终态 run 重跑——克隆 inputText / channel / budget，
- * 创建一个新的 run（不复用旧 run id、不接续 step），返回新 runId。
- * 只允许 terminal 状态调用；非 terminal 状态返回 409。
+ * M1d Task 3 + M1e Task 3/4：把一个终态 run 重跑——克隆 inputText / channel / budget /
+ * sealed user key，创建一个新的 run（不复用旧 run id、不接续 step），返回新 runId。
+ *
+ * - 只允许 terminal 状态调用；非 terminal 状态返回 409。
+ * - M1e blocker 1+3：复制旧 run 的 user_api_key_enc（如有），避免新 run 走 server key
+ *   而旧 run 是 user key 的语义漂移。
+ * - M1e blocker 2 (task 4)：10s 窗口去重，同 (ownerId, inputText) 已 retry 过则 409。
  */
 agentRouter.post('/runs/:id/retry', async (c) => {
   const userId = c.get('userId')!;
@@ -156,6 +192,40 @@ agentRouter.post('/runs/:id/retry', async (c) => {
     run.status === 'budget_exhausted';
   if (!isTerminal) return jsonError(c, ErrorCodes.VALIDATION, 409);
 
+  // M1e Task 4：10s 窗口去重——如果过去 10s 内已经为同 (ownerId, inputText) 创建过另一个
+  // run（excluding 旧 run 本身），返回 409 + 现有的 runId。前端依然 disable retry 按钮做
+  // optimistic 防连点；这是后端最终防线（多设备 / 网络重试也兜得住）。
+  const dedup = await getPool().query(
+    `SELECT id FROM agent_runs
+      WHERE owner_id = $1 AND input_text = $2
+        AND created_at > now() - interval '10 seconds'
+        AND id <> $3
+      ORDER BY created_at DESC LIMIT 1`,
+    [run.ownerId, run.inputText, run.id],
+  );
+  if (dedup.rows.length > 0) {
+    const existingRunId = dedup.rows[0].id as string;
+    await emitNotice({
+      runId: existingRunId,
+      severity: 'info',
+      code: 'RETRY_DEDUPED',
+      message: '10 秒内已发起过同一任务的重试，已忽略本次。',
+      context: { triggeredFromRunId: run.id },
+    });
+    return c.json(
+      {
+        ok: false,
+        error: {
+          code: 'AGENT_RETRY_DEDUPED',
+          message: '10 秒内已重试过，请稍后再试。',
+          existingRunId,
+        },
+        requestId: c.get('requestId'),
+      },
+      409,
+    );
+  }
+
   const result = await createAgentRun({
     ownerId: run.ownerId,
     channel: run.channel,
@@ -163,11 +233,30 @@ agentRouter.post('/runs/:id/retry', async (c) => {
     groupId: run.groupId ?? undefined,
     topicId: run.topicId ?? undefined,
     inputText: run.inputText,
-    // Worker 自己根据 apiKeySource 解析 key（M1d Task 6 才接 per-user key 取用）。
     apiKey: '',
     apiKeySource: run.apiKeySource,
     budget: run.budget,
+    // M1e Task 11d / Task 12: retry 复用旧 run 的 provider+model 选型
+    providerId: run.providerId,
+    modelId: run.modelId,
   });
+
+  // M1e blocker 1 + Task 11d：复制旧 run 的 sealed user keys（不止 DeepSeek，
+  // 还有 ZenMux）。M1d 只做了 DeepSeek，会让 retry 的 zenmux run 静默降级到 server key。
+  if (run.apiKeySource === 'user') {
+    const oldDsSealed = await store.getUserApiKeyEnc(run.id);
+    const oldZmSealed = await store.getUserZenmuxKeyEnc(run.id);
+    if (oldDsSealed || oldZmSealed) {
+      await getPool().query(
+        `UPDATE agent_runs
+            SET user_api_key_enc        = COALESCE($1, user_api_key_enc),
+                user_zenmux_key_enc     = COALESCE($2, user_zenmux_key_enc)
+          WHERE id = $3`,
+        [oldDsSealed, oldZmSealed, result.run.id],
+      );
+    }
+  }
+
   return c.json({
     ok: true,
     data: {

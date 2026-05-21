@@ -1,4 +1,4 @@
-import { chatCompletionRaw, type ChatMessageInput } from '../deepseek.js';
+import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
 import type { AgentRun, AgentStep, Plan } from './types.js';
 
 const REPLY_SYSTEM = `你是 agent 任务的收尾发言人。
@@ -15,7 +15,7 @@ export function buildReplyMessages(params: {
   run: AgentRun;
   plan: Plan;
   steps: AgentStep[];
-}): ChatMessageInput[] {
+}): LlmChatMessage[] {
   const { run, plan, steps } = params;
   const toolSteps = steps.filter(
     (s) => s.kind === 'tool_call' || s.kind === 'observe',
@@ -86,15 +86,18 @@ export async function generateFinalReply(params: {
   run: AgentRun;
   plan: Plan;
   steps: AgentStep[];
-  apiKey: string;
+  /** M1e Task 11d：从 raw apiKey 升级为 provider-neutral client */
+  llm: LlmChatClient;
+  signal: AbortSignal;
 }): Promise<string> {
   const messages = buildReplyMessages(params);
   try {
-    const out = await chatCompletionRaw(params.apiKey, messages, {
+    const result = await params.llm.chat(messages, {
       temperature: 0.4,
       maxTokens: 800,
+      signal: params.signal,
     });
-    return out;
+    return result.content;
   } catch {
     const docs = collectExportedDocs(params.steps);
     const docLine = docs.length

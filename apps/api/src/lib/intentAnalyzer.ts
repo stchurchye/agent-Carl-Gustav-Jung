@@ -49,7 +49,8 @@ function chatLabel(input: AnalyzeIntentInput): string {
   return input.channel === 'group' ? '请 AI 回复' : '和小助手聊聊';
 }
 
-function pickAutoExecute(
+/** @internal exported for tests (M1e Task 13.5). */
+export function pickAutoExecute(
   candidates: IntentCandidate[],
   forceChips: boolean,
 ): boolean {
@@ -61,7 +62,11 @@ function pickAutoExecute(
     top.kind === 'memory_correct' ||
     top.kind === 'memory_forget' ||
     top.kind === 'app_navigate' ||
-    top.kind === 'persona_open_settings'
+    top.kind === 'persona_open_settings' ||
+    // M1e Task 13.5：把"agent_run 不 autoExecute"从废弃的 orchestrator.analyzeIntent
+    // 移到生产 hot path 这里。agent run 启动有真金白银的 LLM 调用，必须明确意图
+    // confirm。即使 confidence=1.0 也不 auto-execute；UI 仍然能用 chips 推荐。
+    top.kind === 'agent_run'
   ) {
     return false;
   }
