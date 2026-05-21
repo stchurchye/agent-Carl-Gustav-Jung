@@ -14,6 +14,7 @@ import { registerWebSearch } from './tools/webSearch.js';
 import { registerUrlFetch } from './tools/urlFetch.js';
 import { registerDocExportMarkdown } from './tools/docExportMarkdown.js';
 import { registerRunPython } from './tools/runPython.js';
+import { registerSearchPapers } from './tools/searchPapers.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -22,4 +23,5 @@ export function registerAgentTools(): void {
   registerUrlFetch();
   registerDocExportMarkdown();
   registerRunPython();
+  registerSearchPapers();
 }
