@@ -300,7 +300,12 @@ export function parsePlannerJson(raw: string, tools: ToolDef[]): Plan | null {
 }
 
 // =====================================================================
-// M1f：仅测试用 export（避免污染主 API surface）
+// M1f：仅测试用 export
+//
+// 命名约定（M1f 起）：`_<name>ForTest` 表示"该 export 仅供单元测试访问 module
+// 内部 helper，不属于稳定 public API"。生产代码请不要 import；如果发现需要
+// 在生产里用，先把它升级为正式 export（去 `_` 前缀和 `ForTest` 后缀）。
+// 后续模块如有同样需求请沿用此约定。
 // =====================================================================
 export const _buildPlannerSystemPromptForTest = buildPlannerSystemPrompt;
 export const _buildPlannerUserPromptForTest = buildPlannerUserPrompt;

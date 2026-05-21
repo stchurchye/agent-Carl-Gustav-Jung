@@ -63,9 +63,19 @@ describe('M1f planner prompt 升级 (#1)', () => {
     expect(sys).toMatch(/换参数重试|备选|跳过/);
   });
 
-  it('system prompt 把每个 tool 的 replyMeta.failureHint 渲染出来', () => {
+  it('system prompt 把每个 tool 的 replyMeta.failureHint 都渲染出来', () => {
     const sys = _buildPlannerSystemPromptForTest(toolRegistry.list());
-    expect(sys).toMatch(/限流|网络故障/);
+    const toolsWithHint = toolRegistry.list().filter((t) => t.replyMeta?.failureHint);
+    expect(toolsWithHint.length).toBeGreaterThanOrEqual(4); // 至少 webSearch/urlFetch/magi*/docExport
+    for (const t of toolsWithHint) {
+      expect(sys).toContain(t.replyMeta!.failureHint!);
+    }
+  });
+
+  it('system prompt 不会因为某些 tool 缺 failureHint 而出现 "undefined" 串', () => {
+    const sys = _buildPlannerSystemPromptForTest(toolRegistry.list());
+    expect(sys).not.toMatch(/失败常见原因：undefined/);
+    expect(sys).not.toMatch(/undefined/);
   });
 
   it('user prompt 在传 previousFailure 时包含失败原因 + 重新规划指示', () => {
