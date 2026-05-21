@@ -25,6 +25,7 @@ export const echoSleepTool: ToolDef<EchoSleepInput, EchoSleepOutput> = {
   costHint: 'low',
   hasSideEffects: false,
   idempotent: true,
+  replyMeta: { summaryKind: 'silent' },
   async handler(input, ctx) {
     const ms = Math.max(0, Math.min(input.sleepMs ?? 1000, 30_000));
     await new Promise<void>((resolve, reject) => {

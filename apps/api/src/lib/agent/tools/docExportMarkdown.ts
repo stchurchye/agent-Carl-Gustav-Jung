@@ -50,6 +50,15 @@ export const docExportMarkdownTool: ToolDef<
   costHint: 'low',
   hasSideEffects: true,
   idempotent: true,
+  replyMeta: {
+    summaryKind: 'export_ref',
+    extractRef: (output) => {
+      const o = output as { documentId?: string; title?: string } | null;
+      if (!o?.documentId) return null;
+      return { kind: 'document', id: o.documentId, label: o.title };
+    },
+    failureHint: '文档写入失败一般是 DB 故障。可重试一次；如失败 2 次请直接在 finalReply 里把 markdown 内容贴出来给用户。',
+  },
   computeIdempotencyKey: (input) => {
     const { title } = input as DocExportMarkdownInput;
     return (

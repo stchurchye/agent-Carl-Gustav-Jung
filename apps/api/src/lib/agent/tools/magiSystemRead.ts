@@ -32,6 +32,10 @@ export const magiSystemReadTool: ToolDef<MagiSystemReadInput, MagiSystemReadOutp
   costHint: 'low',
   hasSideEffects: false,
   idempotent: true,
+  replyMeta: {
+    summaryKind: 'text',
+    failureHint: 'MAGI 内部 API 故障或未开启。可改用 web_search 走公开来源，或直接告诉用户 MAGI 暂不可用。',
+  },
   computeIdempotencyKey: (input) =>
     `q:${(input as MagiSystemReadInput).question.trim().slice(0, 256)}`,
   async handler(input) {

@@ -45,6 +45,10 @@ export const urlFetchTool: ToolDef<UrlFetchInput, UrlFetchOutput> = {
   costHint: 'low',
   hasSideEffects: false,
   idempotent: true,
+  replyMeta: {
+    summaryKind: 'text',
+    failureHint: '该 URL 可能 404 / 超时 / 非 HTML。可跳过此 URL 用其他搜索结果，或换 web_search 重新搜更可靠的来源。',
+  },
   computeIdempotencyKey: (input) => `url:${(input as UrlFetchInput).url.trim()}`,
   async handler(input, ctx) {
     const ac = new AbortController();

@@ -40,6 +40,10 @@ export const webSearchTool: ToolDef<WebSearchInput, WebSearchOutput> = {
   costHint: 'low',
   hasSideEffects: false,
   idempotent: true,
+  replyMeta: {
+    summaryKind: 'list',
+    failureHint: '搜索可能限流或网络故障。可换关键词重试一次；连续失败请改走 magi_system_read 或直接给 finalReply。',
+  },
   computeIdempotencyKey: (input) => {
     const { query, maxResults } = input as WebSearchInput;
     return `q:${query.trim().toLowerCase()}|n:${maxResults ?? 5}`;

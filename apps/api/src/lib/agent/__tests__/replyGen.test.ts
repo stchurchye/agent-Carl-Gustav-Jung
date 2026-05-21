@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { buildReplyMessages, generateFinalReply } from '../replyGen.js';
 import type { AgentRun, AgentStep, Plan } from '../types.js';
 import type { LlmChatClient, LlmChatResult } from '../../llm/types.js';
+import { registerDocExportMarkdown } from '../tools/docExportMarkdown.js';
+
+// M1f：fallback 路径 collectReplyRefs 依赖 toolRegistry 取 replyMeta.extractRef，
+// 测试文件直接 register doc_export_markdown 以验证 fallback 仍能 surface 文档信息。
+registerDocExportMarkdown();
 
 function makeMockLlm(reply: () => Promise<string> | string): LlmChatClient {
   return {

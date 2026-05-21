@@ -36,6 +36,19 @@ export const magiContentIngestTool: ToolDef<MagiContentIngestInput, MagiContentI
   costHint: 'medium',
   hasSideEffects: true,
   idempotent: false,
+  replyMeta: {
+    summaryKind: 'silent',
+    extractRef: (output) => {
+      const o = output as { title?: string; videoUrl?: string } | null;
+      if (!o?.title) return null;
+      return {
+        kind: 'magi_card',
+        id: o.videoUrl ?? o.title,
+        label: o.title,
+      };
+    },
+    failureHint: 'MAGI Content 写入失败可能是上游 5xx 或鉴权问题。可跳过本 URL 继续其它任务。',
+  },
   computeIdempotencyKey: (input) =>
     'url-sha256:' + createHash('sha256').update((input as MagiContentIngestInput).url.trim()).digest('hex'),
   async handler(input) {
