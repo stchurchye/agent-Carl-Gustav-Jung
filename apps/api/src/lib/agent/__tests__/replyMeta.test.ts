@@ -108,4 +108,60 @@ describe('M1f collectReplyRefs / summarizeStepOutput', () => {
   it('summarizeStepOutput: primitive number output stringifies', () => {
     expect(summarizeStepOutput(42, 'text')).toBe('42');
   });
+
+  // M1f polish #3：ok=false 是失败 observation，绝不该出现在用户回复的资源清单里。
+  // 当前 prod 路径靠 docExport throw、magiIngest 清 videoUrl 来"碰巧"返回 null，
+  // 但新 tool 作者很容易踩坑。把契约钉在 collectReplyRefs，不依赖各 tool 自检。
+  it('M1f polish #3: collectReplyRefs skips ok=false output even if id present', () => {
+    const docTool: Pick<ToolDef, 'name' | 'replyMeta'> = {
+      name: 'doc_export_markdown',
+      replyMeta: {
+        summaryKind: 'export_ref',
+        extractRef: (o) => {
+          const x = o as { documentId?: string; title?: string };
+          return x.documentId
+            ? { kind: 'document', id: x.documentId, label: x.title }
+            : null;
+        },
+      },
+    };
+    const refs = collectReplyRefs(
+      [
+        fakeStep('doc_export_markdown', {
+          ok: false,
+          documentId: 'd1',
+          title: 't',
+          error: 'DB down',
+        }),
+      ],
+      new Map([[docTool.name, docTool as ToolDef]]),
+    );
+    expect(refs).toEqual([]);
+  });
+
+  // 同上但 ok=false 包在 { result: ... }（runtime 写 step.output 时实际的 shape）
+  it('M1f polish #3: collectReplyRefs skips ok=false under { result } wrapper too', () => {
+    const docTool: Pick<ToolDef, 'name' | 'replyMeta'> = {
+      name: 'doc_export_markdown',
+      replyMeta: {
+        summaryKind: 'export_ref',
+        extractRef: (o) => {
+          const x = o as { documentId?: string };
+          return x.documentId
+            ? { kind: 'document', id: x.documentId }
+            : null;
+        },
+      },
+    };
+    const refs = collectReplyRefs(
+      [
+        fakeStep('doc_export_markdown', {
+          result: { ok: false, documentId: 'd1', error: 'x' },
+          retried: false,
+        }),
+      ],
+      new Map([[docTool.name, docTool as ToolDef]]),
+    );
+    expect(refs).toEqual([]);
+  });
 });

@@ -147,4 +147,31 @@ describe('M1f parsePlannerJson 宽容化 (#4)', () => {
     const tools = toolRegistry.list();
     expect(parsePlannerJson('hello world this is not json', tools)).toBeNull();
   });
+
+  // M1f polish #2：原 regex `,(\s*[}\]])` 不区分字符串字面量，会把 `"foo,]"` 这种
+  // 正常 string 误伤。现走字符串状态机，只剪结构性尾逗号。
+  it('M1f polish #2: does not strip commas inside string literals', () => {
+    const tools = toolRegistry.list();
+    const raw = `{
+  "intentSummary": "find foo,] inside a string",
+  "steps": [{"toolName":"echo_after_sleep","input":{"text":"a,] b,} c"},"reason":"r","todoId":"t1"}],
+  "todos": [{"id":"t1","text":"hint contains ,} too","status":"pending","stepRefs":[]}],
+  "finalReplyHint": "done"
+}`;
+    const plan = parsePlannerJson(raw, tools);
+    expect(plan).not.toBeNull();
+    expect(plan?.intentSummary).toBe('find foo,] inside a string');
+    expect((plan?.steps[0].input as { text?: string }).text).toBe('a,] b,} c');
+    expect(plan?.todos[0].text).toBe('hint contains ,} too');
+
+    // 字符串内有 ",]" 的同时，结构性尾逗号仍要被清掉
+    const raw2 = raw.replace(
+      '"finalReplyHint": "done"',
+      '"finalReplyHint": "done",',
+    );
+    const plan2 = parsePlannerJson(raw2, tools);
+    expect(plan2).not.toBeNull();
+    expect(plan2?.intentSummary).toBe('find foo,] inside a string');
+    expect(plan2?.finalReplyHint).toBe('done');
+  });
 });

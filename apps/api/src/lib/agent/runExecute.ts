@@ -46,7 +46,9 @@ export { resolveToolCallKey } from './runExecuteHelpers.js';
  * driver 直接 `toString()` 成 `[object Object]`，遮蔽真因；某些 driver
  * 版本甚至抛 type 错。
  *
- * 这里强制把 `error` 抹平成 string，并截断 2KB 防意外巨型 stack。
+ * 这里强制把 `error` 抹平成 string，并截断 2000 chars 防意外巨型 stack
+ * （chars，不是 bytes —— CJK 实际字节数会更大；如需严格 byte cap 用
+ * `Buffer.byteLength`，目前 2000 chars 兜底已够）。
  */
 function coerceErrorToString(raw: unknown, fallback: string): string {
   const CAP = 2000;

@@ -288,10 +288,47 @@ function extractJsonCandidate(raw: string): string | null {
   if (end === -1) return null;
   let body = s.slice(start, end + 1);
 
-  // 去尾随逗号：,} / ,] / ,\s*}
-  body = body.replace(/,(\s*[}\]])/g, '$1');
+  // 去尾随逗号：,} / ,] / ,\s*}。
+  // M1f polish #2：原 regex `,(\s*[}\]])` 不区分字符串字面量，会把
+  // `{"hint":"lookup foo,]"}` 这种正常 string 误剪成 `lookup foo]`。
+  // 走和上面 bracket-counter 同款的字符串状态机，只剪 JSON 结构里的尾逗号。
+  body = stripTrailingCommas(body);
 
   return body;
+}
+
+function stripTrailingCommas(body: string): string {
+  const out: string[] = [];
+  let inStr = false;
+  let escape = false;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (escape) {
+      out.push(c);
+      escape = false;
+      continue;
+    }
+    if (c === '\\') {
+      out.push(c);
+      escape = true;
+      continue;
+    }
+    if (c === '"') {
+      inStr = !inStr;
+      out.push(c);
+      continue;
+    }
+    if (!inStr && c === ',') {
+      // peek：跳过空白后若紧跟 } 或 ] 才丢逗号
+      let j = i + 1;
+      while (j < body.length && /\s/.test(body[j])) j++;
+      if (j < body.length && (body[j] === ']' || body[j] === '}')) {
+        continue;
+      }
+    }
+    out.push(c);
+  }
+  return out.join('');
 }
 
 export function parsePlannerJson(raw: string, tools: ToolDef[]): Plan | null {
