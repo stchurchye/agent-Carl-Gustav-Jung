@@ -41,9 +41,21 @@ export function resolveToolCallKey(
 }
 
 /**
- * Replanning 分支：steer 或 approval_deny 后由 worker re-pickup 进入这里。
- * 注：steerRun 已经把新 plan 写入 db，所以 steer 路径不重新生成 plan；
- * approval_deny 路径需要这里调 planner 选替代方案。
+ * Replanning 分支：steer / approval_deny / critique 三种触发后由 worker re-pickup 进入这里。
+ *
+ * 三条路径：
+ * - approval_deny: 这里调 `generatePlanForApprovalDeny` 选替代方案
+ * - steer: steerRun 已经把新 plan 写入 db，这里不动 plan，只 reset usage
+ * - critique（M1f polish #1 finish close-loop）: 把旧 plan 清成 null。
+ *   executeRun 的 `if (!run.plan)` 会重跑 `buildInitialPlan` → 它会调
+ *   `buildPreviousFailureSummary` 把已落地的 failed step 摘要喂给 planner LLM
+ *   → 拿到纠正后的 plan。整段链路：soft-fail → step.error → isToolFailure
+ *   → critique shouldReplan → status=replanning → 本函数清 plan → buildInitialPlan
+ *   → previousFailure 入 prompt → corrected plan。
+ *
+ *   设计说明：critique-replan 时整个 plan 都丢掉，而不是 patch 某一步。
+ *   理由：soft-fail 通常意味着整体策略不行，不是单步错。LLM 更擅长"给定失败
+ *   的尝试，重新设计"，而不是"给定一个失败 step，找替代 step 把旧 plan 串起来"。
  *
  * M1b 简化：replanning 后重置 usage.steps=0 → 让 for 循环从新 plan 第 0 步起。
  * 防止无限 replan 由 plan.version 自带（同 instruction 多次 steer 不会变化 → 测试不会撞死循环）。
@@ -55,10 +67,16 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
   const lastSteer = [...steps].reverse().find((s) => s.kind === 'steer');
   const lastDeny = [...steps].reverse().find((s) => s.kind === 'approval_deny');
   let next = run;
-  if (lastDeny && (!lastSteer || lastDeny.idx > lastSteer.idx)) {
+
+  const denyIsNewest =
+    !!lastDeny && (!lastSteer || lastDeny.idx > lastSteer.idx);
+  const steerIsNewest =
+    !!lastSteer && (!lastDeny || lastSteer.idx > lastDeny.idx);
+
+  if (denyIsNewest) {
     const newPlan = generatePlanForApprovalDeny(
       run.plan!,
-      lastDeny.toolName ?? 'unknown',
+      lastDeny!.toolName ?? 'unknown',
       run.inputText,
     );
     await recordStep({ runId: run.id, kind: 'replan', output: newPlan });
@@ -66,7 +84,26 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
       plan: newPlan,
       todos: newPlan.todos,
     }))!;
+  } else if (!steerIsNewest) {
+    // critique 触发（或其他非 steer / 非 deny 的 replan 源）→ 清 plan，
+    // 让 executeRun 走 buildInitialPlan 重生成；previousFailure 由
+    // buildPreviousFailureSummary 从 DB 取最近 failed step 拼出。
+    await recordStep({
+      runId: run.id,
+      kind: 'replan',
+      output: {
+        reason: 'critique_or_unspecified',
+        clearedPlan: true,
+        prevPlanVersion: run.plan?.version ?? null,
+      },
+    });
+    next = (await store.updateAgentRun(run.id, {
+      plan: null,
+      todos: [],
+    }))!;
   }
+  // steerIsNewest 分支：steerRun 已写新 plan，这里什么也不做（保留 next = run）
+
   const resetUsage = { ...next.usage, steps: 0 };
   return (await store.updateAgentRun(run.id, {
     status: 'running',

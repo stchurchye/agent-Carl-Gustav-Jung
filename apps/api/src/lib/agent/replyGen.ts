@@ -38,6 +38,13 @@ export function collectReplyRefs(
     if (!extractRef) continue;
     const raw =
       (s.output as { result?: unknown } | null)?.result ?? s.output;
+    // M1f polish #3：ok=false 的 output 永远不产生 ref —— 这是一条失败
+    // observation，不是已落地的资源。把契约钉在 runtime 而不是依赖每个 tool
+    // 的 extractRef 自己防御性 check ok（docExport throws, magiIngest 清
+    // videoUrl 都是当前实现的偶然护城河，新 tool 作者很容易踩坑）。
+    if (raw != null && typeof raw === 'object' && (raw as { ok?: unknown }).ok === false) {
+      continue;
+    }
     try {
       const ref = extractRef(raw);
       if (!ref) continue;
