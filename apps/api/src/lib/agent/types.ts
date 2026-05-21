@@ -90,6 +90,10 @@ export type AgentRun = {
    */
   providerId: 'deepseek' | 'zenmux';
   modelId: string;
+  /** M2 Task 1A: E2B sandbox ID for run_python. NULL until first call; killed in softComplete. */
+  sandboxId: string | null;
+  /** M2 Task 1A: encrypted JSONB bag of user-supplied API keys keyed by service name. */
+  userApiKeysEnc: Record<string, string>;
   resultMessageId: string | null;
   invokeMessageId: string | null;
   lastHeartbeatAt: Date | null;
