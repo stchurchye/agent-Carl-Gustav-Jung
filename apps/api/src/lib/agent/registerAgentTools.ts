@@ -17,6 +17,7 @@ import { registerRunPython } from './tools/runPython.js';
 import { registerSearchPapers } from './tools/searchPapers.js';
 import { registerCritiqueLastAnswer } from './tools/critiqueLastAnswer.js';
 import { registerDatetimeNow } from './tools/datetimeNow.js';
+import { registerRenderDiagram } from './tools/renderDiagram.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -28,4 +29,5 @@ export function registerAgentTools(): void {
   registerSearchPapers();
   registerCritiqueLastAnswer();
   registerDatetimeNow();
+  registerRenderDiagram();
 }
