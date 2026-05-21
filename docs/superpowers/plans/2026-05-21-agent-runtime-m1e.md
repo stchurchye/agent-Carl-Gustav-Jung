@@ -479,58 +479,71 @@ feat(agent): defense-in-depth skill filter + historical scan + M1e docs
 
 ---
 
-### 12.1 Task 11a：SPIKE（1-1.5h，**必须先于 task 1 跑完**）
+### 12.1 Task 11a：SPIKE（已完成 ✅，2026-05-21）
 
-**目的**：在写 plan / 拆 runtime.ts 之前，先用最小代码验证 3 件事，避免接口设计返工：
+**spike 脚本**：`apps/api/src/scripts/llmSpike.ts`（保留在仓库，未来加 provider 时复用）
 
-1. **`response_format: { type: 'json_object' }` 在 ZenMux 是否被支持？** 不支持的话 planner 要怎么保证 JSON 输出？（备选：prompt 严格要求 + `parsePlannerJson` 兼容）
-2. **`providerId='zenmux'` + `modelId='anthropic/claude-haiku-4.5'` 这种 "provider/model" 二段命名是否清晰？** —— ZenMux 内部本身是 multi-vendor 网关（OpenAI/Anthropic/Google 都走它），如果用户填 `modelId='claude-haiku-4.5'` 而 `providerId='zenmux'`，那 ZenMux 的内部 vendor 路由该怎么写？
-3. **`signal: AbortSignal` 在两边的传递路径**——ZenMux 当前 wrapper 不接 signal，需要改 wrapper 还是 plumb 到底层 fetch？
+**6/7 用例通过**（1 失败为 model 自身问题，不影响接口决策）：
 
-**Spike 产物**（不进 main，单独 stash 或 `spike/` 目录）：
-```ts
-// scripts/llm-spike.ts
-import { chatCompletionRaw } from '../apps/api/src/lib/deepseek.js';
-import { zenmuxChatFromMessages } from '../apps/api/src/lib/zenmux.js';
+| vendor   | model                              | scenario                | result                  |
+|----------|------------------------------------|-------------------------|-------------------------|
+| deepseek | deepseek-v4-pro (reasoning)        | hello (maxTokens=256)   | ✅ "ok"                 |
+| zenmux   | moonshotai/kimi-k2.6               | hello (temp=1 forced)   | ❌ "ZenMux 没有返回内容" |
+| zenmux   | anthropic/claude-sonnet-4.6        | hello                   | ✅ "ok"                 |
+| deepseek | deepseek-v4-pro (reasoning)        | json-prompt (mt=512)    | ✅ `{"answer":"ok"}`    |
+| zenmux   | moonshotai/kimi-k2.6               | json-prompt (temp=1)    | ✅ `{"answer":"ok"}`    |
+| zenmux   | anthropic/claude-sonnet-4.6        | json-prompt             | ✅ `{"answer":"ok"}`    |
+| deepseek | deepseek-chat (raw fetch + signal) | abort 200ms             | ✅ AbortError @ 203ms   |
 
-// 1) 同样的 messages 跑两边
-const messages = [{ role: 'user', content: '说出 "ok" 这两个字符，不要别的' }];
+#### Spike 决策（钉死，task 11b/11c/11d 必须按此实现）
 
-const ds = await chatCompletionRaw(process.env.DEEPSEEK_API_KEY!, messages, { temperature: 0 });
-const zm = await zenmuxChatFromMessages(process.env.ZENMUX_API_KEY!, messages, { model: 'anthropic/claude-haiku-4.5', temperature: 0 });
-console.log({ ds, zm });
+1. **JSON 输出 → 不引入 `responseFormat` 字段，全靠 prompt 引导**
+   - DeepSeek `chatCompletionRaw` 当前 wrapper **没暴露 `response_format`**，prompt 严格要求即可（v4-pro reasoning 也 OK）
+   - ZenMux 也没暴露
+   - 结论：`LlmChatOptions` **不加 `responseFormat` 字段**，全靠 system prompt + `parsePlannerJson` 兼容裸 JSON / fence。M2 真碰到强 strict 场景再加。
+   - 影响：plan §12.2.1 接口要**删掉 `responseFormat` 字段**。
 
-// 2) JSON 输出测试：用 prompt 引导（兼容无 response_format）
-const jsonMessages = [
-  { role: 'system', content: '只输出 JSON，形如 {"answer": "ok"}' },
-  { role: 'user', content: '回 ok' },
-];
-const dsJson = await chatCompletionRaw(..., jsonMessages, { temperature: 0, response_format: { type: 'json_object' } });
-const zmJson = await zenmuxChatFromMessages(..., jsonMessages, { model: '...', temperature: 0 });
-```
+2. **modelId 命名 → provider 原生 id 透传，无 vendor 第三字段**
+   - DeepSeek：`'deepseek-v4-pro'` / `'deepseek-v4-flash'` / `'deepseek-chat'`（server 自动 alias 到 flash）/ `'deepseek-reasoner'`
+   - ZenMux：`'anthropic/claude-sonnet-4.6'` / `'moonshotai/kimi-k2.6'` / `'openai/gpt-5.5'` / `'deepseek/deepseek-v4-pro'`（注意 ZenMux 内部 DeepSeek 与直连 DeepSeek 是两条路径，不要混）
+   - 结论：`providerId='zenmux'` + `modelId='anthropic/claude-sonnet-4.6'` 已足够；ZenMux 内部 vendor 路由由现有 `zenmuxChatModelMeta` 兜。**不引入 `vendor` 第三字段。**
 
-**Spike 决策点**（输出到 plan task 11b 章节末尾）：
-- ✅ / ❌ ZenMux 支持 response_format
-- 确定 `LlmModelId` 命名规则：是否 `modelId` 就用 ZenMux 原生 `'anthropic/claude-haiku-4.5'`，还是引入 `vendor` 第三字段
-- 确定 `signal` 字段：M1e 是否真的需要（runtime 的 timeout 已经用 setTimeout 兜底，可以先 optional）
+3. **AbortSignal → 升级为必做项（不是 optional）**
+   - raw fetch + AbortController 实测 ~200ms 内中断 ✅
+   - 但当前两个 wrapper（`chatCompletionRaw` / `zenmuxChatFromMessages`）**都不接 `signal`**
+   - 结论：task 11b（DeepSeek adapter）和 task 11c（ZenMux adapter）**必须扩底层 wrapper 签名 + plumb 到 fetch**。否则 runtime 已有的 `ctx.signal` 形同虚设，cancel 路径在 LLM 调用期间不生效。
+   - 影响：plan §12.2.1 `LlmChatOptions.signal` 改成 **required（非可选）**。
 
-**spike 完成标准**：
-- 两个 console.log 都打出非空 content
-- 把 3 个决策点写入 task 11b 章节顶部 "Spike 结论" 段落
+#### Spike 隐藏陷阱（task 11b/11c 实现时必须处理）
+
+- **陷阱 #1**：`DEEPSEEK_MODEL_PRO = 'deepseek-v4-pro'` 是 reasoning model。reasoning tokens 计入 `max_tokens`。短 prompt（hello）也要 ≥ 256 tokens，否则 content 为空。**DeepSeek adapter `maxTokens` 默认值要从 wrapper 当前的 2048 提到 4096**，并在文档里注明 reasoning model 的额外预算。
+- **陷阱 #2**：ZenMux Kimi K2.6 偶发"空返回"（spike 第二轮 hello 翻车）。**ZenMux adapter 要把"content 为空"映射成 `LlmProviderError(kind='unknown')`**（当前 wrapper 已 throw 'ZenMux 没有返回内容'），caller 走 fallback。
+- **陷阱 #3**：Kimi K2.6 强制 `temperature=1`，传 0/0.3 会被 server 拒绝（`invalid temperature`）。**`DEFAULT_MODEL_FOR_PROVIDER` 表要扩成 `{ modelId, defaultTemperature }`**，让上层 planner 调用 chat 时不传 temperature 走默认。
+
+#### Spike 完成标记
+
+- ✅ `apps/api/src/scripts/llmSpike.ts` checked in
+- ✅ 3 个决策点 + 3 个陷阱已写入本节
+- ✅ 接口字段调整（去 responseFormat / signal 升为 required / per-model temperature）已传播到 §12.2.1
+
+下一步：进 task 1 拆 `runtime.ts`，再进 task 11b。
 
 ### 12.2 Task 11b：接口 + 工厂 + DeepSeek 适配
 
-**12.2.1 接口**（新文件 `apps/api/src/lib/llm/types.ts`，**字段语义钉死**）：
+**12.2.1 接口**（新文件 `apps/api/src/lib/llm/types.ts`，**字段语义钉死 — 已按 spike 结论调整**）：
 
 ```ts
 export type LlmChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
 export type LlmChatOptions = {
-  temperature?: number;            // default 0.3
+  /** 不传则走 per-model default（Kimi=1、Claude/DeepSeek=0.3） */
+  temperature?: number;
+  /** 不传则走 per-model default（reasoning model 默认 4096，普通 model 2048） */
   maxTokens?: number;
-  responseFormat?: 'text' | 'json_object';  // 抽象层；DeepSeek 直透传，ZenMux 用 prompt 模拟
   log?: LlmRequestLogContext;
-  signal?: AbortSignal;            // M1e: optional（spike 后定），底层 wrapper 不强制 plumb
+  /** spike 决策：必传不可省。cancelRun 路径靠它中断 LLM 调用 */
+  signal: AbortSignal;
+  // 注：不引入 responseFormat 字段（spike 决策 #1：靠 prompt 引导）
 };
 
 export type LlmChatUsage = { promptTokens: number; completionTokens: number; totalTokens: number };
@@ -539,39 +552,32 @@ export type LlmChatResult = {
   content: string;
   usage: LlmChatUsage;
   providerId: LlmProviderId;
-  modelId: LlmModelId;       // 实际跑的 model（可能 server 端 fallback 过）
+  modelId: LlmModelId;
 };
 
-// providerId 语义：
-//   = 我们 codebase 里 "走哪个 wrapper 模块" 的开关
-//   DeepSeek 是直连一家 vendor
-//   ZenMux 是 multi-vendor 网关，modelId 内部按 ZenMux 的 'vendor/model' 命名传
 export type LlmProviderId = 'deepseek' | 'zenmux';
 
-// modelId 语义：透传给 provider 的 model 字符串
-//   DeepSeek: 'deepseek-chat' | 'deepseek-reasoner' | ...
-//   ZenMux:   'anthropic/claude-haiku-4.5' | 'openai/gpt-5.5' | ... （ZenMux 原生命名）
-//   未来加 Anthropic 直连：'claude-haiku-4-5' （Anthropic 原生命名）
+/** 透传给 provider 的 model 字符串。无 vendor 第三字段（spike 决策 #2） */
 export type LlmModelId = string;
 
 export type LlmChatClient = {
   providerId: LlmProviderId;
   modelId: LlmModelId;
-  chat(messages: LlmChatMessage[], opts?: LlmChatOptions): Promise<LlmChatResult>;
+  chat(messages: LlmChatMessage[], opts: LlmChatOptions): Promise<LlmChatResult>;
 };
 
 export class LlmProviderError extends Error {
   constructor(
     public providerId: LlmProviderId,
     public modelId: LlmModelId,
-    public kind: 'auth' | 'rate_limit' | 'timeout' | 'bad_request' | 'unknown',
+    public kind: 'auth' | 'rate_limit' | 'timeout' | 'bad_request' | 'empty_content' | 'unknown',
     message: string,
     public cause?: unknown,
-  ) { super(message); }
+  ) { super(message); this.name = 'LlmProviderError'; }
 }
 ```
 
-**12.2.2 工厂**（`apps/api/src/lib/llm/factory.ts`）：
+**12.2.2 工厂 + per-model 默认值**（`apps/api/src/lib/llm/factory.ts`）：
 
 ```ts
 export type LlmClientSpec = { providerId: LlmProviderId; modelId: LlmModelId; apiKey: string };
@@ -587,10 +593,34 @@ export function buildLlmClient(spec: LlmClientSpec): LlmChatClient {
 export const DEFAULT_PROVIDER_ID: LlmProviderId =
   (process.env.LLM_DEFAULT_PROVIDER as LlmProviderId | undefined) ?? 'deepseek';
 
-export const DEFAULT_MODEL_FOR_PROVIDER: Record<LlmProviderId, string> = {
-  deepseek: process.env.DEEPSEEK_MODEL_PRO ?? 'deepseek-chat',
-  zenmux:   process.env.ZENMUX_DEFAULT_MODEL ?? 'anthropic/claude-haiku-4.5',
+// 注意：default model 同时携带 temperature 默认（spike 陷阱 #3：Kimi 强制 1）
+export type ModelProfile = { modelId: string; defaultTemperature: number; defaultMaxTokens: number };
+
+export const DEFAULT_MODEL_FOR_PROVIDER: Record<LlmProviderId, ModelProfile> = {
+  deepseek: {
+    modelId: process.env.DEEPSEEK_MODEL_PRO ?? 'deepseek-v4-pro',
+    defaultTemperature: 0.3,
+    defaultMaxTokens: 4096,  // reasoning model 需要更大预算（spike 陷阱 #1）
+  },
+  zenmux: {
+    modelId: process.env.ZENMUX_DEFAULT_MODEL ?? 'anthropic/claude-sonnet-4.6',
+    defaultTemperature: 0.3,
+    defaultMaxTokens: 2048,
+  },
 };
+
+// per-modelId override（处理 spike 陷阱 #3 等硬约束）
+export const MODEL_OVERRIDES: Record<string, Partial<ModelProfile>> = {
+  'moonshotai/kimi-k2.6': { defaultTemperature: 1 },          // server 强制 temperature=1
+  'deepseek-v4-pro':      { defaultMaxTokens: 4096 },         // reasoning，需大预算
+  'deepseek-reasoner':    { defaultMaxTokens: 8192 },
+};
+
+export function resolveModelProfile(providerId: LlmProviderId, modelId: string): ModelProfile {
+  const base = DEFAULT_MODEL_FOR_PROVIDER[providerId];
+  const override = MODEL_OVERRIDES[modelId] ?? {};
+  return { ...base, modelId, ...override };
+}
 ```
 
 **12.2.3 DeepSeek 适配**（`apps/api/src/lib/llm/providers/deepseek.ts`）：薄包 `chatCompletionRaw`，归一化 usage / 错误。
