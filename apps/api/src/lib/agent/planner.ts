@@ -191,6 +191,18 @@ JSON 结构必须是：
   b. 该工具能力本身不可用（持续 4xx/5xx）→ 跳过该工具，用其他工具达成目标
   c. 整条路径不可行 → 把已查到的部分写成 reply，明确告诉用户「X 不可达」
 - 不要忽略 ok=false 直接进下一步
+
+工具选型建议（心理学 / 经济学讨论场景）：
+- **学术论断 / 理论名称 / 实证证据** → 优先 search_papers（OpenAlex+CrossRef），不要让 search_web 拿博客代替
+- **概念定义 / 历史背景** → wikipedia 比 search_web 更稳
+- **数字声明 / 计算 / 回归 / 画图** → run_python（沙箱里 statsmodels/pandas 都能用）
+- **宏观经济数据**（GDP/CPI/失业率等） → get_economic_series 拉 FRED 官方数据，不要 LLM 拍脑袋
+- **概念关系 / 因果图 / 流程** → render_diagram 生成 mermaid，让用户能看到结构
+- **PDF / Word / Excel 链接** → document_reader
+- **复杂论断（涉及"很多研究表明" / "数据支持" 等）后** → critique_last_answer 自检一次
+- **时间相关问题** → 先调 datetime_now（你不知道今天是几号）
+- **URL 用户粘的** → fetch_url
+- **本系统知识库** → magi_system_read（用户的私人笔记/记忆）
 `;
 
 function buildPlannerSystemPrompt(tools: ToolDef[]): string {

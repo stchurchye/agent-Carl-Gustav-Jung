@@ -26,6 +26,7 @@ import {
 import { runControllers } from './runtimeRegistry.js';
 import { buildFinalContent } from './runReply.js';
 import { killSandboxForRun } from './sandbox.js';
+import { sealUserApiKeys } from './userApiKeys.js';
 
 export type CreateAgentRunInput = {
   ownerId: string;
@@ -44,6 +45,8 @@ export type CreateAgentRunInput = {
    */
   providerId?: 'deepseek' | 'zenmux';
   modelId?: string;
+  /** M2 Task 7A: per-service user-supplied API keys (E2B/FRED/Jina). Sealed before write. */
+  userApiKeys?: Record<string, string>;
 };
 
 export type CreateAgentRunResult = {
@@ -80,6 +83,12 @@ export async function createAgentRun(
     }
   }
 
+  const userApiKeysSealedRaw = sealUserApiKeys(input.userApiKeys ?? {});
+  const userApiKeysEnc =
+    Object.keys(userApiKeysSealedRaw).length > 0
+      ? (userApiKeysSealedRaw as Record<string, string>)
+      : undefined;
+
   const run = await store.insertAgentRun({
     ownerId: input.ownerId,
     channel: input.channel,
@@ -97,6 +106,7 @@ export async function createAgentRun(
     userZenmuxKeyEnc,
     providerId,
     modelId: input.modelId,
+    userApiKeysEnc,
   });
 
   let userMessageId: string | null = null;
