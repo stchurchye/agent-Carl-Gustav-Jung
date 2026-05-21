@@ -1,9 +1,14 @@
 export type AgentRole = 'generalist';
 
+/**
+ * Agent 任务状态。
+ * M1f：移除 'awaiting_confirm' —— 该状态在 M1d 引入但 mobile 从未接对应 UI，
+ * worker 处理逻辑永远进不去。删后 status 列在 DB 仍是 TEXT 无约束，老数据兼容。
+ * 如未来需要"先确认参数再 run" → 重新加 enum value 即可（M1f spec ADR）。
+ */
 export type AgentRunStatus =
   | 'draft'
   | 'planning'
-  | 'awaiting_confirm'
   | 'awaiting_approval'
   | 'running'
   | 'replanning'

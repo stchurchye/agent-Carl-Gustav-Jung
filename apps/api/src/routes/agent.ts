@@ -6,7 +6,7 @@ import { jsonError } from '../lib/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import * as store from '../lib/agent/store.js';
-import { cancelRun, confirmRun, createAgentRun } from '../lib/agent/runtime.js';
+import { cancelRun, createAgentRun } from '../lib/agent/runtime.js';
 import type { AgentRun, AgentRunStatus } from '../lib/agent/types.js';
 import * as topicSkills from '../lib/agent/topicSkills.js';
 import {
@@ -266,17 +266,6 @@ agentRouter.post('/runs/:id/retry', async (c) => {
     },
     requestId: c.get('requestId'),
   });
-});
-
-agentRouter.post('/runs/:id/confirm', async (c) => {
-  const userId = c.get('userId')!;
-  const id = c.req.param('id');
-  const run = await store.getAgentRun(id);
-  if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
-  if (!(await canAccessRun(run, userId)))
-    return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
-  await confirmRun(id);
-  return c.json({ ok: true, requestId: c.get('requestId') });
 });
 
 // --------- Approval / Steer (M1b-2) ---------

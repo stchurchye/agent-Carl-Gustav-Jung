@@ -39,7 +39,6 @@ const TERMINAL: AgentRunStatus[] = [
 
 const STATUS_LABEL: Record<AgentRunStatus, string> = {
   draft: '准备中',
-  awaiting_confirm: '等待确认',
   planning: '规划中',
   running: '运行中',
   awaiting_approval: '等待授权',

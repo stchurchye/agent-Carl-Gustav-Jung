@@ -111,7 +111,6 @@ npm run dev:mobile
 - `GET /api/agent/runs/:id` 取任务详情（run + 全部 steps）—— 私聊仅 owner，群聊任意群成员可访问
 - `GET /api/agent/runs/:id/stream`（SSE）实时推送 `step` / `status` / `end` 事件
 - `POST /api/agent/runs/:id/cancel` 取消（群聊任意成员可发起）
-- `POST /api/agent/runs/:id/confirm` 通过 `awaiting_confirm` 状态（M1b-2 才用）
 - `POST /api/agent/runs/:id/approve` 同意一个 `awaiting_approval` 状态的工具调用
 - `POST /api/agent/runs/:id/deny { reason? }` 拒绝 → 进入 `replanning`，worker re-pickup 后调 planner 找替代方案
 - `POST /api/agent/runs/:id/steer { instruction }` 中途换方向；服务端 abort 当前 step、写新 plan、状态切 `replanning`
