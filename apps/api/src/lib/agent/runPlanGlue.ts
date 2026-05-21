@@ -8,7 +8,8 @@
 import { snapshotForAgent } from './contextAdapter.js';
 import { generatePlanForEcho, generatePlanWithLlm } from './planner.js';
 import type { AgentRun, Plan } from './types.js';
-import { resolveEffectiveApiKey } from './runtimeShared.js';
+import { resolveLlmClient, resolveEffectiveApiKeyForProvider } from './runLlmClient.js';
+import { runControllers } from './runtimeRegistry.js';
 import { recordStep } from './stepRecorder.js';
 import { emitNotice } from './notices.js';
 
@@ -22,11 +23,19 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
   const isTestEnv =
     process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
   const looksLikeEcho = /echo/i.test(text);
-  const effectiveKey = await resolveEffectiveApiKey(run);
-  if (isTestEnv || looksLikeEcho || !effectiveKey) {
+  if (isTestEnv || looksLikeEcho) {
+    return generatePlanForEcho(text);
+  }
+  const llm = await resolveLlmClient(run);
+  if (!llm) {
+    // resolveLlmClient 已 emit NO_API_KEY notice
     return generatePlanForEcho(text);
   }
   try {
+    // snapshotForAgent 仍然要一个 DeepSeek key 做摘要（独立链路，不属于 LlmChatClient 抽象）。
+    // 取 DeepSeek server/user key 走 per-provider 解析；拿不到就传空串让 snapshot 自己降级。
+    const snapshotKey =
+      (await resolveEffectiveApiKeyForProvider(run, 'deepseek')) ?? '';
     const snapshot = await snapshotForAgent({
       runId: run.id,
       userId: run.ownerId,
@@ -35,12 +44,16 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       groupId: run.groupId ?? undefined,
       topicId: run.topicId ?? undefined,
       pendingUser: text,
-      apiKey: effectiveKey,
+      apiKey: snapshotKey,
     });
+    // cancel 路径：从 runtimeRegistry 取该 run 的 AbortController；如果没有就用一个永不 abort 的（防御）
+    const signal =
+      runControllers.get(run.id)?.signal ?? new AbortController().signal;
     return await generatePlanWithLlm({
       inputText: text,
       snapshot,
-      apiKey: effectiveKey,
+      llm,
+      signal,
     });
   } catch (e) {
     // M1e Task 13.4：之前 catch 后静默 fallback echo plan，用户毫无感知。现在写一条

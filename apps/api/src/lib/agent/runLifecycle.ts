@@ -37,6 +37,12 @@ export type CreateAgentRunInput = {
   apiKey: string;
   apiKeySource: 'user' | 'server';
   budget?: AgentBudget;
+  /**
+   * M1e Task 11d：per-run LLM 选型。不传走 DB DEFAULT 'deepseek' / 'deepseek-v4-pro'。
+   * `providerId='zenmux'` 时 `apiKey` 解释为 user ZenMux key（写到 user_zenmux_key_enc）。
+   */
+  providerId?: 'deepseek' | 'zenmux';
+  modelId?: string;
 };
 
 export type CreateAgentRunResult = {
@@ -49,17 +55,23 @@ export type CreateAgentRunResult = {
 export async function createAgentRun(
   input: CreateAgentRunInput,
 ): Promise<CreateAgentRunResult> {
-  // M1d T6：把 user 主动提供的 DeepSeek key 加密落到 agent_runs，worker 后台
-  // 再用同一把 key 调 LLM。AGENT_KEY_SECRET 没配 → 不存（worker 退回 server key）。
+  // M1d T6 + M1e T11d：把 user 主动提供的 key 加密落到 agent_runs。
+  // - providerId='zenmux' → 落到 user_zenmux_key_enc
+  // - providerId='deepseek'（或缺省）→ 落到 user_api_key_enc（M1d 老字段沿用）
+  // AGENT_KEY_SECRET 没配 → 不存（worker 退回 server key）。
+  const providerId = input.providerId; // undefined → DB DEFAULT 'deepseek'
   let userApiKeyEnc: string | null = null;
+  let userZenmuxKeyEnc: string | null = null;
   if (input.apiKeySource === 'user' && input.apiKey) {
     try {
       const { isSecretBoxAvailable, sealUserApiKey } = await import('./secretBox.js');
       if (isSecretBoxAvailable()) {
-        userApiKeyEnc = sealUserApiKey(input.apiKey);
+        const sealed = sealUserApiKey(input.apiKey);
+        if (providerId === 'zenmux') userZenmuxKeyEnc = sealed;
+        else userApiKeyEnc = sealed;
       } else {
         console.warn(
-          '[agent.createAgentRun] AGENT_KEY_SECRET not set; user-provided DeepSeek key dropped, worker will fall back to server key.',
+          '[agent.createAgentRun] AGENT_KEY_SECRET not set; user-provided key dropped, worker will fall back to server key.',
         );
       }
     } catch (e) {
@@ -81,6 +93,9 @@ export async function createAgentRun(
     apiKeyOwnerId: input.apiKeySource === 'user' ? input.ownerId : null,
     apiKeySource: input.apiKeySource,
     userApiKeyEnc,
+    userZenmuxKeyEnc,
+    providerId,
+    modelId: input.modelId,
   });
 
   let userMessageId: string | null = null;

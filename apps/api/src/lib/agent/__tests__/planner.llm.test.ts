@@ -1,15 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('../../deepseek.js', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../deepseek.js')>('../../deepseek.js');
-  return {
-    ...actual,
-    chatCompletionRaw: vi.fn(),
-  };
-});
-
-import * as deepseek from '../../deepseek.js';
 import {
   generatePlanWithLlm,
   parsePlannerJson,
@@ -21,8 +10,34 @@ import { registerWebSearch } from '../tools/webSearch.js';
 import { registerUrlFetch } from '../tools/urlFetch.js';
 import { registerDocExportMarkdown } from '../tools/docExportMarkdown.js';
 import type { AgentContextSnapshot } from '../contextAdapter.js';
+import type { LlmChatClient, LlmChatMessage, LlmChatResult } from '../../llm/types.js';
 
-const chatCompletionRaw = vi.mocked(deepseek.chatCompletionRaw);
+/**
+ * M1e Task 11d：planner 接 LlmChatClient 而非 raw apiKey。
+ * 测试 mock 一个最小 LlmChatClient 即可（不再 mock deepseek wrapper）。
+ */
+function makeMockLlm(
+  reply: () => Promise<string> | string,
+): LlmChatClient & {
+  calls: Array<{ messages: LlmChatMessage[]; signal: AbortSignal }>;
+} {
+  const calls: Array<{ messages: LlmChatMessage[]; signal: AbortSignal }> = [];
+  return {
+    providerId: 'deepseek' as const,
+    modelId: 'deepseek-v4-pro',
+    calls,
+    async chat(messages, opts): Promise<LlmChatResult> {
+      calls.push({ messages, signal: opts.signal });
+      const content = await reply();
+      return {
+        content,
+        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        providerId: 'deepseek',
+        modelId: 'deepseek-v4-pro',
+      };
+    },
+  };
+}
 
 function snapshot(): AgentContextSnapshot {
   return {
@@ -121,9 +136,9 @@ describe('parsePlannerJson', () => {
   });
 });
 
-describe('generatePlanWithLlm', () => {
+describe('generatePlanWithLlm (LlmChatClient interface, M1e Task 11d)', () => {
   it('returns LLM-parsed plan on happy path', async () => {
-    chatCompletionRaw.mockResolvedValue(
+    const llm = makeMockLlm(() =>
       JSON.stringify({
         intentSummary: '研究家族信托',
         steps: [
@@ -141,35 +156,59 @@ describe('generatePlanWithLlm', () => {
     const plan = await generatePlanWithLlm({
       inputText: '帮我研究家族信托',
       snapshot: snapshot(),
-      apiKey: 'fake',
+      llm,
+      signal: new AbortController().signal,
     });
     expect(plan.steps[0].toolName).toBe('web_search');
     expect(plan.todos[0].id).toBe('t1');
-    expect(chatCompletionRaw).toHaveBeenCalledOnce();
-    const [, messages] = chatCompletionRaw.mock.calls[0]!;
+    expect(llm.calls).toHaveLength(1);
+    const { messages } = llm.calls[0]!;
     expect(messages[0].role).toBe('system');
     expect(messages[0].content).toContain('web_search');
     expect(messages[1].content).toContain('帮我研究家族信托');
   });
 
   it('falls back to echo planner if LLM throws', async () => {
-    chatCompletionRaw.mockRejectedValue(new Error('llm down'));
+    const llm = makeMockLlm(() => {
+      throw new Error('llm down');
+    });
     const plan = await generatePlanWithLlm({
       inputText: '跑两步 echo',
       snapshot: snapshot(),
-      apiKey: 'fake',
+      llm,
+      signal: new AbortController().signal,
     });
     expect(plan.steps[0].toolName).toBe('echo_after_sleep');
     expect(plan.steps.length).toBe(generatePlanForEcho('跑两步 echo').steps.length);
   });
 
   it('falls back to echo planner if LLM returns invalid JSON', async () => {
-    chatCompletionRaw.mockResolvedValue('not json at all');
+    const llm = makeMockLlm(() => 'not json at all');
     const plan = await generatePlanWithLlm({
       inputText: '跑三步 echo',
       snapshot: snapshot(),
-      apiKey: 'fake',
+      llm,
+      signal: new AbortController().signal,
     });
     expect(plan.steps[0].toolName).toBe('echo_after_sleep');
+  });
+
+  it('propagates the caller-provided AbortSignal into llm.chat opts', async () => {
+    const ctrl = new AbortController();
+    const llm = makeMockLlm(() =>
+      JSON.stringify({
+        intentSummary: 'x',
+        steps: [{ toolName: 'web_search', input: {}, reason: '', todoId: 't1' }],
+        todos: [{ id: 't1', text: 't' }],
+        finalReplyHint: '',
+      }),
+    );
+    await generatePlanWithLlm({
+      inputText: '搜索点东西',
+      snapshot: snapshot(),
+      llm,
+      signal: ctrl.signal,
+    });
+    expect(llm.calls[0]!.signal).toBe(ctrl.signal);
   });
 });

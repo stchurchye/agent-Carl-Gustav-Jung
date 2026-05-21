@@ -468,7 +468,13 @@ feat(agent): defense-in-depth skill filter + historical scan + M1e docs
 
 ---
 
-## 12. Task 11：LLM provider 抽象（拆 4 个 subtask）
+## 12. Task 11：LLM provider 抽象（拆 4 个 subtask） ✅ DONE (11a–d)
+
+- 11a 完成（见下节）
+- 11b commit `bb05e35` — interface + factory + DeepSeek adapter
+- 11c commit `928a487` — ZenMux adapter (OpenAI + Anthropic)
+- 11d 完成 — migration 015 + runLlmClient + planner/replyGen 改 LlmChatClient
+
 
 ### 12.0 现状盘点
 

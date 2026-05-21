@@ -1,6 +1,6 @@
 import type { Plan, PlanStep, TodoItem } from './types.js';
 import { toolRegistry, type ToolDef } from './toolRegistry.js';
-import { chatCompletionRaw, type ChatMessageInput } from '../deepseek.js';
+import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
 import type { AgentContextSnapshot } from './contextAdapter.js';
 
 const CN_NUM: Record<string, number> = {
@@ -91,7 +91,14 @@ export function generatePlanForApprovalDeny(
 export type LlmPlannerInput = {
   inputText: string;
   snapshot: AgentContextSnapshot;
-  apiKey: string;
+  /**
+   * M1e Task 11d：从 raw `apiKey: string` 升级为 provider-neutral client。
+   * Caller 通过 `runLlmClient.resolveLlmClient(run)` 构造，传 null 时不会调到这里
+   * （runPlanGlue 负责 short-circuit 到 echo）。
+   */
+  llm: LlmChatClient;
+  /** 必须传，让 cancelRun 能中断 LLM 调用 */
+  signal: AbortSignal;
   /** 默认 generalist。M1c 暂不区分 role。 */
   role?: string;
 };
@@ -100,7 +107,7 @@ export type LlmPlannerInput = {
  * 让 LLM 根据 input + context + 已注册工具生成 plan。
  *
  * 失败/解析异常都会 fallback 到 `generatePlanForEcho`，保证 runtime 不会无 plan。
- * 单测可以 mock `chatCompletionRaw`（同模块内重新 import 即可）。
+ * 单测 mock `LlmChatClient.chat()` 即可。
  */
 export async function generatePlanWithLlm(
   input: LlmPlannerInput,
@@ -109,7 +116,7 @@ export async function generatePlanWithLlm(
   const systemPrompt = buildPlannerSystemPrompt(tools);
   const userPrompt = buildPlannerUserPrompt(input);
 
-  const messages: ChatMessageInput[] = [
+  const messages: LlmChatMessage[] = [
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
@@ -121,10 +128,12 @@ export async function generatePlanWithLlm(
 
   let raw: string;
   try {
-    raw = await chatCompletionRaw(input.apiKey, messages, {
+    const result = await input.llm.chat(messages, {
       temperature: 0.3,
       maxTokens: 1024,
+      signal: input.signal,
     });
+    raw = result.content;
   } catch {
     return generatePlanForEcho(input.inputText);
   }

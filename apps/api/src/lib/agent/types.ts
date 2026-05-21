@@ -78,6 +78,13 @@ export type AgentRun = {
   usage: AgentUsage;
   apiKeyOwnerId: string | null;
   apiKeySource: ApiKeySource;
+  /**
+   * M1e Task 11d：per-run 选 LLM provider + model。migration 015 给
+   * 老 run 加了 NOT NULL DEFAULT 'deepseek' / 'deepseek-v4-pro'，
+   * 所以这两个字段在 backend 永远非空。
+   */
+  providerId: 'deepseek' | 'zenmux';
+  modelId: string;
   resultMessageId: string | null;
   invokeMessageId: string | null;
   lastHeartbeatAt: Date | null;

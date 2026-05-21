@@ -81,12 +81,14 @@ describe('createAgentRun persists per-user DeepSeek key (M1d Task 6)', () => {
 });
 
 /**
- * M1e Task 3：resolveEffectiveApiKey 在降级时必须 emitNotice，让用户能在 UI 看到
- * "你的 key 没用上，走了 server key" 的告警。
+ * M1e Task 3 + Task 11d：resolveEffectiveApiKeyForProvider 在降级时必须 emitNotice，
+ * 让用户能在 UI 看到"你的 key 没用上，走了 server key"的告警。
+ * M1e Task 11d 之后接口签名是 (run, providerId)，dedup 维度是 (runId, providerId, code)。
  */
-describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e blocker 3)', () => {
+describe('resolveEffectiveApiKeyForProvider emits notice on degradation (M1e blocker 3 + Task 11d)', () => {
   const ORIGINAL_SECRET = process.env.AGENT_KEY_SECRET;
   const ORIGINAL_DS = process.env.DEEPSEEK_API_KEY;
+  const ORIGINAL_ZM = process.env.ZENMUX_API_KEY;
 
   beforeAll(async () => {
     await runMigrations();
@@ -97,22 +99,23 @@ describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e bl
     await getPool().query(
       `DELETE FROM agent_event_logs WHERE event_type = 'user_facing_notice'`,
     );
-    const shared = await import('../runtimeShared.js');
-    shared._resetResolveKeyNoticeDedup();
+    const mod = await import('../runLlmClient.js');
+    mod._resetRunLlmClientNoticeDedup();
   });
   afterAll(() => {
     if (ORIGINAL_SECRET === undefined) delete process.env.AGENT_KEY_SECRET;
     else process.env.AGENT_KEY_SECRET = ORIGINAL_SECRET;
     if (ORIGINAL_DS === undefined) delete process.env.DEEPSEEK_API_KEY;
     else process.env.DEEPSEEK_API_KEY = ORIGINAL_DS;
+    if (ORIGINAL_ZM === undefined) delete process.env.ZENMUX_API_KEY;
+    else process.env.ZENMUX_API_KEY = ORIGINAL_ZM;
   });
 
-  it('apiKeySource=user but sealed=null → emits USER_KEY_MISSING + falls back to server key', async () => {
+  it('deepseek: apiKeySource=user but sealed=null → USER_KEY_MISSING + falls back to server', async () => {
     process.env.AGENT_KEY_SECRET = 'unit-test-secret-must-be-long-enough';
     process.env.DEEPSEEK_API_KEY = 'sk-server-fallback';
     const user = await ensureUser('uk-missing');
     const sess = await createChatSession(user.id, 'm');
-    // 故意：用 apiKeySource=user 但传 apiKey='' → seal 不会写
     const { run } = await createAgentRun({
       ownerId: user.id,
       channel: 'private',
@@ -123,9 +126,9 @@ describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e bl
     });
     expect(await getUserApiKeyEnc(run.id)).toBeNull();
 
-    const { resolveEffectiveApiKey } = await import('../runtimeShared.js');
+    const { resolveEffectiveApiKeyForProvider } = await import('../runLlmClient.js');
     const dbRun = await (await import('../store.js')).getAgentRun(run.id);
-    const key = await resolveEffectiveApiKey(dbRun!);
+    const key = await resolveEffectiveApiKeyForProvider(dbRun!, 'deepseek');
     expect(key).toBe('sk-server-fallback');
 
     const { listNoticesForRun } = await import('../notices.js');
@@ -133,7 +136,7 @@ describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e bl
     expect(notices.map((n) => n.code)).toContain('USER_KEY_MISSING');
   });
 
-  it('apiKeySource=user but secret rotated (decrypt throws) → emits USER_KEY_DECRYPT_FAILED', async () => {
+  it('deepseek: secret rotated (decrypt throws) → USER_KEY_DECRYPT_FAILED', async () => {
     process.env.AGENT_KEY_SECRET = 'original-secret-must-be-long-enough';
     process.env.DEEPSEEK_API_KEY = 'sk-server-fb-2';
     const user = await ensureUser('uk-rot');
@@ -148,11 +151,10 @@ describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e bl
     });
     expect(await getUserApiKeyEnc(run.id)).toBeTruthy();
 
-    // 轮换 secret，此时 openUserApiKey 会 throw
     process.env.AGENT_KEY_SECRET = 'rotated-secret-totally-different-xx';
-    const { resolveEffectiveApiKey } = await import('../runtimeShared.js');
+    const { resolveEffectiveApiKeyForProvider } = await import('../runLlmClient.js');
     const dbRun = await (await import('../store.js')).getAgentRun(run.id);
-    const key = await resolveEffectiveApiKey(dbRun!);
+    const key = await resolveEffectiveApiKeyForProvider(dbRun!, 'deepseek');
     expect(key).toBe('sk-server-fb-2');
 
     const { listNoticesForRun } = await import('../notices.js');
@@ -160,39 +162,13 @@ describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e bl
     expect(notices.map((n) => n.code)).toContain('USER_KEY_DECRYPT_FAILED');
   });
 
-  it('no user key + no server env → emits NO_API_KEY + returns undefined', async () => {
-    delete process.env.AGENT_KEY_SECRET;
-    delete process.env.DEEPSEEK_API_KEY;
-    const user = await ensureUser('uk-none');
-    const sess = await createChatSession(user.id, 'n');
-    const { run } = await createAgentRun({
-      ownerId: user.id,
-      channel: 'private',
-      sessionId: sess.id,
-      inputText: 'totally no key',
-      apiKey: '',
-      apiKeySource: 'server',
-    });
-    const { resolveEffectiveApiKey } = await import('../runtimeShared.js');
-    const dbRun = await (await import('../store.js')).getAgentRun(run.id);
-    const key = await resolveEffectiveApiKey(dbRun!);
-    expect(key).toBeUndefined();
-
-    const { listNoticesForRun } = await import('../notices.js');
-    const notices = await listNoticesForRun(run.id);
-    expect(notices.map((n) => n.code)).toContain('NO_API_KEY');
-  });
-
-  it('M1e review #6: decrypt success but plaintext only-whitespace → emits USER_KEY_DECRYPT_FAILED + falls back', async () => {
+  it('deepseek: decrypt success but plaintext only-whitespace → USER_KEY_DECRYPT_FAILED + falls back (review #6)', async () => {
     process.env.AGENT_KEY_SECRET = 'unit-test-secret-must-be-long-enough';
     process.env.DEEPSEEK_API_KEY = 'sk-server-fb-empty';
     const user = await ensureUser('uk-empty');
     const sess = await createChatSession(user.id, 'e');
-    // 用 sealUserApiKey 加密 "   " 几个空格——decrypt 成功但 trim 后为空，
-    // 触发 review #6 关注的"非异常但可用 key 为空"分支。
     const { sealUserApiKey } = await import('../secretBox.js');
     const sealedWhitespace = sealUserApiKey('   ');
-    expect(sealedWhitespace).toBeTruthy();
     const { run } = await createAgentRun({
       ownerId: user.id,
       channel: 'private',
@@ -205,9 +181,9 @@ describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e bl
       `UPDATE agent_runs SET user_api_key_enc = $1 WHERE id = $2`,
       [sealedWhitespace, run.id],
     );
-    const { resolveEffectiveApiKey } = await import('../runtimeShared.js');
+    const { resolveEffectiveApiKeyForProvider } = await import('../runLlmClient.js');
     const dbRun = await (await import('../store.js')).getAgentRun(run.id);
-    const key = await resolveEffectiveApiKey(dbRun!);
+    const key = await resolveEffectiveApiKeyForProvider(dbRun!, 'deepseek');
     expect(key).toBe('sk-server-fb-empty');
 
     const { listNoticesForRun } = await import('../notices.js');
@@ -217,7 +193,74 @@ describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e bl
     expect(decrypt?.context).toMatchObject({ reason: 'empty_plaintext' });
   });
 
-  it('same notice code emitted only once per run (process-local dedup)', async () => {
+  it('zenmux: per-provider env split — DEEPSEEK_API_KEY ignored, ZENMUX_API_KEY used', async () => {
+    delete process.env.AGENT_KEY_SECRET;
+    process.env.DEEPSEEK_API_KEY = 'sk-deepseek-IGNORE';
+    process.env.ZENMUX_API_KEY = 'sk-zenmux-WIN';
+    const user = await ensureUser('zm-srv');
+    const sess = await createChatSession(user.id, 'z');
+    const { run } = await createAgentRun({
+      ownerId: user.id,
+      channel: 'private',
+      sessionId: sess.id,
+      inputText: 'no user key',
+      apiKey: '',
+      apiKeySource: 'server',
+      providerId: 'zenmux',
+      modelId: 'moonshotai/kimi-k2.6',
+    });
+    const { resolveEffectiveApiKeyForProvider } = await import('../runLlmClient.js');
+    const dbRun = await (await import('../store.js')).getAgentRun(run.id);
+    const key = await resolveEffectiveApiKeyForProvider(dbRun!, 'zenmux');
+    expect(key).toBe('sk-zenmux-WIN');
+  });
+
+  it('resolveLlmClient: missing both user key and server env → emits NO_API_KEY + returns null', async () => {
+    delete process.env.AGENT_KEY_SECRET;
+    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.ZENMUX_API_KEY;
+    const user = await ensureUser('llm-none');
+    const sess = await createChatSession(user.id, 'n');
+    const { run } = await createAgentRun({
+      ownerId: user.id,
+      channel: 'private',
+      sessionId: sess.id,
+      inputText: 'totally no key',
+      apiKey: '',
+      apiKeySource: 'server',
+    });
+    const { resolveLlmClient } = await import('../runLlmClient.js');
+    const dbRun = await (await import('../store.js')).getAgentRun(run.id);
+    const client = await resolveLlmClient(dbRun!);
+    expect(client).toBeNull();
+
+    const { listNoticesForRun } = await import('../notices.js');
+    const notices = await listNoticesForRun(run.id);
+    expect(notices.map((n) => n.code)).toContain('NO_API_KEY');
+  });
+
+  it('resolveLlmClient: server key present → returns built LlmChatClient with run.providerId+modelId', async () => {
+    delete process.env.AGENT_KEY_SECRET;
+    process.env.DEEPSEEK_API_KEY = 'sk-srv-llm';
+    const user = await ensureUser('llm-srv');
+    const sess = await createChatSession(user.id, 's');
+    const { run } = await createAgentRun({
+      ownerId: user.id,
+      channel: 'private',
+      sessionId: sess.id,
+      inputText: 'happy path',
+      apiKey: '',
+      apiKeySource: 'server',
+    });
+    const { resolveLlmClient } = await import('../runLlmClient.js');
+    const dbRun = await (await import('../store.js')).getAgentRun(run.id);
+    const client = await resolveLlmClient(dbRun!);
+    expect(client).not.toBeNull();
+    expect(client!.providerId).toBe('deepseek');
+    expect(client!.modelId).toBe('deepseek-v4-pro');
+  });
+
+  it('same notice code emitted only once per (run, provider) — process-local dedup', async () => {
     process.env.AGENT_KEY_SECRET = 'unit-test-secret-must-be-long-enough';
     process.env.DEEPSEEK_API_KEY = 'sk-server';
     const user = await ensureUser('uk-dedup');
@@ -230,11 +273,11 @@ describe('resolveEffectiveApiKey emits user-facing notice on degradation (M1e bl
       apiKey: '',
       apiKeySource: 'user',
     });
-    const { resolveEffectiveApiKey } = await import('../runtimeShared.js');
+    const { resolveEffectiveApiKeyForProvider } = await import('../runLlmClient.js');
     const dbRun = await (await import('../store.js')).getAgentRun(run.id);
-    await resolveEffectiveApiKey(dbRun!);
-    await resolveEffectiveApiKey(dbRun!);
-    await resolveEffectiveApiKey(dbRun!);
+    await resolveEffectiveApiKeyForProvider(dbRun!, 'deepseek');
+    await resolveEffectiveApiKeyForProvider(dbRun!, 'deepseek');
+    await resolveEffectiveApiKeyForProvider(dbRun!, 'deepseek');
 
     const { listNoticesForRun } = await import('../notices.js');
     const notices = await listNoticesForRun(run.id);

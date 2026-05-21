@@ -7,7 +7,8 @@
  */
 import * as store from './store.js';
 import type { AgentRun, Plan } from './types.js';
-import { resolveEffectiveApiKey } from './runtimeShared.js';
+import { resolveLlmClient } from './runLlmClient.js';
+import { runControllers } from './runtimeRegistry.js';
 
 export function pickFallbackFinalContent(run: AgentRun, plan: Plan | null): string {
   if (!plan) return '[任务未完成]';
@@ -59,16 +60,20 @@ export async function buildFinalContent(
   const isTestEnv =
     process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
   const looksLikeEcho = /echo/i.test(text);
-  const effectiveKey = await resolveEffectiveApiKey(run);
-  if (isTestEnv || looksLikeEcho || !effectiveKey || !run.plan) {
+  if (isTestEnv || looksLikeEcho || !run.plan) {
     return pickFallbackFinalContent(run, run.plan);
   }
+  const llm = await resolveLlmClient(run);
+  if (!llm) return pickFallbackFinalContent(run, run.plan);
   const steps = await store.listSteps(run.id);
+  const signal =
+    runControllers.get(run.id)?.signal ?? new AbortController().signal;
   const { generateFinalReply } = await import('./replyGen.js');
   return generateFinalReply({
     run,
     plan: run.plan,
     steps,
-    apiKey: effectiveKey,
+    llm,
+    signal,
   });
 }

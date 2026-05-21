@@ -236,15 +236,23 @@ agentRouter.post('/runs/:id/retry', async (c) => {
     apiKey: '',
     apiKeySource: run.apiKeySource,
     budget: run.budget,
+    // M1e Task 11d / Task 12: retry 复用旧 run 的 provider+model 选型
+    providerId: run.providerId,
+    modelId: run.modelId,
   });
 
-  // M1e blocker 1：复制旧 run 的 sealed user key（M1d 漏做，导致 user → server 静默降级）。
+  // M1e blocker 1 + Task 11d：复制旧 run 的 sealed user keys（不止 DeepSeek，
+  // 还有 ZenMux）。M1d 只做了 DeepSeek，会让 retry 的 zenmux run 静默降级到 server key。
   if (run.apiKeySource === 'user') {
-    const oldSealed = await store.getUserApiKeyEnc(run.id);
-    if (oldSealed) {
+    const oldDsSealed = await store.getUserApiKeyEnc(run.id);
+    const oldZmSealed = await store.getUserZenmuxKeyEnc(run.id);
+    if (oldDsSealed || oldZmSealed) {
       await getPool().query(
-        `UPDATE agent_runs SET user_api_key_enc = $1 WHERE id = $2`,
-        [oldSealed, result.run.id],
+        `UPDATE agent_runs
+            SET user_api_key_enc        = COALESCE($1, user_api_key_enc),
+                user_zenmux_key_enc     = COALESCE($2, user_zenmux_key_enc)
+          WHERE id = $3`,
+        [oldDsSealed, oldZmSealed, result.run.id],
       );
     }
   }
