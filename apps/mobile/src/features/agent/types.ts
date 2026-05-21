@@ -84,7 +84,37 @@ export type AgentRun = {
   // 其他后端字段 (plan / cancelReason 等) 按需扩展。
 };
 
+// M1e task 2：user-facing notice，来自后端 agent_event_logs(event_type='user_facing_notice')。
+// 与后端 NoticeCode 联合类型对齐。
+export type NoticeCode =
+  | 'USER_KEY_MISSING'
+  | 'USER_KEY_DECRYPT_FAILED'
+  | 'KEY_FALLBACK_TO_SERVER'
+  | 'NO_API_KEY'
+  | 'RETRY_DEDUPED'
+  | 'PLANNER_LLM_FALLBACK'
+  | 'REPLY_LLM_FALLBACK'
+  | 'SKILL_WARN_KEYWORD'
+  | 'SKILL_DROPPED'
+  | 'DOC_EXPORT_VERSIONED'
+  | 'TOOL_PAYLOAD_TOO_LARGE'
+  | 'MCP_HANDSHAKE_FAILED';
+
+export type AgentNoticeSeverity = 'info' | 'warn' | 'error';
+
+export type AgentNotice = {
+  id: string;
+  runId: string;
+  severity: AgentNoticeSeverity;
+  code: NoticeCode;
+  message: string;
+  context?: Record<string, unknown> | null;
+  createdAt: string;
+};
+
 export type AgentRunWithSteps = {
   run: AgentRun;
   steps: AgentStep[];
+  // M1e task 2：可选，老后端无此字段时 UI 走空数组渲染。
+  notices?: AgentNotice[];
 };

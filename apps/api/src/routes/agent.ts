@@ -9,6 +9,7 @@ import * as store from '../lib/agent/store.js';
 import { cancelRun, confirmRun, createAgentRun } from '../lib/agent/runtime.js';
 import type { AgentRun, AgentRunStatus } from '../lib/agent/types.js';
 import * as topicSkills from '../lib/agent/topicSkills.js';
+import { listNoticesAfter, listNoticesForRun } from '../lib/agent/notices.js';
 
 export const agentRouter = new Hono<{ Variables: AppVariables }>();
 
@@ -54,9 +55,11 @@ agentRouter.get('/runs/:id', async (c) => {
   if (!(await canAccessRun(run, userId)))
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   const steps = await store.listSteps(id);
+  // M1e task 2：附带 user-facing notice 列表（最新 20 条），UI 顶部 banner 展示
+  const notices = await listNoticesForRun(id, { limit: 20 });
   return c.json({
     ok: true,
-    data: { run, steps },
+    data: { run, steps, notices },
     requestId: c.get('requestId'),
   });
 });
@@ -69,19 +72,29 @@ agentRouter.get('/runs/:id/stream', async (c) => {
   if (!(await canAccessRun(run, userId)))
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
 
-  // M1d T16：支持 SSE 断线重连。客户端把上次收到的最后一个 step.idx 放在
-  // `Last-Event-ID` header（HTML5 标准）或 `?after=` query param 里，
-  // 服务端会跳过该 idx 之前的 step，先 catch-up 漏掉的，再进入实时循环。
+  // M1d T16 + M1e task 2：SSE 断线重连，事件 id 走两个命名空间：
+  //   step 事件   id = `s:${agent_steps.idx}`
+  //   notice 事件 id = `n:${agent_event_logs.id}`
+  // Last-Event-ID 重连时按前缀 dispatch。向后兼容：若收到裸数字（M1d 老客户端），
+  // 按 step idx 处理；notice 全部从 0 重发（数量上限 20，可接受）。
   const lastEventHeader = c.req.header('last-event-id');
   const afterQuery = c.req.query('after');
-  const resumeFromRaw = lastEventHeader ?? afterQuery;
-  const resumeFrom =
-    resumeFromRaw != null && !Number.isNaN(Number(resumeFromRaw))
-      ? Number(resumeFromRaw)
-      : -1;
+  const resumeRaw = lastEventHeader ?? afterQuery ?? '';
+  let resumeStepIdx = -1;
+  let resumeNoticeId: string | null = null;
+  if (resumeRaw.startsWith('s:')) {
+    const n = Number(resumeRaw.slice(2));
+    if (!Number.isNaN(n)) resumeStepIdx = n;
+  } else if (resumeRaw.startsWith('n:')) {
+    resumeNoticeId = resumeRaw.slice(2) || null;
+  } else if (resumeRaw && !Number.isNaN(Number(resumeRaw))) {
+    // M1d 老客户端：裸数字 = step idx
+    resumeStepIdx = Number(resumeRaw);
+  }
 
   return streamSSE(c, async (stream) => {
-    let lastStepIdx = resumeFrom;
+    let lastStepIdx = resumeStepIdx;
+    let lastNoticeId: string | null = resumeNoticeId;
     let lastStatus = run.status;
     let alive = true;
     stream.onAbort(() => {
@@ -96,11 +109,19 @@ agentRouter.get('/runs/:id/stream', async (c) => {
       for (const s of newSteps) {
         await stream.writeSSE({
           event: 'step',
-          // SSE id 字段：浏览器 EventSource 自动把它当 Last-Event-ID 在重连时回传。
-          id: String(s.idx),
+          id: `s:${s.idx}`,
           data: JSON.stringify(s),
         });
         lastStepIdx = s.idx;
+      }
+      const newNotices = await listNoticesAfter(id, lastNoticeId);
+      for (const n of newNotices) {
+        await stream.writeSSE({
+          event: 'notice',
+          id: `n:${n.id}`,
+          data: JSON.stringify(n),
+        });
+        lastNoticeId = n.id;
       }
       if (current.status !== lastStatus) {
         await stream.writeSSE({

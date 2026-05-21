@@ -407,6 +407,54 @@ describe('GET /api/agent/runs (M1d task panel)', () => {
     expect(ids.length).toBe(2);
   });
 
+  it('M1e task 2: GET /runs/:id includes notices field and SSE emits notice events with n: id', async () => {
+    const me = await ensureUser('notice-route');
+    const sess = await (await import('../../store/pg.js')).createChatSession(me.id, 'notice');
+    const r = await store.insertAgentRun({
+      ownerId: me.id, channel: 'private', sessionId: sess.id, groupId: null,
+      topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+      inputText: 'notice run', budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+    });
+    // 写 1 个 step + 2 条 notice
+    await store.insertStep({
+      runId: r.id, idx: 0, kind: 'tool_call', toolName: 'fake', input: {}, output: {},
+    });
+    const { emitNotice } = await import('../../lib/agent/notices.js');
+    await emitNotice({ runId: r.id, severity: 'warn', code: 'USER_KEY_DECRYPT_FAILED', message: 'key 解密失败' });
+    await new Promise((r) => setTimeout(r, 5));
+    await emitNotice({ runId: r.id, severity: 'error', code: 'NO_API_KEY', message: '没可用 key' });
+
+    const token = await tokenFor(me);
+    // GET /runs/:id 响应里应带 notices
+    const detail = await makeApp().fetch(
+      new Request(`http://test/api/agent/runs/${r.id}`, {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(detail.status).toBe(200);
+    const detailBody = (await detail.json()) as {
+      data: { run: { id: string }; steps: unknown[]; notices: Array<{ code: string; severity: string }> };
+    };
+    expect(detailBody.data.notices).toHaveLength(2);
+    expect(detailBody.data.notices[0].code).toBe('NO_API_KEY'); // desc 顺序
+
+    // SSE 应该 emit 2 个 notice 事件 + 1 个 step 事件 + 1 个 end
+    const sse = await makeApp().fetch(
+      new Request(`http://test/api/agent/runs/${r.id}/stream`, {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(sse.status).toBe(200);
+    const text = await readSseUntilEnd(sse);
+    // step 事件用 s: 前缀
+    expect(text).toMatch(/event: step[\s\S]*id: s:0/);
+    // notice 事件用 n: 前缀（uuid id 不可枚举，用 regex 匹配存在）
+    expect(text).toMatch(/event: notice[\s\S]*id: n:[a-f0-9-]+/);
+    // 两条 notice 都应在流里出现
+    expect(text).toContain('USER_KEY_DECRYPT_FAILED');
+    expect(text).toContain('NO_API_KEY');
+  });
+
   it('SSE stream resumes from Last-Event-ID, skipping prior steps', async () => {
     const me = await ensureUser('sse-resume');
     const sess = await (await import('../../store/pg.js')).createChatSession(me.id, 'sse');
@@ -443,9 +491,9 @@ describe('GET /api/agent/runs (M1d task panel)', () => {
     expect(text).toMatch(/"idx":1/);
     expect(text).toMatch(/"idx":2/);
     expect(text).not.toMatch(/"idx":0/);
-    // SSE id 字段应该出现在每条 step 上
-    expect(text).toMatch(/id: 1/);
-    expect(text).toMatch(/id: 2/);
+    // M1e task 2：SSE id 字段加了命名空间前缀 `s:`（向后兼容裸数字 last-event-id='0'）
+    expect(text).toMatch(/id: s:1/);
+    expect(text).toMatch(/id: s:2/);
   });
 
   async function readSseUntilEnd(res: Response): Promise<string> {

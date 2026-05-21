@@ -8,10 +8,26 @@ import {
   retryAgentRun,
   steerAgentRun,
 } from './agentApi';
-import type { AgentRunStatus } from './types';
+import type { AgentNoticeSeverity, AgentRunStatus } from './types';
 import { AgentTodoList } from './AgentTodoList';
 import { AgentStepList } from './AgentStepList';
 import { AgentSteerInput } from './AgentSteerInput';
+
+const NOTICE_BG: Record<AgentNoticeSeverity, string> = {
+  info: '#e6f4ff',
+  warn: '#fff8e0',
+  error: '#fff0f0',
+};
+const NOTICE_FG: Record<AgentNoticeSeverity, string> = {
+  info: '#055',
+  warn: '#a60',
+  error: '#a00',
+};
+const NOTICE_GLYPH: Record<AgentNoticeSeverity, string> = {
+  info: 'i',
+  warn: '!',
+  error: '!!',
+};
 
 const TERMINAL: AgentRunStatus[] = [
   'completed',
@@ -44,7 +60,7 @@ export function AgentRunCard({
    */
   onRetry?: (newRunId: string) => void | Promise<void>;
 }) {
-  const { run, steps, connected } = useAgentRunSubscription(runId);
+  const { run, steps, notices, connected } = useAgentRunSubscription(runId);
 
   if (!run) {
     return (
@@ -81,6 +97,30 @@ export function AgentRunCard({
       <Text style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }} numberOfLines={3}>
         {run.inputText}
       </Text>
+
+      {notices && notices.length > 0 ? (
+        <View style={{ marginTop: 8 }}>
+          {notices.map((n) => (
+            <View
+              key={n.id}
+              style={{
+                marginTop: 4,
+                paddingVertical: 6,
+                paddingHorizontal: 10,
+                borderRadius: 6,
+                backgroundColor: NOTICE_BG[n.severity],
+              }}
+            >
+              <Text style={{ fontSize: 12, color: NOTICE_FG[n.severity], fontWeight: '600' }}>
+                [{NOTICE_GLYPH[n.severity]}] {n.message}
+              </Text>
+              <Text style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+                {n.code}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <View style={{ marginTop: 8 }}>
         <AgentTodoList todos={run.todos ?? []} />
