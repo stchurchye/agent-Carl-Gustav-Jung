@@ -20,6 +20,7 @@ import { registerDatetimeNow } from './tools/datetimeNow.js';
 import { registerRenderDiagram } from './tools/renderDiagram.js';
 import { registerWikipedia } from './tools/wikipedia.js';
 import { registerGetEconomicSeries } from './tools/getEconomicSeries.js';
+import { registerDocumentReader } from './tools/documentReader.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -34,4 +35,5 @@ export function registerAgentTools(): void {
   registerRenderDiagram();
   registerWikipedia();
   registerGetEconomicSeries();
+  registerDocumentReader();
 }
