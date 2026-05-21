@@ -1,5 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { generatePlanForEcho } from '../planner.js';
+import { beforeAll, describe, expect, it } from 'vitest';
+import {
+  _buildPlannerSystemPromptForTest,
+  _buildPlannerUserPromptForTest,
+  generatePlanForEcho,
+} from '../planner.js';
+import { toolRegistry } from '../toolRegistry.js';
+import { registerEchoSleep } from '../tools/echoSleep.js';
+import { registerWebSearch } from '../tools/webSearch.js';
+import { registerUrlFetch } from '../tools/urlFetch.js';
+import { registerDocExportMarkdown } from '../tools/docExportMarkdown.js';
+import { registerMagiSystemRead } from '../tools/magiSystemRead.js';
+import { registerMagiContentIngest } from '../tools/magiContentIngest.js';
 
 describe('planner (echo-only, M1a)', () => {
   it('parses "三步 echo" into 3 echo steps', () => {
@@ -32,5 +43,39 @@ describe('planner (echo-only, M1a)', () => {
   it('caps steps at 10', () => {
     const plan = generatePlanForEcho('跑 100 步 echo');
     expect(plan.steps.length).toBeLessThanOrEqual(10);
+  });
+});
+
+describe('M1f planner prompt 升级 (#1)', () => {
+  beforeAll(() => {
+    registerEchoSleep();
+    registerWebSearch();
+    registerUrlFetch();
+    registerDocExportMarkdown();
+    registerMagiSystemRead();
+    registerMagiContentIngest();
+  });
+
+  it('system prompt 含失败处理约定（ok=false / replan / 跳过工具）', () => {
+    const sys = _buildPlannerSystemPromptForTest(toolRegistry.list());
+    expect(sys).toMatch(/ok=false/);
+    expect(sys).toMatch(/失败处理/);
+    expect(sys).toMatch(/换参数重试|备选|跳过/);
+  });
+
+  it('system prompt 把每个 tool 的 replyMeta.failureHint 渲染出来', () => {
+    const sys = _buildPlannerSystemPromptForTest(toolRegistry.list());
+    expect(sys).toMatch(/限流|网络故障/);
+  });
+
+  it('user prompt 在传 previousFailure 时包含失败原因 + 重新规划指示', () => {
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: '继续',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      previousFailure: 'web_search HTTP 429',
+    });
+    expect(usr).toMatch(/上一步失败原因/);
+    expect(usr).toMatch(/web_search HTTP 429/);
+    expect(usr).toMatch(/重新规划/);
   });
 });

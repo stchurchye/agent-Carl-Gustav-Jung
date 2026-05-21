@@ -101,6 +101,11 @@ export type LlmPlannerInput = {
   signal: AbortSignal;
   /** 默认 generalist。M1c 暂不区分 role。 */
   role?: string;
+  /**
+   * M1f #1：replan 场景下传入。让 LLM 知道上一步失败原因并避免重复同样错误。
+   * caller（runPlanGlue / steer / approval_deny replan）按需填。
+   */
+  previousFailure?: string;
 };
 
 /**
@@ -177,13 +182,25 @@ JSON 结构必须是：
 - 不要发明不存在的 toolName
 - steps 数量控制在 1-6 之间
 - 若任务完全是闲聊或单步问答，可只放 1 个 step
+
+工具调用约定（必读）：
+- 调用前阅读 tool description 的 inputSchema
+- 收到 observation 时检查 \`ok\` 字段：ok=false 或 error 字段非空 → 当前 step 失败
+- 失败处理：
+  a. 可以换参数重试（如不同搜索词 / 备选 url）→ 在新 plan 里补一个相同 tool 的 step
+  b. 该工具能力本身不可用（持续 4xx/5xx）→ 跳过该工具，用其他工具达成目标
+  c. 整条路径不可行 → 把已查到的部分写成 reply，明确告诉用户「X 不可达」
+- 不要忽略 ok=false 直接进下一步
 `;
 
 function buildPlannerSystemPrompt(tools: ToolDef[]): string {
   const toolBlock = tools
     .map((t) => {
       const schema = JSON.stringify(t.inputSchema).slice(0, 400);
-      return `- ${t.name}: ${t.description}\n  inputSchema: ${schema}`;
+      const hint = t.replyMeta?.failureHint
+        ? `\n  失败常见原因：${t.replyMeta.failureHint}`
+        : '';
+      return `- ${t.name}: ${t.description}\n  inputSchema: ${schema}${hint}`;
     })
     .join('\n');
   return `${PLANNER_INSTRUCTION}\n\n可用工具：\n${toolBlock}`;
@@ -193,7 +210,10 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   const summary = input.snapshot.shortSummary
     ? `\n\n# 当前上下文摘要\n${input.snapshot.shortSummary}`
     : '';
-  return `# 用户请求\n${input.inputText}${summary}`;
+  const failure = input.previousFailure
+    ? `\n\n# 上一步失败原因\n${input.previousFailure}\n请基于这个失败重新规划剩余步骤，避免重复同样错误。`
+    : '';
+  return `# 用户请求\n${input.inputText}${summary}${failure}`;
 }
 
 type LooseStep = {
@@ -278,3 +298,9 @@ export function parsePlannerJson(raw: string, tools: ToolDef[]): Plan | null {
     version: 1,
   };
 }
+
+// =====================================================================
+// M1f：仅测试用 export（避免污染主 API surface）
+// =====================================================================
+export const _buildPlannerSystemPromptForTest = buildPlannerSystemPrompt;
+export const _buildPlannerUserPromptForTest = buildPlannerUserPrompt;
