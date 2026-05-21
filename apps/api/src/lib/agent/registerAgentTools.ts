@@ -13,6 +13,7 @@ import { registerMagiContentIngest } from './tools/magiContentIngest.js';
 import { registerWebSearch } from './tools/webSearch.js';
 import { registerUrlFetch } from './tools/urlFetch.js';
 import { registerDocExportMarkdown } from './tools/docExportMarkdown.js';
+import { registerRunPython } from './tools/runPython.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -20,4 +21,5 @@ export function registerAgentTools(): void {
   registerWebSearch();
   registerUrlFetch();
   registerDocExportMarkdown();
+  registerRunPython();
 }

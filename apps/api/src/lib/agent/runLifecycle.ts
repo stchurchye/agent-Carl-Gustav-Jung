@@ -25,6 +25,7 @@ import {
 } from './messageBridge.js';
 import { runControllers } from './runtimeRegistry.js';
 import { buildFinalContent } from './runReply.js';
+import { killSandboxForRun } from './sandbox.js';
 
 export type CreateAgentRunInput = {
   ownerId: string;
@@ -188,6 +189,9 @@ export async function softComplete(
       }
     }
   }
+
+  // M2 Task 1B: free E2B sandbox on terminal status (no-op if run never called run_python)
+  await killSandboxForRun(run.id);
 
   await store.updateAgentRun(run.id, {
     status,
