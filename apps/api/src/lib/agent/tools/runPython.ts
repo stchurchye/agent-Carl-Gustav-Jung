@@ -58,9 +58,20 @@ export const runPythonTool: ToolDef<RunPythonInput, RunPythonOutput> = {
 
     try {
       const sandbox = await acquireSandbox(ctx.runId);
-      // E2B SDK: runCode() returns { logs, results, error }
-      // The (sandbox as any) cast is needed because SandboxHandle type may not expose runCode
-      const exec = await (sandbox as any).runCode(input.code);
+      // E2B SDK v2 RunCodeOpts has no signal/abort field; best-effort: race runCode() against
+      // ctx.signal so the tool responds promptly to user cancellation.
+      const exec = await new Promise<any>((resolve, reject) => {
+        if (ctx.signal.aborted) {
+          const err = new Error('aborted'); err.name = 'AbortError'; reject(err); return;
+        }
+        const onAbort = () => {
+          const err = new Error('aborted'); err.name = 'AbortError'; reject(err);
+        };
+        ctx.signal.addEventListener('abort', onAbort, { once: true });
+        (sandbox as any).runCode(input.code)
+          .then((result: any) => { ctx.signal.removeEventListener('abort', onAbort); resolve(result); })
+          .catch((e: unknown) => { ctx.signal.removeEventListener('abort', onAbort); reject(e); });
+      });
       const stdout = (exec.logs?.stdout ?? []).join('');
       const stderrFromLogs = (exec.logs?.stderr ?? []).join('');
       const errorText = exec.error

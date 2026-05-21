@@ -228,7 +228,14 @@ export async function cancelRun(
   byUserId: string,
 ): Promise<void> {
   const controller = runControllers.get(runId);
-  if (controller) controller.abort('user_cancel');
+  if (controller) {
+    controller.abort('user_cancel');
+  } else {
+    // M2 Task 1B: best-effort sandbox cleanup on dead-worker cancel path.
+    // When no active controller exists the worker never reaches softComplete (which normally
+    // calls killSandboxForRun), so we must kill it here to avoid a sandbox leak.
+    await killSandboxForRun(runId);
+  }
   const run = await store.getAgentRun(runId);
   if (!run) return;
   if (
