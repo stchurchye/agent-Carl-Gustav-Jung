@@ -19,6 +19,7 @@ import { registerCritiqueLastAnswer } from './tools/critiqueLastAnswer.js';
 import { registerDatetimeNow } from './tools/datetimeNow.js';
 import { registerRenderDiagram } from './tools/renderDiagram.js';
 import { registerWikipedia } from './tools/wikipedia.js';
+import { registerGetEconomicSeries } from './tools/getEconomicSeries.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -32,4 +33,5 @@ export function registerAgentTools(): void {
   registerDatetimeNow();
   registerRenderDiagram();
   registerWikipedia();
+  registerGetEconomicSeries();
 }
