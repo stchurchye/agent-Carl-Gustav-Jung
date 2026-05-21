@@ -8,6 +8,7 @@
 
 import type { LlmChatClient, LlmModelId, LlmProviderId } from './types.js';
 import { DeepSeekLlmClient } from './providers/deepseek.js';
+import { ZenMuxLlmClient } from './providers/zenmux.js';
 
 export type LlmClientSpec = {
   providerId: LlmProviderId;
@@ -20,10 +21,7 @@ export function buildLlmClient(spec: LlmClientSpec): LlmChatClient {
     case 'deepseek':
       return new DeepSeekLlmClient(spec.apiKey, spec.modelId);
     case 'zenmux':
-      // task 11c 落地后会 import ZenMuxLlmClient
-      throw new Error(
-        `zenmux provider not yet implemented (task 11c). modelId=${spec.modelId}`,
-      );
+      return new ZenMuxLlmClient(spec.apiKey, spec.modelId);
     default: {
       const _exhaustive: never = spec.providerId;
       throw new Error(`unsupported llm provider: ${String(_exhaustive)}`);

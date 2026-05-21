@@ -6,6 +6,7 @@ import {
   MODEL_OVERRIDES,
 } from '../factory.js';
 import { DeepSeekLlmClient } from '../providers/deepseek.js';
+import { ZenMuxLlmClient } from '../providers/zenmux.js';
 
 describe('llm/factory (M1e Task 11b)', () => {
   it('buildLlmClient(deepseek, ...) → DeepSeekLlmClient with right modelId', () => {
@@ -19,14 +20,15 @@ describe('llm/factory (M1e Task 11b)', () => {
     expect(c.modelId).toBe('deepseek-v4-pro');
   });
 
-  it('buildLlmClient(zenmux, ...) → throws "not yet implemented" (task 11c stub)', () => {
-    expect(() =>
-      buildLlmClient({
-        providerId: 'zenmux',
-        modelId: 'anthropic/claude-sonnet-4.6',
-        apiKey: 'sk-fake',
-      }),
-    ).toThrow(/zenmux provider not yet implemented/);
+  it('buildLlmClient(zenmux, ...) → ZenMuxLlmClient with right modelId', () => {
+    const c = buildLlmClient({
+      providerId: 'zenmux',
+      modelId: 'anthropic/claude-sonnet-4.6',
+      apiKey: 'sk-fake',
+    });
+    expect(c).toBeInstanceOf(ZenMuxLlmClient);
+    expect(c.providerId).toBe('zenmux');
+    expect(c.modelId).toBe('anthropic/claude-sonnet-4.6');
   });
 
   it('buildLlmClient(unknown) → throws "unsupported"', () => {
