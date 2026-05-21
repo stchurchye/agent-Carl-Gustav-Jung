@@ -9,6 +9,8 @@ import { snapshotForAgent } from './contextAdapter.js';
 import { generatePlanForEcho, generatePlanWithLlm } from './planner.js';
 import type { AgentRun, Plan } from './types.js';
 import { resolveEffectiveApiKey } from './runtimeShared.js';
+import { recordStep } from './stepRecorder.js';
+import { emitNotice } from './notices.js';
 
 /**
  * M1c：选择初始 plan 来源。
@@ -40,7 +42,27 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       snapshot,
       apiKey: effectiveKey,
     });
-  } catch {
+  } catch (e) {
+    // M1e Task 13.4：之前 catch 后静默 fallback echo plan，用户毫无感知。现在写一条
+    // system_error step（便于排查）+ emit PLANNER_LLM_FALLBACK notice（让用户在
+    // UI 看到 "AI 规划不可用，已退回到 echo 计划"）。
+    const errMsg = e instanceof Error ? e.message : String(e);
+    try {
+      await recordStep({
+        runId: run.id,
+        kind: 'system_error',
+        error: `planner_llm_fallback: ${errMsg}`,
+      });
+    } catch (recordErr) {
+      console.warn('[buildInitialPlan] recordStep failed (suppressed)', recordErr);
+    }
+    await emitNotice({
+      runId: run.id,
+      severity: 'warn',
+      code: 'PLANNER_LLM_FALLBACK',
+      message: 'AI 规划暂时不可用，已退回到 echo 计划。建议稍后重试或检查 DeepSeek key 配置。',
+      context: { error: errMsg },
+    });
     return generatePlanForEcho(text);
   }
 }

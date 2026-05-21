@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { matchSlashCommand, buildCandidatesFromRules } from '../intentRules.js';
+import { pickAutoExecute } from '../intentAnalyzer.js';
 
 describe('intentRules: /agent slash command (M1a)', () => {
   it('/agent triggers agent_run intent', () => {
@@ -71,5 +72,39 @@ describe('intentRules: agent_run natural-language signals (M1c)', () => {
       channel: 'private',
     });
     expect(r.candidates[0]?.kind).not.toBe('agent_run');
+  });
+});
+
+/**
+ * M1e Task 13.5：把"agent_run 即使 confidence=1.0 也不 autoExecute"
+ * 的守卫从废弃的 orchestrator.analyzeIntent 移到 intentAnalyzer.pickAutoExecute。
+ * agent run 启动会花钱 + 花时间，必须明确意图 confirm。
+ */
+describe('intentAnalyzer.pickAutoExecute: agent_run never auto-executes (M1e Task 13.5)', () => {
+  it('agent_run with confidence=1.0 still returns autoExecute=false', () => {
+    const result = pickAutoExecute(
+      [{ kind: 'agent_run', label: 'agent', confidence: 1.0 }],
+      false,
+    );
+    expect(result).toBe(false);
+  });
+
+  it('agent_run with confidence=1.0 and weak second still not auto-executed', () => {
+    const result = pickAutoExecute(
+      [
+        { kind: 'agent_run', label: 'agent', confidence: 1.0 },
+        { kind: 'chat_private_llm', label: 'chat', confidence: 0.3 },
+      ],
+      false,
+    );
+    expect(result).toBe(false);
+  });
+
+  it('non-agent intent (chat_private_llm) with high confidence DOES auto-execute (sanity)', () => {
+    const result = pickAutoExecute(
+      [{ kind: 'chat_private_llm', label: 'chat', confidence: 0.99 }],
+      false,
+    );
+    expect(result).toBe(true);
   });
 });

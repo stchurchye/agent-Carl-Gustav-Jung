@@ -142,8 +142,8 @@ export async function executeRun(runId: string): Promise<void> {
       }
       // === End approval gate ===
 
-      // === Idempotency gate (M1c, T10) ===
-      const toolCallKey = resolveToolCallKey(tool, planStep);
+      // === Idempotency gate (M1c, T10; M1e Task 13.3 ownerId 名空间) ===
+      const toolCallKey = resolveToolCallKey(tool, planStep, run);
       if (toolCallKey) {
         const cached = await store.findStepByToolCallKey(runId, toolCallKey);
         if (cached && cached.kind === 'tool_call' && cached.output != null) {

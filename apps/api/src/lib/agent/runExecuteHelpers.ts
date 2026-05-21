@@ -19,16 +19,25 @@ import type { AgentRun, PlanStep } from './types.js';
 /**
  * M1c：拼出 `tool_call_key`，用于 runtime idempotency 缓存。
  * 命中规则与 store 表 `agent_steps_tool_call_key_unique (run_id, tool_call_key)` 对齐。
- * 跨 run 共享 / 全局缓存 defer 到 M1d（实际仍未做，M2 议程）。
+ *
+ * M1e Task 13.3：把 `ownerId` 纳入 key 前缀，避免不同 owner 用同一 input 时
+ * 共享同一 tool_call_key（之前 docExport 按 title 一字段 hash，跨 user 同名 doc
+ * 会撞 key）。M1d 实际未撞是因为 unique 约束按 (run_id, tool_call_key)，但跨 run
+ * 共享缓存（M2 议程）一旦上线就会出问题；提前修正保 forward-compat。
+ *
+ * 注：这是在 tool.computeIdempotencyKey 输出之外加 ownerId 名空间，
+ * tool 实现本身仍然可以只考虑 input；不需要修改每个 tool 的签名。
  */
 export function resolveToolCallKey(
   tool: ToolDef,
   planStep: PlanStep,
+  run?: AgentRun,
 ): string | null {
   if (!tool.computeIdempotencyKey) return null;
   const key = tool.computeIdempotencyKey(planStep.input);
   if (!key) return null;
-  return `${tool.name}:${key}`;
+  const ownerPrefix = run ? `${run.ownerId}:` : '';
+  return `${ownerPrefix}${tool.name}:${key}`;
 }
 
 /**

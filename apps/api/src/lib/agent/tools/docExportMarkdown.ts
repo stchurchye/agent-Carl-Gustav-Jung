@@ -14,6 +14,7 @@ type DocExportMarkdownInput = {
 
 type DocExportMarkdownOutput = {
   documentId: string;
+  /** 写入实际使用的 title（命中用户编辑保护时可能是 "原 title v2"）。 */
   title: string;
   created: boolean;
 };
@@ -59,17 +60,44 @@ export const docExportMarkdownTool: ToolDef<
   async handler(input, ctx) {
     const title = input.title.trim();
     const ownerId = ctx.ownerId;
+    const newHash = createHash('sha256').update(input.markdown).digest('hex');
 
     // upsert by (ownerId, exact title)
-    const existing = (await listDocuments(ownerId)).find(
-      (d) => d.title === title && !d.hiddenAt,
-    );
+    const all = await listDocuments(ownerId);
+    const existing = all.find((d) => d.title === title && !d.hiddenAt);
 
     let docId: string;
     let created = false;
+    let versionedTitle = title;
 
     if (existing) {
-      docId = existing.id;
+      // M1e Task 13.2：用户编辑保护。如果当前 block.content 的 hash 与上次 agent
+      // 写入时存的 hash 不一致，说明用户改过文档。这次不覆盖，改成创建一个 v2 标题
+      // 的新文档，并 emit DOC_EXPORT_VERSIONED notice 告诉用户。
+      const lastHash = existing.agentLastExportHash ?? null;
+      const currentText =
+        existing.chapters?.[0]?.blocks?.[0]?.content ?? '';
+      const currentHash = currentText
+        ? createHash('sha256').update(currentText).digest('hex')
+        : null;
+      const userEdited = lastHash !== null && currentHash !== null && lastHash !== currentHash;
+
+      if (userEdited) {
+        versionedTitle = await pickVersionedTitle(all, title);
+        const doc = await createDocument(ownerId, versionedTitle);
+        docId = doc.id;
+        created = true;
+        const { emitNotice } = await import('../notices.js');
+        await emitNotice({
+          runId: ctx.runId,
+          severity: 'info',
+          code: 'DOC_EXPORT_VERSIONED',
+          message: `检测到《${title}》已被你编辑过，本次写入存为新文档《${versionedTitle}》，未覆盖你原稿。`,
+          context: { originalDocumentId: existing.id, versionedTitle },
+        });
+      } else {
+        docId = existing.id;
+      }
     } else {
       const doc = await createDocument(ownerId, title);
       docId = doc.id;
@@ -86,10 +114,28 @@ export const docExportMarkdownTool: ToolDef<
       // Fallback: 仅更新 globalSummary 字段
       await updateDocument(ownerId, docId, { globalSummary: input.markdown });
     }
+    // M1e Task 13.2：记录本次 agent 写入的 hash，下次再调本工具时用于检测用户编辑。
+    await updateDocument(ownerId, docId, { agentLastExportHash: newHash });
 
-    return { documentId: docId, title, created };
+    return { documentId: docId, title: versionedTitle, created };
   },
 };
+
+/**
+ * 在已有 doc list 里找一个不冲突的 v2/v3/... 标题。
+ * @internal exported for tests.
+ */
+export function pickVersionedTitle(
+  existingDocs: Array<{ title: string }>,
+  baseTitle: string,
+): string {
+  const taken = new Set(existingDocs.map((d) => d.title));
+  for (let v = 2; v < 100; v++) {
+    const candidate = `${baseTitle} v${v}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${baseTitle} v${Date.now()}`;
+}
 
 export function registerDocExportMarkdown(): void {
   if (!toolRegistry.get(docExportMarkdownTool.name)) {

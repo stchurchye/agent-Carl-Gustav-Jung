@@ -17,6 +17,11 @@ type UrlFetchOutput = {
 
 const DEFAULT_MAX_CHARS = 8000;
 const FETCH_TIMEOUT_MS = 30_000;
+// M1e Task 13.1：HTML 上限 4MB。超过会 abort，避免一个恶意/大 URL 把 worker 内存打爆。
+const MAX_BYTES = 4 * 1024 * 1024;
+// M1e Task 13.1：只接受 text/html 系列 + text/plain。pdf/video/zip 等先 reject，
+// M2 真要 pdf_reader 之类再走专门工具。
+const ALLOWED_CT = /^(text\/html|application\/xhtml\+xml|text\/plain)/i;
 
 /**
  * 抓取 URL 并用 Mozilla Readability 提取正文。Tier A：auto + read-only。
@@ -61,7 +66,18 @@ export const urlFetchTool: ToolDef<UrlFetchInput, UrlFetchOutput> = {
       if (!res.ok) {
         throw new Error(`HTTP ${res.status} for ${input.url}`);
       }
-      const html = await res.text();
+      // M1e Task 13.1：内容类型守卫 + 大小上限（header + 真实读流双重防御）
+      const ct = res.headers.get('content-type') ?? '';
+      if (ct && !ALLOWED_CT.test(ct)) {
+        throw new Error(`unsupported content-type: ${ct}`);
+      }
+      const clHeader = res.headers.get('content-length');
+      const cl = clHeader ? Number(clHeader) : 0;
+      if (cl > 0 && cl > MAX_BYTES) {
+        throw new Error(`payload too large per content-length: ${cl} > ${MAX_BYTES}`);
+      }
+
+      const html = await readBodyWithCap(res, MAX_BYTES);
       const dom = new JSDOM(html, { url: input.url });
       const article = new Readability(dom.window.document).parse();
       const rawText = (article?.textContent ?? '').trim();
@@ -80,6 +96,45 @@ export const urlFetchTool: ToolDef<UrlFetchInput, UrlFetchOutput> = {
     }
   },
 };
+
+/**
+ * 边读边累计字节数，超阈值 abort 并 cancel reader。返回 utf-8 文本。
+ * @internal exported for tests.
+ */
+export async function readBodyWithCap(res: Response, maxBytes: number): Promise<string> {
+  if (!res.body) return await res.text();
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let html = '';
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        throw new Error(
+          `payload exceeded MAX_BYTES (${maxBytes}) at ${bytes} bytes; aborting`,
+        );
+      }
+      html += decoder.decode(value, { stream: true });
+    }
+    html += decoder.decode();
+    return html;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 export function registerUrlFetch(): void {
   if (!toolRegistry.get(urlFetchTool.name)) {
