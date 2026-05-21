@@ -85,8 +85,9 @@ export type AgentRun = {
   pendingApprovalToolName: string | null;
   awaitingApprovalUntil: string | null;
   // M1d T14：budget_exhausted UI 渲染需要 usage + budget。
-  budget: AgentBudget;
-  usage: AgentUsage;
+  // M1e task 7：标 optional —— 列表 API（GET /runs）只返回 run summary 不带 usage/budget。
+  budget?: AgentBudget;
+  usage?: AgentUsage;
   // 其他后端字段 (plan / cancelReason 等) 按需扩展。
 };
 

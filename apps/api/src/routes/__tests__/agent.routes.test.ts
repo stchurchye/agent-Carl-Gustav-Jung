@@ -653,4 +653,36 @@ describe('GET /api/agent/runs (M1d task panel)', () => {
     expect(body.data.runs.length).toBe(1);
     expect(body.data.runs[0].status).toBe('failed');
   });
+
+  it('M1e task 7: list response includes hasMore=true when runs.length === limit', async () => {
+    const me = await ensureUser('has-more');
+    // 插 3 条 run，limit=2 → hasMore=true
+    for (let i = 0; i < 3; i++) {
+      await store.insertAgentRun({
+        ownerId: me.id, channel: 'private', sessionId: null, groupId: null,
+        topicId: null, intentTurnId: null, role: 'generalist', status: 'completed',
+        inputText: `r${i}`, budget: DEFAULT_BUDGET, apiKeyOwnerId: null, apiKeySource: 'server',
+      });
+    }
+    const token = await tokenFor(me);
+    const res = await makeApp().fetch(
+      new Request('http://test/api/agent/runs?limit=2', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { runs: unknown[]; hasMore: boolean } };
+    expect(body.data.runs.length).toBe(2);
+    expect(body.data.hasMore).toBe(true);
+
+    // limit=10 (>= 总数) → hasMore=false
+    const res2 = await makeApp().fetch(
+      new Request('http://test/api/agent/runs?limit=10', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    const body2 = (await res2.json()) as { data: { runs: unknown[]; hasMore: boolean } };
+    expect(body2.data.runs.length).toBe(3);
+    expect(body2.data.hasMore).toBe(false);
+  });
 });

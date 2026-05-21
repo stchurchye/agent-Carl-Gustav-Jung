@@ -43,12 +43,19 @@ agentRouter.get('/runs', async (c) => {
   const userId = c.get('userId')!;
   const status = c.req.query('status');
   const limitRaw = c.req.query('limit');
-  const limit = limitRaw ? Number(limitRaw) : undefined;
+  const limit = limitRaw ? Number(limitRaw) : 50;
   const runs = await store.listAgentRunsForUser(userId, {
     status: (status as AgentRunStatus) || undefined,
     limit,
   });
-  return c.json({ ok: true, data: { runs }, requestId: c.get('requestId') });
+  // M1e task 7：列表 API 暴露 hasMore（runs.length === limit 即可能还有下一页）。
+  // mobile 列表暂不渲染 load-more，但字段先备好，避免后续 schema 改动需要兼容老客户端。
+  const hasMore = runs.length === limit;
+  return c.json({
+    ok: true,
+    data: { runs, hasMore },
+    requestId: c.get('requestId'),
+  });
 });
 
 agentRouter.get('/runs/:id', async (c) => {
