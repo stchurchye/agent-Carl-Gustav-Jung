@@ -18,6 +18,7 @@ import { registerSearchPapers } from './tools/searchPapers.js';
 import { registerCritiqueLastAnswer } from './tools/critiqueLastAnswer.js';
 import { registerDatetimeNow } from './tools/datetimeNow.js';
 import { registerRenderDiagram } from './tools/renderDiagram.js';
+import { registerWikipedia } from './tools/wikipedia.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -30,4 +31,5 @@ export function registerAgentTools(): void {
   registerCritiqueLastAnswer();
   registerDatetimeNow();
   registerRenderDiagram();
+  registerWikipedia();
 }
