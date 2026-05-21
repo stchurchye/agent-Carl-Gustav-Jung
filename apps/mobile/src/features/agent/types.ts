@@ -88,6 +88,9 @@ export type AgentRun = {
   // M1e task 7：标 optional —— 列表 API（GET /runs）只返回 run summary 不带 usage/budget。
   budget?: AgentBudget;
   usage?: AgentUsage;
+  /** M1e Task 11d/12: 后端 agent_runs.provider_id / model_id 已变成必填带 default。 */
+  providerId?: 'deepseek' | 'zenmux';
+  modelId?: string;
   // 其他后端字段 (plan / cancelReason 等) 按需扩展。
 };
 

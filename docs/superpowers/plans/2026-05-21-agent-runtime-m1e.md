@@ -740,7 +740,7 @@ feat(agent): plumb LlmChatClient through planner/replyGen + migration 015 + per-
 
 ---
 
-## 13. Task 12：模型选择 UI + per-provider 鉴权
+## 13. Task 12：模型选择 UI + per-provider 鉴权 ✅ DONE
 
 ### 13.1 mobile 改造
 

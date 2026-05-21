@@ -20,6 +20,7 @@ import { ApiKeyDetailScreen } from '../screens/ApiKeyDetailScreen';
 import { SettingsMemoryScreen } from '../screens/SettingsMemoryScreen';
 import { BrainAgentTasksScreen } from '../screens/brain/BrainAgentTasksScreen';
 import { BrainAgentTaskDetailScreen } from '../screens/brain/BrainAgentTaskDetailScreen';
+import { BrainAgentDefaultModelScreen } from '../screens/brain/BrainAgentDefaultModelScreen';
 import { evaBrain } from '../theme/evaBrain';
 
 const Stack = createNativeStackNavigator<BrainStackParamList>();
@@ -56,6 +57,7 @@ export function BrainStack() {
       <Stack.Screen name="SettingsMemory" component={SettingsMemoryScreen} />
       <Stack.Screen name="BrainAgentTasks" component={BrainAgentTasksScreen} />
       <Stack.Screen name="BrainAgentTaskDetail" component={BrainAgentTaskDetailScreen} />
+      <Stack.Screen name="BrainAgentDefaultModel" component={BrainAgentDefaultModelScreen} />
     </Stack.Navigator>
   );
 }

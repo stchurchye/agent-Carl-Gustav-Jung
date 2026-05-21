@@ -76,6 +76,11 @@ intentRouter.post('/execute', async (c) => {
     model?: string;
     selectedMessageIds?: string[];
     contextSelection?: import('@xzz/shared').ContextSelection;
+    /** M1e Task 12: agent run per-call provider/model 选型 */
+    agentOptions?: {
+      providerId?: 'deepseek' | 'zenmux';
+      modelId?: string;
+    };
   }>();
 
   const text = body.text?.trim() ?? '';
@@ -114,10 +119,15 @@ intentRouter.post('/execute', async (c) => {
       topicId: body.topicId,
       apiKey,
       deepseekApiKey,
+      // M1e Task 12: ZenMux key 沿用 OpenAI 协议 header（getZenMuxKey）—— `apiKey`
+      // 就是 ZenMux key（header X-ZenMux-API-Key 解出来的）。当 providerId=zenmux
+      // 且 user 在 mobile "我的"页填了自己的 ZenMux key 时，这就是 user key。
+      zenmuxApiKey: apiKey,
       model,
       dialect,
       contextSelection: parseContextSelectionFromBody(body),
       selectedMessageIds: body.selectedMessageIds,
+      agentOptions: body.agentOptions,
     });
     return c.json({ ok: true, data, requestId: c.get('requestId') });
   } catch (e) {

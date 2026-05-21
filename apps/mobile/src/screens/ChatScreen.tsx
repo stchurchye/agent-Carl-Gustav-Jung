@@ -36,6 +36,7 @@ import {
   executeMessageIntent,
   shouldShowIntentChips,
 } from '../lib/intentFlow';
+import { getAgentDefaultModel } from '../lib/agentDefaultModel';
 import {
   applyPrivateIntentResult,
   isIntentExecuteResult,
@@ -429,6 +430,10 @@ export function ChatScreen({ route, navigation }: Props) {
       }
       setPendingIntent(null);
       try {
+        // M1e Task 12: agent_run 走用户偏好（默认 DeepSeek V4 Pro）。其它 kind 不传 agentOptions
+        // 让 backend 走自己的 default 行为。
+        const agentOptions =
+          kind === 'agent_run' ? await getAgentDefaultModel() : undefined;
         const res = await executeMessageIntent({
           channel: 'private',
           aiMode: true,
@@ -439,6 +444,7 @@ export function ChatScreen({ route, navigation }: Props) {
           kind,
           slots,
           targetFragmentId,
+          agentOptions,
         });
         if (!isIntentExecuteResult(res.data)) {
           throw new Error('Invalid execute response');

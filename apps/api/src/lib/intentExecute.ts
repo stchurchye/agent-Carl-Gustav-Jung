@@ -18,6 +18,13 @@ import * as social from '../store/pg-social.js';
 
 export type { IntentExecuteResult };
 
+export type AgentOptions = {
+  /** M1e Task 12：per-run LLM provider 选型，由 mobile "我的"页设置传过来 */
+  providerId?: 'deepseek' | 'zenmux';
+  /** modelId 必须是该 provider 的合法 id（前端校验，后端透传） */
+  modelId?: string;
+};
+
 export type ExecuteIntentInput = {
   userId: string;
   text: string;
@@ -30,10 +37,17 @@ export type ExecuteIntentInput = {
   topicId?: string;
   apiKey: string;
   deepseekApiKey?: string;
+  /**
+   * M1e Task 12: user-provided ZenMux key 同 deepseekApiKey 一道走 sealed 落库。
+   * 当 agentOptions.providerId='zenmux' 时优先用这个。
+   */
+  zenmuxApiKey?: string;
   model?: string;
   dialect?: import('@xzz/shared').ReplyDialect;
   contextSelection?: ContextSelection;
   selectedMessageIds?: string[];
+  /** M1e Task 12: agent-only options (per-run provider/model). */
+  agentOptions?: AgentOptions;
 };
 
 async function persistPrivateToolReply(
@@ -146,8 +160,13 @@ export async function executeIntent(
 
   if (input.kind === 'agent_run') {
     const { createAgentRun } = await import('./agent/runtime.js');
-    const apiKey = input.deepseekApiKey ?? input.apiKey;
-    const apiKeySource = input.deepseekApiKey ? 'user' : 'server';
+    const providerId = input.agentOptions?.providerId; // undefined → DB default 'deepseek'
+    // 根据 providerId 选 user key 字段：zenmux 用 zenmuxApiKey，否则用 deepseekApiKey。
+    const userKey =
+      providerId === 'zenmux' ? input.zenmuxApiKey : input.deepseekApiKey;
+    const apiKey = userKey ?? input.apiKey;
+    const apiKeySource = userKey ? 'user' : 'server';
+    const modelId = input.agentOptions?.modelId;
 
     if (input.channel === 'private') {
       if (!input.sessionId) {
@@ -160,6 +179,8 @@ export async function executeIntent(
         inputText: input.text,
         apiKey,
         apiKeySource,
+        providerId,
+        modelId,
       });
       return {
         type: 'agent',
@@ -181,6 +202,8 @@ export async function executeIntent(
         inputText: input.text,
         apiKey,
         apiKeySource,
+        providerId,
+        modelId,
       });
       return {
         type: 'agent',

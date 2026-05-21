@@ -107,6 +107,16 @@ export function BrainHubScreen({ navigation }: Props) {
             <Text style={styles.cellSub}>查看后台 agent 跑的所有任务、重试失败</Text>
           </View>
         </Pressable>
+        <Pressable
+          style={styles.cell}
+          onPress={() => navigation.navigate('BrainAgentDefaultModel')}
+          accessibilityRole="button"
+        >
+          <View style={styles.cellInner}>
+            <Text style={styles.cellTitle}>Agent 默认模型</Text>
+            <Text style={styles.cellSub}>设置 agent 任务默认使用的 LLM（DeepSeek / ZenMux）</Text>
+          </View>
+        </Pressable>
       </ScrollView>
     </View>
   );

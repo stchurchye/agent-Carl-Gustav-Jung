@@ -613,6 +613,11 @@ export const api = {
     model?: string;
     selectedMessageIds?: string[];
     contextSelection?: ContextSelection;
+    /** M1e Task 12: agent run per-call provider/model 选型 */
+    agentOptions?: {
+      providerId?: 'deepseek' | 'zenmux';
+      modelId?: string;
+    };
   }) =>
     request<IntentExecuteResult>('/api/intent/execute', {
       method: 'POST',

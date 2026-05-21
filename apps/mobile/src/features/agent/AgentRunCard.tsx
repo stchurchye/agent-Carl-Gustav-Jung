@@ -12,6 +12,7 @@ import type { AgentNoticeSeverity, AgentRunStatus } from './types';
 import { AgentTodoList } from './AgentTodoList';
 import { AgentStepList } from './AgentStepList';
 import { AgentSteerInput } from './AgentSteerInput';
+import { agentLlmDisplayName } from '@xzz/shared';
 
 const NOTICE_BG: Record<AgentNoticeSeverity, string> = {
   info: '#e6f4ff',
@@ -96,6 +97,11 @@ export function AgentRunCard({
 
       <Text style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }} numberOfLines={3}>
         {run.inputText}
+      </Text>
+      {/* M1e Task 12: 任务面板顶部铭牌 —— 让用户知道这条 run 用了哪个 provider/model，
+          retry / 切模型时是否生效就一目了然。 */}
+      <Text style={{ fontSize: 11, opacity: 0.45, marginTop: 2 }}>
+        by {agentLlmDisplayName(run.providerId, run.modelId)}
       </Text>
 
       {notices && notices.length > 0 ? (
