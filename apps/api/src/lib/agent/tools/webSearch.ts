@@ -27,9 +27,9 @@ const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
  * 让 planner 改用 magi_system_read 或直接给 finalReply。
  */
 export const webSearchTool: ToolDef<WebSearchInput, WebSearchOutput> = {
-  name: 'web_search',
+  name: 'search_web',
   description:
-    'Search the public web for fresh information. Use when the user asks about something that may need current external context.',
+    'Search the public web (Tavily). Use for current events, news, blog posts, or non-academic topics. For academic papers and empirical claims, prefer search_papers.',
   inputSchema: {
     type: 'object',
     required: ['query'],

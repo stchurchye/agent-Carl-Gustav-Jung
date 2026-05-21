@@ -34,19 +34,19 @@ function researchPlan(): Plan {
     intentSummary: '研究家族信托并存档',
     steps: [
       {
-        toolName: 'web_search',
+        toolName: 'search_web',
         input: { query: '家族信托' },
         reason: '先搜公开资料',
         todoId: 't1',
       },
       {
-        toolName: 'url_fetch',
+        toolName: 'fetch_url',
         input: { url: 'https://example.com/trust' },
         reason: '深读首条结果',
         todoId: 't2',
       },
       {
-        toolName: 'url_fetch',
+        toolName: 'fetch_url',
         input: { url: 'https://example.com/trust' }, // ← 同 URL，应命中幂等
         reason: '重复请求',
         todoId: 't3',
@@ -109,11 +109,11 @@ describe('agent runtime E2E: research + idempotency (M1c, T10)', () => {
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           );
         }
-        if (url.startsWith('https://example.com/trust')) {
+        if (url.includes('r.jina.ai') && url.includes('example.com/trust')) {
           urlFetchCalls += 1;
           return new Response(
-            `<html><head><title>家族信托详解</title></head><body><article><h1>家族信托详解</h1><p>${'内容段。'.repeat(100)}</p></article></body></html>`,
-            { status: 200, headers: { 'Content-Type': 'text/html' } },
+            `Title: 家族信托详解\nURL Source: https://example.com/trust\n\n# 家族信托详解\n\n${'内容段。'.repeat(100)}`,
+            { status: 200 },
           );
         }
         return new Response('not found', { status: 404 });
@@ -147,7 +147,7 @@ describe('agent runtime E2E: research + idempotency (M1c, T10)', () => {
     // 4 个 plan step → 3 tool_call + 1 observe（第二个 url_fetch 同 URL 命中缓存）
     expect(toolCalls.length).toBe(3);
     expect(observes.length).toBe(1);
-    expect(observes[0].toolName).toBe('url_fetch');
+    expect(observes[0].toolName).toBe('fetch_url');
 
     // 真正发到外部的请求次数：tavily 1 次 + example.com 1 次（第二次命中缓存）
     expect(tavilyCalls).toBe(1);

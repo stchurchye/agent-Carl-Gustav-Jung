@@ -155,13 +155,13 @@ describe('buildInitialPlan: previousFailure plumbing (M1f polish #1)', () => {
     await recordStep({
       runId: run.id,
       kind: 'tool_error',
-      toolName: 'web_search',
+      toolName: 'search_web',
       error: 'HTTP_429_RATE_LIMIT',
     });
     await recordStep({
       runId: run.id,
       kind: 'tool_call',
-      toolName: 'url_fetch',
+      toolName: 'fetch_url',
       output: { result: { ok: false, error: 'CONN_REFUSED' }, retried: false },
       error: 'CONN_REFUSED',
     });
@@ -182,8 +182,8 @@ describe('buildInitialPlan: previousFailure plumbing (M1f polish #1)', () => {
     expect(userMsg).toMatch(/上一步失败原因/);
     expect(userMsg).toMatch(/HTTP_429_RATE_LIMIT/);
     expect(userMsg).toMatch(/CONN_REFUSED/);
-    expect(userMsg).toMatch(/web_search/);
-    expect(userMsg).toMatch(/url_fetch/);
+    expect(userMsg).toMatch(/search_web/);
+    expect(userMsg).toMatch(/fetch_url/);
   });
 
   it('initial fresh run（无任何 failed step）→ planner user prompt 不含「上一步失败原因」', async () => {
@@ -246,8 +246,8 @@ describe('buildInitialPlan: previousFailure plumbing (M1f polish #1)', () => {
     ).toBeUndefined();
 
     const summary = buildPreviousFailureSummary([
-      baseStep({ kind: 'tool_error', toolName: 'web_search', error: 'E1' }),
-      baseStep({ kind: 'tool_call', toolName: 'url_fetch', error: 'E2' }),
+      baseStep({ kind: 'tool_error', toolName: 'search_web', error: 'E1' }),
+      baseStep({ kind: 'tool_call', toolName: 'fetch_url', error: 'E2' }),
       baseStep({ kind: 'plan' }), // 非失败,不计
       baseStep({ kind: 'tool_call', toolName: 'doc_export', error: 'E3' }),
       baseStep({ kind: 'tool_error', toolName: 'magi_read', error: 'E4' }),
@@ -258,7 +258,7 @@ describe('buildInitialPlan: previousFailure plumbing (M1f polish #1)', () => {
     expect(summary).toMatch(/E2/);
     expect(summary).toMatch(/E3/);
     expect(summary).toMatch(/E4/);
-    expect(summary).toMatch(/url_fetch/);
+    expect(summary).toMatch(/fetch_url/);
     expect(summary).toMatch(/doc_export/);
     expect(summary).toMatch(/magi_read/);
   });

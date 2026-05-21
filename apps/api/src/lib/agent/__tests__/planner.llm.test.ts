@@ -7,7 +7,7 @@ import {
 import { toolRegistry } from '../toolRegistry.js';
 import { registerEchoSleep } from '../tools/echoSleep.js';
 import { registerWebSearch } from '../tools/webSearch.js';
-import { registerUrlFetch } from '../tools/urlFetch.js';
+import { registerFetchUrl } from '../tools/fetchUrl.js';
 import { registerDocExportMarkdown } from '../tools/docExportMarkdown.js';
 import type { AgentContextSnapshot } from '../contextAdapter.js';
 import type { LlmChatClient, LlmChatMessage, LlmChatResult } from '../../llm/types.js';
@@ -58,7 +58,7 @@ beforeEach(() => {
   // 注册所有 M1c 工具，让 parsePlannerJson 能识别
   registerEchoSleep();
   registerWebSearch();
-  registerUrlFetch();
+  registerFetchUrl();
   registerDocExportMarkdown();
 });
 
@@ -68,7 +68,7 @@ describe('parsePlannerJson', () => {
       intentSummary: '研究家族信托',
       steps: [
         {
-          toolName: 'web_search',
+          toolName: 'search_web',
           input: { query: '家族信托' },
           reason: '先搜资料',
           todoId: 't1',
@@ -97,7 +97,7 @@ describe('parsePlannerJson', () => {
     const raw = '```json\n' +
       JSON.stringify({
         intentSummary: 'x',
-        steps: [{ toolName: 'web_search', input: {}, reason: '', todoId: 't1' }],
+        steps: [{ toolName: 'search_web', input: {}, reason: '', todoId: 't1' }],
         todos: [{ id: 't1', text: 't' }],
         finalReplyHint: '',
       }) +
@@ -118,7 +118,7 @@ describe('parsePlannerJson', () => {
   it('rejects step.todoId not in todos', () => {
     const raw = JSON.stringify({
       intentSummary: 'x',
-      steps: [{ toolName: 'web_search', input: {}, reason: '', todoId: 't9' }],
+      steps: [{ toolName: 'search_web', input: {}, reason: '', todoId: 't9' }],
       todos: [{ id: 't1', text: 't' }],
       finalReplyHint: '',
     });
@@ -143,7 +143,7 @@ describe('generatePlanWithLlm (LlmChatClient interface, M1e Task 11d)', () => {
         intentSummary: '研究家族信托',
         steps: [
           {
-            toolName: 'web_search',
+            toolName: 'search_web',
             input: { query: '家族信托' },
             reason: 's',
             todoId: 't1',
@@ -159,12 +159,12 @@ describe('generatePlanWithLlm (LlmChatClient interface, M1e Task 11d)', () => {
       llm,
       signal: new AbortController().signal,
     });
-    expect(plan.steps[0].toolName).toBe('web_search');
+    expect(plan.steps[0].toolName).toBe('search_web');
     expect(plan.todos[0].id).toBe('t1');
     expect(llm.calls).toHaveLength(1);
     const { messages } = llm.calls[0]!;
     expect(messages[0].role).toBe('system');
-    expect(messages[0].content).toContain('web_search');
+    expect(messages[0].content).toContain('search_web');
     expect(messages[1].content).toContain('帮我研究家族信托');
   });
 
@@ -201,7 +201,7 @@ describe('generatePlanWithLlm (LlmChatClient interface, M1e Task 11d)', () => {
     const llm = makeMockLlm(() =>
       JSON.stringify({
         intentSummary: 'x',
-        steps: [{ toolName: 'web_search', input: {}, reason: '', todoId: 't1' }],
+        steps: [{ toolName: 'search_web', input: {}, reason: '', todoId: 't1' }],
         todos: [{ id: 't1', text: 't' }],
         finalReplyHint: '',
       }),

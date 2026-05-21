@@ -11,19 +11,21 @@
 import { registerMagiSystemRead } from './tools/magiSystemRead.js';
 import { registerMagiContentIngest } from './tools/magiContentIngest.js';
 import { registerWebSearch } from './tools/webSearch.js';
-import { registerUrlFetch } from './tools/urlFetch.js';
+import { registerFetchUrl } from './tools/fetchUrl.js';
 import { registerDocExportMarkdown } from './tools/docExportMarkdown.js';
 import { registerRunPython } from './tools/runPython.js';
 import { registerSearchPapers } from './tools/searchPapers.js';
 import { registerCritiqueLastAnswer } from './tools/critiqueLastAnswer.js';
+import { registerDatetimeNow } from './tools/datetimeNow.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
   registerMagiContentIngest();
   registerWebSearch();
-  registerUrlFetch();
+  registerFetchUrl();
   registerDocExportMarkdown();
   registerRunPython();
   registerSearchPapers();
   registerCritiqueLastAnswer();
+  registerDatetimeNow();
 }
