@@ -329,10 +329,13 @@ export async function executeRun(runId: string): Promise<void> {
         obsObj?.paused === true
       ) {
         const question = (planStep.input as { question?: unknown })?.question;
+        // M4 Task 5：写 24h timeout 戳。worker tick 的
+        // autoExpireAwaitingUserInput 会自动 cancel('user_timeout')。
         await store.updateAgentRun(runId, {
           status: 'awaiting_user_input',
           pendingUserPrompt: typeof question === 'string' ? question : '',
           pendingUserStepIdx: i,
+          pendingUserInputExpiresAt: new Date(Date.now() + 24 * 3600 * 1000),
         });
         return;
       }

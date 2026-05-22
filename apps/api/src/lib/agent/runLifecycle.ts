@@ -16,6 +16,7 @@ import {
   type AgentBudget,
   type AgentChannel,
   type AgentRun,
+  type CancelReason,
 } from './types.js';
 import {
   writePrivatePlaceholder,
@@ -303,6 +304,7 @@ export async function resumeAgentRun(
 export async function cancelRun(
   runId: string,
   byUserId: string,
+  reasonOverride?: CancelReason,
 ): Promise<void> {
   const controller = runControllers.get(runId);
   if (controller) {
@@ -326,7 +328,7 @@ export async function cancelRun(
   await store.updateAgentRun(runId, {
     status: 'cancelled',
     cancelledByUserId: byUserId,
-    cancelReason: 'user',
+    cancelReason: reasonOverride ?? 'user',
     endedAt: new Date(),
   });
   const latest = (await store.getAgentRun(runId)) ?? run;

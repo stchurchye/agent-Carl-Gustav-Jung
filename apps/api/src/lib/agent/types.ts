@@ -22,7 +22,7 @@ export type AgentRunStatus =
 
 export type AgentChannel = 'private' | 'group';
 
-export type CancelReason = 'user' | 'steer' | 'budget' | 'crash_reclaim';
+export type CancelReason = 'user' | 'steer' | 'budget' | 'crash_reclaim' | 'user_timeout';
 
 export type ApiKeySource = 'user' | 'server';
 
