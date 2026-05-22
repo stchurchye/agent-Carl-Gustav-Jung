@@ -325,11 +325,17 @@ export async function cancelRun(
   ) {
     return;
   }
+  // M4 review fix：idle-path cancel（无 controller）不经过 softComplete，
+  // 需要在这里计算 summary，保证所有 terminal status 都有 summary 落库。
+  const stepsForSummary = await store.listSteps(runId);
+  const summary = buildRunSummary(stepsForSummary);
+
   await store.updateAgentRun(runId, {
     status: 'cancelled',
     cancelledByUserId: byUserId,
     cancelReason: reasonOverride ?? 'user',
     endedAt: new Date(),
+    summary,
   });
   const latest = (await store.getAgentRun(runId)) ?? run;
   agentHookBus.emitEvent({
