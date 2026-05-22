@@ -37,3 +37,7 @@ export async function retryAgentRun(id: string): Promise<{ runId: string }> {
   const data = res.data as { runId: string };
   return { runId: data.runId };
 }
+
+export async function resumeAgentRun(id: string, userInput: string): Promise<void> {
+  await api.resumeAgentRun(id, userInput);
+}

@@ -6,7 +6,7 @@ import { jsonError } from '../lib/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import * as store from '../lib/agent/store.js';
-import { cancelRun, createAgentRun } from '../lib/agent/runtime.js';
+import { cancelRun, createAgentRun, resumeAgentRun } from '../lib/agent/runtime.js';
 import type { AgentRun, AgentRunStatus } from '../lib/agent/types.js';
 import * as topicSkills from '../lib/agent/topicSkills.js';
 import {
@@ -167,6 +167,38 @@ agentRouter.post('/runs/:id/cancel', async (c) => {
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   await cancelRun(id, userId);
   return c.json({ ok: true, requestId: c.get('requestId') });
+});
+
+/**
+ * M3 Task 3：用户回答 ask_user 问题，把 run 从 awaiting_user_input 恢复到 running。
+ * - 403：非 owner（私聊 run 仅 owner 可 resume）
+ * - 404：run 不存在
+ * - 409：run 状态不是 awaiting_user_input
+ * - 400：userInput 为空
+ */
+agentRouter.post('/runs/:id/resume', async (c) => {
+  const userId = c.get('userId')!;
+  const id = c.req.param('id');
+  const run = await store.getAgentRun(id);
+  if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+  if (!(await canAccessRun(run, userId))) return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
+  if (run.status !== 'awaiting_user_input') return jsonError(c, ErrorCodes.VALIDATION, 409);
+
+  let body: { userInput?: string } = {};
+  try {
+    body = await c.req.json();
+  } catch {
+    // ignore parse errors, treat as empty body
+  }
+  const userInput = (body.userInput ?? '').trim();
+  if (!userInput) return jsonError(c, ErrorCodes.VALIDATION, 400);
+
+  try {
+    const result = await resumeAgentRun({ runId: id, userInput });
+    return c.json({ ok: true, data: { run: result.run }, requestId: c.get('requestId') });
+  } catch {
+    return jsonError(c, ErrorCodes.VALIDATION, 409);
+  }
 });
 
 /**

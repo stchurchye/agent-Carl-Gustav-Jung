@@ -27,6 +27,7 @@ import { runControllers } from './runtimeRegistry.js';
 import { buildFinalContent } from './runReply.js';
 import { killSandboxForRun } from './sandbox.js';
 import { sealUserApiKeys } from './userApiKeys.js';
+import { recordStep } from './stepRecorder.js';
 
 export type CreateAgentRunInput = {
   ownerId: string;
@@ -47,6 +48,8 @@ export type CreateAgentRunInput = {
   modelId?: string;
   /** M2 Task 7A: per-service user-supplied API keys (E2B/FRED/Jina). Sealed before write. */
   userApiKeys?: Record<string, string>;
+  /** M3 Task 4：子 run 的父 run ID（deep_research spawn 时填）。null/undefined 表示顶层 run。 */
+  parentRunId?: string | null;
 };
 
 export type CreateAgentRunResult = {
@@ -107,6 +110,7 @@ export async function createAgentRun(
     providerId,
     modelId: input.modelId,
     userApiKeysEnc,
+    parentRunId: input.parentRunId ?? null,
   });
 
   let userMessageId: string | null = null;
@@ -232,6 +236,50 @@ export async function softComplete(
     });
   }
 }
+
+// ─── M3 Task 3: resumeAgentRun ────────────────────────────────────────────────
+
+export type ResumeAgentRunInput = {
+  runId: string;
+  userInput: string;
+};
+
+/**
+ * 校验 run 处于 awaiting_user_input，把用户回答写成一条 observe step，
+ * 清空 pendingUserPrompt / pendingUserStepIdx，将 status 切回 running。
+ */
+export async function resumeAgentRun(
+  input: ResumeAgentRunInput,
+): Promise<{ run: AgentRun }> {
+  const run = await store.getAgentRun(input.runId);
+  if (!run) throw new Error(`run not found: ${input.runId}`);
+  if (run.status !== 'awaiting_user_input') {
+    throw new Error(
+      `run ${input.runId} is not awaiting user input (status=${run.status})`,
+    );
+  }
+  const trimmed = input.userInput.trim();
+  if (!trimmed) throw new Error('userInput cannot be empty');
+
+  // 把用户的回答追加为 observe step，executor 重跑时能在上下文里看到答案。
+  await recordStep({
+    runId: run.id,
+    kind: 'observe',
+    toolName: 'ask_user',
+    output: { userInput: trimmed, resumedFromStepIdx: run.pendingUserStepIdx },
+  });
+
+  await store.updateAgentRun(run.id, {
+    status: 'running',
+    pendingUserPrompt: null,
+    pendingUserStepIdx: null,
+  });
+
+  const updated = await store.getAgentRun(run.id);
+  return { run: updated! };
+}
+
+// ─── cancelRun ────────────────────────────────────────────────────────────────
 
 export async function cancelRun(
   runId: string,

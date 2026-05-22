@@ -1,6 +1,8 @@
 import React from 'react';
 import { ScrollView, View, Text } from 'react-native';
-import type { AgentStep } from './types';
+import type { AgentRun, AgentStep } from './types';
+import AskUserPrompt from '../../components/AskUserPrompt';
+import DeepResearchReport from '../../components/DeepResearchReport';
 
 const KIND_LABEL: Partial<Record<AgentStep['kind'], string>> = {
   plan: '规划',
@@ -68,7 +70,14 @@ function DiagramStepCard({ step }: { step: AgentStep }) {
   );
 }
 
-export function AgentStepList({ steps }: { steps: AgentStep[] }) {
+type Props = {
+  steps: AgentStep[];
+  run?: AgentRun;
+  resumeRun?: (runId: string, userInput: string) => Promise<void>;
+  onRefresh?: () => void;
+};
+
+export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
   if (!steps.length) return null;
   return (
     <ScrollView style={{ maxHeight: 200 }}>
@@ -83,6 +92,44 @@ export function AgentStepList({ steps }: { steps: AgentStep[] }) {
           ) : null}
           {s.toolName === 'render_diagram' && s.kind === 'observe' ? (
             <DiagramStepCard step={s} />
+          ) : null}
+          {s.toolName === 'ask_user' &&
+          s.kind === 'tool_call' &&
+          run?.status === 'awaiting_user_input' &&
+          resumeRun ? (
+            <AskUserPrompt
+              runId={s.runId}
+              question={
+                (s.input as { question?: string } | null)?.question ?? '请回答：'
+              }
+              options={(s.input as { options?: string[] } | null)?.options}
+              resumeRun={resumeRun}
+              onResumed={onRefresh}
+            />
+          ) : null}
+          {s.toolName === 'deep_research' && s.kind === 'tool_call' ? (
+            (() => {
+              // tool results are wrapped: s.output = { result: toolHandlerOutput, retried: boolean }
+              const raw = s.output as {
+                result?: {
+                  ok?: boolean;
+                  report?: string;
+                  citations?: Array<{ kind: string; id: string; label?: string }>;
+                  stepsUsed?: number;
+                };
+              } | null;
+              const out = raw?.result ?? null;
+              const inp = s.input as { question?: string } | null;
+              if (!out?.ok) return null;
+              return (
+                <DeepResearchReport
+                  question={inp?.question ?? '子任务'}
+                  report={out.report ?? ''}
+                  citations={out.citations}
+                  stepsUsed={out.stepsUsed ?? 0}
+                />
+              );
+            })()
           ) : null}
         </View>
       ))}

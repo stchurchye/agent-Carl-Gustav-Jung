@@ -766,4 +766,9 @@ export const api = {
       placeholderMessageId: string | null;
       userMessageId: string | null;
     }>(`/api/agent/runs/${id}/retry`, { method: 'POST' }),
+  resumeAgentRun: (id: string, userInput: string) =>
+    request<unknown>(`/api/agent/runs/${id}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({ userInput }),
+    }),
 };
