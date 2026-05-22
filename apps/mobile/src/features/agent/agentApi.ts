@@ -1,5 +1,5 @@
 import { api } from '../../lib/api';
-import type { AgentNotice, AgentRun, AgentRunWithSteps, AgentStep } from './types';
+import type { AgentNotice, AgentRun, AgentRunStatus, AgentRunWithSteps, AgentStep } from './types';
 
 function unwrapRun(data: unknown): AgentRunWithSteps {
   // 后端 GET /api/agent/runs/:id 返回 { run, steps, notices? } (M1b-1 起；M1e task 2 加 notices);
@@ -40,4 +40,23 @@ export async function retryAgentRun(id: string): Promise<{ runId: string }> {
 
 export async function resumeAgentRun(id: string, userInput: string): Promise<void> {
   await api.resumeAgentRun(id, userInput);
+}
+
+export type ListAgentRunsResult = {
+  runs: AgentRun[];
+  hasMore: boolean;
+};
+
+/**
+ * M4 Task 7：拉用户可见的 agent run 列表。
+ * 后端 GET /api/agent/runs（M1d Task 4）：按 owner_id = me 或 me ∈ group_members 过滤；
+ * limit 默认 50，最大 100；响应 { runs, hasMore }。
+ */
+export async function listAgentRuns(opts?: {
+  status?: AgentRunStatus;
+  limit?: number;
+}): Promise<ListAgentRunsResult> {
+  const res = await api.listAgentRuns(opts);
+  const data = res.data as { runs: AgentRun[]; hasMore: boolean };
+  return { runs: data.runs ?? [], hasMore: data.hasMore ?? false };
 }

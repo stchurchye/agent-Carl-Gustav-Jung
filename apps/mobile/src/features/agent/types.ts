@@ -112,6 +112,7 @@ export type AgentRun = {
   summary?: RunSummary | null;
   pendingUserInputExpiresAt?: string | null;
   // 其他后端字段 (plan / cancelReason 等) 按需扩展。
+  createdAt: string;
 };
 
 // M1e task 2：user-facing notice，来自后端 agent_event_logs(event_type='user_facing_notice')。

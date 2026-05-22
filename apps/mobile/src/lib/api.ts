@@ -739,7 +739,7 @@ export const api = {
     if (params?.status) qs.set('status', params.status);
     if (params?.limit) qs.set('limit', String(params.limit));
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
-    return request<{ runs: unknown[] }>(`/api/agent/runs${suffix}`);
+    return request<{ runs: unknown[]; hasMore: boolean }>(`/api/agent/runs${suffix}`);
   },
   getAgentRun: (id: string) =>
     request<unknown>(`/api/agent/runs/${id}`),
