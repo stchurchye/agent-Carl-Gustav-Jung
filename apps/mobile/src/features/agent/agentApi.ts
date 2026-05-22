@@ -1,4 +1,5 @@
-import { api } from '../../lib/api';
+import { api, authHeaders } from '../../lib/api';
+import { API_BASE_URL } from '../../lib/config';
 import type { AgentNotice, AgentRun, AgentRunStatus, AgentRunWithSteps, AgentStep } from './types';
 
 function unwrapRun(data: unknown): AgentRunWithSteps {
@@ -59,4 +60,88 @@ export async function listAgentRuns(opts?: {
   const res = await api.listAgentRuns(opts);
   const data = res.data as { runs: AgentRun[]; hasMore: boolean };
   return { runs: data.runs ?? [], hasMore: data.hasMore ?? false };
+}
+
+export type LongPollBatch = {
+  type: 'batch' | 'idle';
+  run: AgentRun | null;
+  steps: AgentStep[];
+  notices?: AgentNotice[];
+  lastIdx?: number;
+  hasMore?: boolean;
+};
+
+/**
+ * M6 T1b：单次 long-poll 请求 GET /api/agent/runs/:id/long-poll?after=<idx>。
+ * 服务器返回 ndjson：0~N 行 heartbeat，最后一行 batch 或 idle。
+ * signal 由调用方传入（AbortController），处理 35s client-side timeout。
+ */
+export async function longPollAgentRun(
+  runId: string,
+  after: number,
+  signal: AbortSignal,
+): Promise<LongPollBatch> {
+  const headers = await authHeaders();
+  const url = `${API_BASE_URL}/api/agent/runs/${runId}/long-poll?after=${after}`;
+  const resp = await fetch(url, { headers, signal });
+  if (!resp.ok) {
+    throw new Error(`long-poll failed: ${resp.status}`);
+  }
+
+  function parseLine(line: string): LongPollBatch | null {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    try {
+      const obj = JSON.parse(trimmed) as { type: string };
+      if (obj.type === 'heartbeat') return null;
+      if (obj.type === 'batch' || obj.type === 'idle') {
+        return obj as unknown as LongPollBatch;
+      }
+    } catch {
+      // skip malformed line
+    }
+    return null;
+  }
+
+  // Fallback for environments where resp.body is unavailable
+  if (!resp.body) {
+    const text = await resp.text();
+    let result: LongPollBatch | null = null;
+    for (const line of text.split('\n')) {
+      const parsed = parseLine(line);
+      if (parsed) result = parsed;
+    }
+    if (!result) throw new Error('long-poll: stream ended without batch/idle line');
+    return result;
+  }
+
+  // Streaming path: read ndjson incrementally
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: LongPollBatch | null = null;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const parsed = parseLine(line);
+        if (parsed) result = parsed;
+      }
+    }
+    // Flush remaining buffer
+    if (buffer.trim()) {
+      const parsed = parseLine(buffer);
+      if (parsed) result = parsed;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!result) throw new Error('long-poll: stream ended without batch/idle line');
+  return result;
 }
