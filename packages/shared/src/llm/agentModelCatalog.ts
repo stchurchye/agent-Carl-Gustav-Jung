@@ -17,6 +17,12 @@ export type AgentLlmModelOption = {
   label: string;
   /** 备注 / 提示（"reasoning model, slower"、"forces temperature=1" 等） */
   hint?: string;
+  /** M5B: Which API key this model requires ('deepseek' or 'zenmux') */
+  requiresKey: 'deepseek' | 'zenmux';
+  /** M5B: Vendor for UI grouping */
+  vendor: 'deepseek' | 'openai' | 'anthropic' | 'moonshot' | 'google';
+  /** M5B: Whether cost estimate is reliable; false shows "成本暂不可估算" in UI */
+  priceKnown: boolean;
 };
 
 export const AGENT_LLM_MODEL_OPTIONS: AgentLlmModelOption[] = [
@@ -26,36 +32,54 @@ export const AGENT_LLM_MODEL_OPTIONS: AgentLlmModelOption[] = [
     modelId: 'deepseek-v4-pro',
     label: 'DeepSeek V4 Pro',
     hint: 'reasoning model · 默认',
+    requiresKey: 'deepseek',
+    vendor: 'deepseek',
+    priceKnown: true,
   },
   {
     providerId: 'deepseek',
     modelId: 'deepseek-v4-flash',
     label: 'DeepSeek V4 Flash',
     hint: '便宜快速',
+    requiresKey: 'deepseek',
+    vendor: 'deepseek',
+    priceKnown: true,
   },
   {
     providerId: 'zenmux',
     modelId: 'anthropic/claude-sonnet-4.6',
     label: 'Claude Sonnet 4.6',
     hint: 'via ZenMux',
+    requiresKey: 'zenmux',
+    vendor: 'anthropic',
+    priceKnown: true,
   },
   {
     providerId: 'zenmux',
     modelId: 'anthropic/claude-opus-4.7',
     label: 'Claude Opus 4.7',
     hint: 'via ZenMux · 最强',
+    requiresKey: 'zenmux',
+    vendor: 'anthropic',
+    priceKnown: true,
   },
   {
     providerId: 'zenmux',
     modelId: 'openai/gpt-5.5',
     label: 'GPT-5.5',
     hint: 'via ZenMux',
+    requiresKey: 'zenmux',
+    vendor: 'openai',
+    priceKnown: true,
   },
   {
     providerId: 'zenmux',
     modelId: 'moonshotai/kimi-k2.6',
     label: 'Kimi K2.6',
     hint: 'via ZenMux · 国产',
+    requiresKey: 'zenmux',
+    vendor: 'moonshot',
+    priceKnown: true,
   },
 ];
 

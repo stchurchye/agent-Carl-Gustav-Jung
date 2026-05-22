@@ -1,5 +1,6 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Alert, Linking } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useAgentRunPoll as useAgentRunSubscription } from './hooks/useAgentRunPoll';
 import {
   approveAgentRun,
@@ -9,7 +10,7 @@ import {
   retryAgentRun,
   steerAgentRun,
 } from './agentApi';
-import type { AgentNoticeSeverity, AgentRunStatus } from './types';
+import type { AgentNoticeSeverity, AgentRunStatus, RunArtifact } from './types';
 import { AgentTodoList } from './AgentTodoList';
 import { AgentStepList } from './AgentStepList';
 import { AgentSteerInput } from './AgentSteerInput';
@@ -69,6 +70,99 @@ function formatSummaryLine(
   if (summary.refCount > 0) parts.push(`${summary.refCount} 引用`);
   parts.push(`${cost} 估算`);
   return parts.join(' · ');
+}
+
+const LONG_CONTENT_THRESHOLD = 200;
+
+function ArtifactBlock({ artifact }: { artifact: RunArtifact }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = artifact.finalContent.length > LONG_CONTENT_THRESHOLD;
+
+  const producedAt = new Date(artifact.producedAt).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const modelName = agentLlmDisplayName(artifact.model.providerId, artifact.model.modelId);
+
+  return (
+    <View
+      style={{
+        marginTop: 8,
+        padding: 10,
+        borderRadius: 8,
+        backgroundColor: '#f0f7f0',
+      }}
+    >
+      <Text style={{ fontSize: 11, fontWeight: '600', opacity: 0.6, marginBottom: 6 }}>
+        产物
+      </Text>
+
+      <Text
+        style={{ fontSize: 13, lineHeight: 20, color: '#1a1a1a' }}
+        numberOfLines={expanded ? undefined : 5}
+      >
+        {artifact.finalContent}
+      </Text>
+
+      {isLong ? (
+        <TouchableOpacity
+          onPress={() => setExpanded((v) => !v)}
+          style={{ marginTop: 4 }}
+        >
+          <Text style={{ fontSize: 12, color: '#0a6' }}>{expanded ? '收起' : '展开'}</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {artifact.refs.length > 0 ? (
+        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: '#c8dcc8' }}>
+          <Text style={{ fontSize: 11, opacity: 0.55, marginBottom: 4 }}>
+            引用 ({artifact.refs.length})：
+          </Text>
+          {artifact.refs.map((ref) => (
+            <TouchableOpacity
+              key={ref.id}
+              onPress={() => {
+                if (ref.kind === 'url') {
+                  Linking.openURL(ref.id).catch(() => {});
+                } else {
+                  // M5: document/magi_card/diagram ref navigation not yet implemented
+                }
+              }}
+            >
+              <Text style={{ fontSize: 12, color: '#0a6', marginBottom: 2 }}>
+                • [{ref.kind}] {ref.label ?? ref.id}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+
+      <View
+        style={{
+          marginTop: 8,
+          paddingTop: 8,
+          borderTopWidth: 0.5,
+          borderTopColor: '#c8dcc8',
+          flexDirection: 'row',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 6,
+        }}
+      >
+        <TouchableOpacity
+          onPress={async () => {
+            await Clipboard.setStringAsync(artifact.finalContent);
+          }}
+        >
+          <Text style={{ fontSize: 12, color: '#0a6' }}>复制全文</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 12, opacity: 0.45 }}>·</Text>
+        <Text style={{ fontSize: 12, opacity: 0.45 }}>产出于 {producedAt}</Text>
+        <Text style={{ fontSize: 12, opacity: 0.45 }}>·</Text>
+        <Text style={{ fontSize: 12, opacity: 0.45 }}>{modelName}</Text>
+      </View>
+    </View>
+  );
 }
 
 export function AgentRunCard({
@@ -230,6 +324,10 @@ export function AgentRunCard({
             {formatSummaryLine(run.summary, run.usage?.costCny)}
           </Text>
         </View>
+      ) : null}
+
+      {terminal && run.artifact ? (
+        <ArtifactBlock artifact={run.artifact} />
       ) : null}
 
       {terminal && run.status !== 'completed' ? (

@@ -14,6 +14,7 @@ import {
   type AgentChannel,
   type AgentRole,
   type RunSummary,
+  type RunArtifact,
 } from './types.js';
 
 type Row = Record<string, unknown>;
@@ -51,6 +52,7 @@ function parseRun(row: Row): AgentRun {
     pendingUserStepIdx: (row.pending_user_step_idx as number | null) ?? null,
     pendingUserInputExpiresAt: (row.pending_user_input_expires_at as Date | null) ?? null,
     summary: (row.summary as RunSummary | null) ?? null,
+    artifact: (row.artifact as RunArtifact | null) ?? null,
     resultMessageId: (row.result_message_id as string | null) ?? null,
     invokeMessageId: (row.invoke_message_id as string | null) ?? null,
     lastHeartbeatAt: (row.last_heartbeat_at as Date | null) ?? null,
@@ -90,7 +92,7 @@ const RUN_COLUMNS = `id, owner_id, channel, session_id, group_id, topic_id,
   api_key_owner_id, api_key_source, provider_id, model_id,
   sandbox_id, user_api_keys_enc,
   parent_run_id, pending_user_prompt, pending_user_step_idx,
-  pending_user_input_expires_at, summary,
+  pending_user_input_expires_at, summary, artifact,
   result_message_id, invoke_message_id,
   last_heartbeat_at, awaiting_approval_until, awaiting_approval_step_idx,
   pending_approval_tool_name, cancelled_by_user_id, cancel_reason,
@@ -272,6 +274,8 @@ export type UpdateAgentRunInput = Partial<{
   pendingUserInputExpiresAt: Date | null;
   /** M4 Task 4: run summary 聚合摘要。 */
   summary: RunSummary | null;
+  /** M5A Task 1: run 終態産物。softComplete 同步寫入。 */
+  artifact?: RunArtifact | null;
   resultMessageId: string | null;
   invokeMessageId: string | null;
   lastHeartbeatAt: Date | null;
@@ -315,6 +319,14 @@ export async function updateAgentRun(
     summary: [
       'summary',
       patch.summary === undefined ? undefined : JSON.stringify(patch.summary),
+    ],
+    artifact: [
+      'artifact',
+      patch.artifact === undefined
+        ? undefined
+        : patch.artifact === null
+          ? null
+          : JSON.stringify(patch.artifact),
     ],
     resultMessageId: ['result_message_id', patch.resultMessageId],
     invokeMessageId: ['invoke_message_id', patch.invokeMessageId],

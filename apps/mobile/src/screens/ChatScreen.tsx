@@ -36,7 +36,6 @@ import {
   executeMessageIntent,
   shouldShowIntentChips,
 } from '../lib/intentFlow';
-import { getAgentDefaultModel } from '../lib/agentDefaultModel';
 import {
   applyPrivateIntentResult,
   isIntentExecuteResult,
@@ -59,6 +58,8 @@ import {
   type ChatUiMessage,
 } from '../lib/uiMessage';
 import { AgentRunCard } from '../features/agent/AgentRunCard';
+import { useAgentModelPicker } from '../features/agent/useAgentModelPicker';
+import { AgentModelPickerSheet } from '../features/agent/AgentModelPickerSheet';
 import { zenmuxChatModelLabel } from '../lib/chatLlmModel';
 import { attachChatTimeFlags } from '../lib/chatTime';
 import { ChatComposeBar } from '../components/ChatComposeBar';
@@ -143,6 +144,13 @@ export function ChatScreen({ route, navigation }: Props) {
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [contextUsageLoading, setContextUsageLoading] = useState(false);
   const [chatModel, setChatModel] = useState<string>('moonshotai/kimi-k2.6');
+  const {
+    current: agentModel,
+    missingKeys: agentMissingKeys,
+    sheetVisible: agentSheetVisible,
+    setSheetVisible: setAgentSheetVisible,
+    pick: pickAgentModel,
+  } = useAgentModelPicker();
   const [askAiHubOpen, setAskAiHubOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -430,10 +438,11 @@ export function ChatScreen({ route, navigation }: Props) {
       }
       setPendingIntent(null);
       try {
-        // M1e Task 12: agent_run 走用户偏好（默认 DeepSeek V4 Pro）。其它 kind 不传 agentOptions
-        // 让 backend 走自己的 default 行为。
+        // M5B: agentModel comes from useAgentModelPicker hook state (no async needed).
         const agentOptions =
-          kind === 'agent_run' ? await getAgentDefaultModel() : undefined;
+          kind === 'agent_run'
+            ? { providerId: agentModel.providerId, modelId: agentModel.modelId }
+            : undefined;
         const res = await executeMessageIntent({
           channel: 'private',
           aiMode: true,
@@ -527,10 +536,12 @@ export function ChatScreen({ route, navigation }: Props) {
       return false;
     },
     [
+      agentModel,
       announceAssistantReplyParallel,
       announceAssistantWaiting,
       chatModel,
       contextSelection,
+      loadMessages,
       navigation,
       refreshSessions,
       revealAssistant,
@@ -870,6 +881,12 @@ export function ChatScreen({ route, navigation }: Props) {
         <SlashCommandsTip
           visible={messages.length === 0 && !pendingIntent && !input.trim()}
         />
+        <Pressable
+          onPress={() => setAgentSheetVisible(true)}
+          style={styles.agentModelChip}
+        >
+          <Text style={styles.agentModelChipText}>模型: {agentModel.label} ▾</Text>
+        </Pressable>
       <ChatComposeBar
         value={input}
         onChangeText={setInput}
@@ -1111,6 +1128,17 @@ export function ChatScreen({ route, navigation }: Props) {
           }}
         />
       </WritingAssistantSheet>
+      <AgentModelPickerSheet
+        visible={agentSheetVisible}
+        current={agentModel}
+        missingKeys={agentMissingKeys}
+        onPick={pickAgentModel}
+        onClose={() => setAgentSheetVisible(false)}
+        onConfigureKeys={() => {
+          setAgentSheetVisible(false);
+          navigateBrainTab(navigation, 'BrainHomeKeys');
+        }}
+      />
     </View>
   );
 }
@@ -1175,4 +1203,19 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodyLineHeight,
   },
   emptyTablet: { fontSize: typography.body, marginTop: 56 },
+  agentModelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#f0f4ff',
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+    marginLeft: 8,
+  },
+  agentModelChipText: {
+    fontSize: 12,
+    color: '#0050cc',
+  },
 });

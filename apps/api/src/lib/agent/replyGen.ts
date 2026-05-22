@@ -1,6 +1,8 @@
 import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
-import type { AgentRun, AgentStep, Plan } from './types.js';
+import type { AgentRun, AgentStep, Plan, ReplyRef } from './types.js';
 import { toolRegistry, type ToolDef, type ToolReplyMeta } from './toolRegistry.js';
+
+export type { ReplyRef };
 
 const REPLY_SYSTEM = `你是 agent 任务的收尾发言人。
 读取已完成的工具调用结果，用 1-3 段中文给用户回复：
@@ -8,12 +10,6 @@ const REPLY_SYSTEM = `你是 agent 任务的收尾发言人。
 - 如果 user 段里"已写入资源"非空，明确告知每个资源的 label
 - 别复述全部 raw 数据，只给关键结论
 - 末尾不需要 emoji 或客套话`;
-
-export type ReplyRef = {
-  kind: 'document' | 'url' | 'magi_card' | 'diagram';
-  id: string;
-  label?: string;
-};
 
 /**
  * M1f：取代原 `collectExportedDocs` 的硬编码 toolName 判断。遍历 steps，

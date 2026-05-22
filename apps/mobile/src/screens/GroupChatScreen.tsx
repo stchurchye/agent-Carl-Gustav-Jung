@@ -4,6 +4,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -39,6 +40,8 @@ import { SlashCommandsTip } from '../components/SlashCommandsTip';
 import { zh } from '../locales/zh-CN';
 import { ChatMessageRow, chatBubbleTextStyle } from '../components/ChatMessageRow';
 import { AgentRunCard } from '../features/agent/AgentRunCard';
+import { useAgentModelPicker } from '../features/agent/useAgentModelPicker';
+import { AgentModelPickerSheet } from '../features/agent/AgentModelPickerSheet';
 import { ChatMessageContent } from '../components/chat/ChatMessageContent';
 import {
   BubbleTextSelectionProvider,
@@ -65,7 +68,6 @@ import {
   executeMessageIntent,
   shouldShowIntentChips,
 } from '../lib/intentFlow';
-import { getAgentDefaultModel } from '../lib/agentDefaultModel';
 import {
   applyAppNavigate,
   isClientNavigateKind,
@@ -137,6 +139,13 @@ export function GroupChatScreen({ route, navigation }: Props) {
   const [thinkingLine] = useState(zh.chat.thinking);
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [chatModel, setChatModel] = useState<string>('moonshotai/kimi-k2.6');
+  const {
+    current: agentModel,
+    missingKeys: agentMissingKeys,
+    sheetVisible: agentSheetVisible,
+    setSheetVisible: setAgentSheetVisible,
+    pick: pickAgentModel,
+  } = useAgentModelPicker();
   const [askAiMode, setAskAiMode] = useState(false);
   const [askAiHubOpen, setAskAiHubOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -377,9 +386,11 @@ export function GroupChatScreen({ route, navigation }: Props) {
       setPendingIntent(null);
       setSending(true);
       try {
-        // M1e Task 12: agent_run 走用户偏好（默认 DeepSeek V4 Pro）。
+        // M5B: agentModel comes from useAgentModelPicker hook state (no async needed).
         const agentOptions =
-          kind === 'agent_run' ? await getAgentDefaultModel() : undefined;
+          kind === 'agent_run'
+            ? { providerId: agentModel.providerId, modelId: agentModel.modelId }
+            : undefined;
         const res = await executeMessageIntent({
           channel: 'group',
           aiMode: true,
@@ -455,6 +466,7 @@ export function GroupChatScreen({ route, navigation }: Props) {
       }
     },
     [
+      agentModel,
       navigation,
       groupId,
       topicId,
@@ -698,6 +710,12 @@ export function GroupChatScreen({ route, navigation }: Props) {
             <SlashCommandsTip
               visible={messages.length === 0 && !pendingIntent && !input.trim()}
             />
+            <Pressable
+              onPress={() => setAgentSheetVisible(true)}
+              style={styles.agentModelChip}
+            >
+              <Text style={styles.agentModelChipText}>模型: {agentModel.label} ▾</Text>
+            </Pressable>
             <ChatComposeBar
               value={input}
               onChangeText={setInput}
@@ -803,6 +821,17 @@ export function GroupChatScreen({ route, navigation }: Props) {
         onCancelMark={() => void handleCancelLlmExclude()}
         onRemember={() => void handleRememberMessage()}
       />
+      <AgentModelPickerSheet
+        visible={agentSheetVisible}
+        current={agentModel}
+        missingKeys={agentMissingKeys}
+        onPick={pickAgentModel}
+        onClose={() => setAgentSheetVisible(false)}
+        onConfigureKeys={() => {
+          setAgentSheetVisible(false);
+          navigateBrainTab(navigation, 'BrainHomeKeys');
+        }}
+      />
     </View>
   );
 }
@@ -843,5 +872,20 @@ const styles = StyleSheet.create({
   },
   pendingText: {
     flex: 1,
+  },
+  agentModelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#f0f4ff',
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+    marginLeft: 8,
+  },
+  agentModelChipText: {
+    fontSize: 12,
+    color: '#0050cc',
   },
 });

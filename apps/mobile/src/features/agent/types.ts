@@ -78,6 +78,19 @@ export type RunSummary = {
   refCount: number;
 };
 
+export type ReplyRef = {
+  kind: 'document' | 'url' | 'magi_card' | 'diagram';
+  id: string;
+  label?: string;
+};
+
+export type RunArtifact = {
+  finalContent: string;
+  refs: ReplyRef[];
+  model: { providerId: string; modelId: string };
+  producedAt: string;
+};
+
 export type AgentUsage = {
   steps: number;
   elapsedSeconds: number;
@@ -111,6 +124,8 @@ export type AgentRun = {
   // M4 T1: run 完成后的摘要统计 + ask_user 超时时间戳。
   summary?: RunSummary | null;
   pendingUserInputExpiresAt?: string | null;
+  // M5 T4: 终态产物（reply step 的 finalContent + refs + model 信息）。
+  artifact?: RunArtifact | null;
   // 其他后端字段 (plan / cancelReason 等) 按需扩展。
   createdAt: string;
 };
