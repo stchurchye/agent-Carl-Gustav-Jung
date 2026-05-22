@@ -28,6 +28,8 @@ function drain(): void {
     job.resolve();
     void executeRun(job.runId)
       .catch((e) => {
+        // AbortError in a fire-and-forget context: swallow silently (no caller to propagate to)
+        if (e instanceof Error && e.name === 'AbortError') return;
         console.error('[child executor] run failed', job.runId, e);
       })
       .finally(() => {

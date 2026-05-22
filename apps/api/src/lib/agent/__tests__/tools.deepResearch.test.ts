@@ -15,6 +15,7 @@ vi.mock('../store.js', async (importActual) => {
 vi.mock('../runLifecycle.js', () => ({
   createAgentRun: vi.fn(),
   resumeAgentRun: vi.fn(),
+  cancelRun: vi.fn(async () => {}),
 }));
 
 vi.mock('../childExecutor.js', () => ({

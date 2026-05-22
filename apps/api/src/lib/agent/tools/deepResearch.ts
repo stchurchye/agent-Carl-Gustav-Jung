@@ -1,6 +1,6 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
 import * as store from '../store.js';
-import { createAgentRun } from '../runLifecycle.js';
+import { createAgentRun, cancelRun } from '../runLifecycle.js';
 import { dispatchChildRun } from '../childExecutor.js';
 
 type DeepResearchInput = {
@@ -83,12 +83,9 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
       });
       const childRunId = childResult.run.id;
 
-      // 2. 父取消 → 子取消
+      // 2. 父取消 → 子取消（用 cancelRun 确保同时 abort 子 run 的活跃 controller）
       const onAbort = () => {
-        void store.updateAgentRun(childRunId, {
-          status: 'cancelled',
-          cancelReason: 'user',
-        });
+        void cancelRun(childRunId, parentRun.ownerId);
       };
       ctx.signal.addEventListener('abort', onAbort, { once: true });
 

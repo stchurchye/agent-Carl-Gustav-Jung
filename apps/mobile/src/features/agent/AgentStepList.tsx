@@ -94,7 +94,7 @@ export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
             <DiagramStepCard step={s} />
           ) : null}
           {s.toolName === 'ask_user' &&
-          s.kind === 'observe' &&
+          s.kind === 'tool_call' &&
           run?.status === 'awaiting_user_input' &&
           resumeRun ? (
             <AskUserPrompt
@@ -107,14 +107,18 @@ export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
               onResumed={onRefresh}
             />
           ) : null}
-          {s.toolName === 'deep_research' && s.kind === 'observe' ? (
+          {s.toolName === 'deep_research' && s.kind === 'tool_call' ? (
             (() => {
-              const out = s.output as {
-                ok?: boolean;
-                report?: string;
-                citations?: Array<{ kind: string; id: string; label?: string }>;
-                stepsUsed?: number;
+              // tool results are wrapped: s.output = { result: toolHandlerOutput, retried: boolean }
+              const raw = s.output as {
+                result?: {
+                  ok?: boolean;
+                  report?: string;
+                  citations?: Array<{ kind: string; id: string; label?: string }>;
+                  stepsUsed?: number;
+                };
               } | null;
+              const out = raw?.result ?? null;
               const inp = s.input as { question?: string } | null;
               if (!out?.ok) return null;
               return (
