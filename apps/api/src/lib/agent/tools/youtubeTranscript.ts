@@ -133,9 +133,21 @@ export const youtubeTranscriptTool: ToolDef<YoutubeTranscriptInput, YoutubeTrans
     }
     const lang = input.lang && input.lang !== 'auto' ? input.lang : undefined;
 
+    // youtube-transcript@1.x does not accept an AbortSignal.
+    // Use Promise.race against ctx.signal abort to bound the wait.
     let chunks: Awaited<ReturnType<typeof YoutubeTranscript.fetchTranscript>>;
     try {
-      chunks = await YoutubeTranscript.fetchTranscript(videoId, lang ? { lang } : undefined);
+      const abortPromise = new Promise<never>((_, reject) => {
+        if (ctx.signal.aborted) {
+          reject(new Error('aborted'));
+          return;
+        }
+        ctx.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      });
+      chunks = await Promise.race([
+        YoutubeTranscript.fetchTranscript(videoId, lang ? { lang } : undefined),
+        abortPromise,
+      ]);
     } catch {
       return { ok: false, reason: 'fetch_failed', videoId };
     }

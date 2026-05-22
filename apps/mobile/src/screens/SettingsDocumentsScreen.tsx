@@ -125,6 +125,10 @@ export function SettingsDocumentsScreen({ navigation, route }: Props) {
                     onPress={() => {
                       if (isHidden) {
                         void restoreDocument(d.id, d.title);
+                      } else if (highlightId) {
+                        // 从 artifact ref 跳来时处于 BrainStack，WritingChapters
+                        // 未注册在该 navigator 中；提示用户从文章标签页打开。
+                        appAlert('提示', `请从"文章"标签页打开《${d.title}》`);
                       } else {
                         void openWriting(navigation, { documentId: d.id });
                       }

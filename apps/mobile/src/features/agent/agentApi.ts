@@ -103,8 +103,14 @@ export async function longPollAgentRun(
     return null;
   }
 
-  // Fallback for environments where resp.body is unavailable
-  if (!resp.body) {
+  // Fallback for environments where resp.body or stream API is unavailable.
+  // React Native stream support varies: body may exist but lack getReader/TextDecoder.
+  const canStream =
+    resp.body != null &&
+    typeof resp.body.getReader === 'function' &&
+    typeof TextDecoder !== 'undefined';
+
+  if (!canStream) {
     const text = await resp.text();
     let result: LongPollBatch | null = null;
     for (const line of text.split('\n')) {
@@ -116,7 +122,7 @@ export async function longPollAgentRun(
   }
 
   // Streaming path: read ndjson incrementally
-  const reader = resp.body.getReader();
+  const reader = resp.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let result: LongPollBatch | null = null;

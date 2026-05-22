@@ -167,16 +167,17 @@ agentRouter.get('/runs/:id/stream', async (c) => {
  * 行为：
  *   1. 立刻 SELECT idx > after 的 step；有 → 立即 batch 返回 + close
  *   2. 无 → 进入 hold 模式：
- *      - 启 heartbeat 定时器，每 15s 收集 { type:'heartbeat' } 到 ndjson 行
- *      - subscribe agentHookBus；收到 step.recorded(runId == id) → 立刻 batch + close
+ *      - subscribe agentHookBus；收到 step.recorded 或 run terminal → 立刻 batch + close
  *      - 启 idle timer (jitter 20-30s) → emit { type:'idle' } + close
+ *      - 收集 { type:'heartbeat' } 行（每 15s 一次），随最终响应一起发出
  *   3. run 已 terminal → 直接 batch（含最新 run + hasMore=false）+ close
  *
  * 响应格式：application/x-ndjson（每行一个 JSON）。
- * Heartbeat 防中间反向代理因 idle 切断连接。
  *
- * 实现注意：handler 直接 await hold Promise，确保 app.fetch() 在测试中同步等待，
- * 而非 ReadableStream（ReadableStream.start 是惰性的，app.fetch() 会立即返回）。
+ * ⚠️  heartbeat 实现为"批量模式"：行在 hold 结束后随 batch/idle 一并发出，
+ *   而非在 hold 期间逐行流式推送（流式需 ReadableStream，会破坏 Hono 测试同步等待）。
+ *   hold 时长 20-30s < 典型 Nginx/ALB 60s idle timeout，代理切断风险低；
+ *   如未来部署环境 idle timeout < 20s，须切换为 ReadableStream 实现。
  */
 const HEARTBEAT_MS = 15000;
 
