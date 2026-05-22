@@ -13,9 +13,11 @@
 export type {
   CreateAgentRunInput,
   CreateAgentRunResult,
+  ResumeAgentRunInput,
 } from './runLifecycle.js';
 export {
   createAgentRun,
   cancelRun,
+  resumeAgentRun,
 } from './runLifecycle.js';
 export { executeRun, resolveToolCallKey } from './runExecute.js';
