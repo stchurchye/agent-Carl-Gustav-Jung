@@ -2,6 +2,7 @@ import type { Plan, PlanStep, TodoItem } from './types.js';
 import { toolRegistry, type ToolDef } from './toolRegistry.js';
 import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
 import type { AgentContextSnapshot } from './contextAdapter.js';
+import { SUBAGENT_TOOL_WHITELIST } from './subagentTools.js';
 
 const CN_NUM: Record<string, number> = {
   一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5,
@@ -106,6 +107,11 @@ export type LlmPlannerInput = {
    * caller（runPlanGlue / steer / approval_deny replan）按需填。
    */
   previousFailure?: string;
+  /**
+   * M3 ADR-3：子 run（parentRunId 非空）时为 true，planner 只允许白名单工具。
+   * 防止子 agent 调 deep_research / ask_user / run_python 等危险/递归工具。
+   */
+  isSubagent?: boolean;
 };
 
 /**
@@ -132,7 +138,10 @@ export class PlannerJsonParseError extends Error {
 export async function generatePlanWithLlm(
   input: LlmPlannerInput,
 ): Promise<Plan> {
-  const tools = toolRegistry.list(); // 默认 generalist
+  const allTools = toolRegistry.list();
+  const tools = input.isSubagent
+    ? allTools.filter((t) => SUBAGENT_TOOL_WHITELIST.has(t.name))
+    : allTools;
   const systemPrompt = buildPlannerSystemPrompt(tools);
   const userPrompt = buildPlannerUserPrompt(input);
 

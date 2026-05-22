@@ -48,6 +48,8 @@ export type CreateAgentRunInput = {
   modelId?: string;
   /** M2 Task 7A: per-service user-supplied API keys (E2B/FRED/Jina). Sealed before write. */
   userApiKeys?: Record<string, string>;
+  /** M3 Task 4：子 run 的父 run ID（deep_research spawn 时填）。null/undefined 表示顶层 run。 */
+  parentRunId?: string | null;
 };
 
 export type CreateAgentRunResult = {
@@ -108,6 +110,7 @@ export async function createAgentRun(
     providerId,
     modelId: input.modelId,
     userApiKeysEnc,
+    parentRunId: input.parentRunId ?? null,
   });
 
   let userMessageId: string | null = null;
