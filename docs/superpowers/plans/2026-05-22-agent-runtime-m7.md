@@ -577,18 +577,20 @@ git commit -m "feat(agent/m7-t1e): mobile types sync (queued status / user_messa
  *   - countBlockingPlusQueuedOnTopic：union count
  */
 import { describe, it, expect, beforeEach } from 'vitest';
+import { randomUUID } from 'crypto';
 import { getPool } from '../../../db/client.js';
 import * as store from '../store.js';
+import type { AgentRunStatus } from '../types.js';
 import { ensureUser, ensureGroup } from './_groupFixture.js';
 
 async function insertRunRaw(opts: {
   ownerId: string;
   topicId: string;
   groupId: string;
-  status: store.AgentRunStatus;
+  status: AgentRunStatus;
   createdAt?: Date;
 }): Promise<string> {
-  const id = crypto.randomUUID();
+  const id = randomUUID();
   await getPool().query(
     `INSERT INTO agent_runs (id, owner_id, channel, group_id, topic_id, role,
        status, input_text, budget, api_key_source, created_at, last_heartbeat_at)
@@ -663,10 +665,26 @@ Expected：FAIL with `findBlockingActiveOnTopic is not a function` 等。
 
 ```typescript
 // ============================================================
-// M7：topic slot 查询 + advisory lock
+// M7：topic slot 查询 + 合并/排队事务原语
+//
+// 设计约束（ADR-M7-14 + R13）：本节所有可能与 acquireTopicSlot 写入冲突的函数
+// 都接受 `client?: PoolClient`，调用方（withTopicCoordination）持有 advisory lock
+// 的事务客户端会原样透传；不传 client 时退回独立连接（旧路径 / 非协调场景）。
 // ============================================================
 
+import type { PoolClient } from 'pg';
+
 const BLOCKING_STATUSES_SQL = `('draft','planning','running','replanning','awaiting_approval','awaiting_user_input')`;
+const TERMINAL_STATUSES = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'budget_exhausted',
+]);
+
+function exec(client: PoolClient | undefined) {
+  return client ?? getPool();
+}
 
 /**
  * M7：找 topic 上正在跑（不含 queued）的最新 run。
@@ -674,8 +692,9 @@ const BLOCKING_STATUSES_SQL = `('draft','planning','running','replanning','await
  */
 export async function findBlockingActiveOnTopic(
   topicId: string,
+  client?: PoolClient,
 ): Promise<AgentRun | null> {
-  const { rows } = await getPool().query(
+  const { rows } = await exec(client).query(
     `SELECT ${RUN_COLUMNS} FROM agent_runs
      WHERE topic_id = $1
        AND status IN ${BLOCKING_STATUSES_SQL}
@@ -692,8 +711,9 @@ export async function findBlockingActiveOnTopic(
  */
 export async function findQueuedHeadOnTopic(
   topicId: string,
+  client?: PoolClient,
 ): Promise<AgentRun | null> {
-  const { rows } = await getPool().query(
+  const { rows } = await exec(client).query(
     `SELECT ${RUN_COLUMNS} FROM agent_runs
      WHERE topic_id = $1 AND status = 'queued'
      ORDER BY created_at ASC
@@ -708,8 +728,9 @@ export async function findQueuedHeadOnTopic(
  */
 export async function countBlockingPlusQueuedOnTopic(
   topicId: string,
+  client?: PoolClient,
 ): Promise<number> {
-  const { rows } = await getPool().query(
+  const { rows } = await exec(client).query(
     `SELECT COUNT(*)::int AS c FROM agent_runs
      WHERE topic_id = $1
        AND (status IN ${BLOCKING_STATUSES_SQL} OR status = 'queued')`,
@@ -720,7 +741,7 @@ export async function countBlockingPlusQueuedOnTopic(
 
 /**
  * M7：merge target 已经 terminal 时抛此错；上层 retry-once。
- * applyMergeInTx 检测 UPDATE rowCount=0 抛。
+ * applyMergeInTx 检测 SELECT FOR UPDATE 命中 terminal 或 UPDATE rowCount=0 抛。
  */
 export class MergeTargetTerminalError extends Error {
   constructor(public readonly targetRunId: string) {
@@ -731,49 +752,66 @@ export class MergeTargetTerminalError extends Error {
 
 /**
  * M7：在事务内合并写 user_message_appended step + agent_runs.merged_inputs JSONB。
- * 不走 stepRecorder.recordStep（避免发 step.recorded hook —— merge 专属 hook 是
- * run.merged_input_appended）。
+ *
+ * - 传入 `client` 时：复用调用方事务（withTopicCoordination 持锁场景），**不**自己 BEGIN/COMMIT。
+ * - 不传 `client` 时：自管理短事务（保留向后兼容，但目前没人这么用）。
+ *
+ * 防并发要点：先 `SELECT ... FOR UPDATE` 锁目标 run 行，再读 MAX(idx)；
+ * 同 run 的其他 INSERT step（如 worker 自己 recordStep）走 stepRecorder 默认 pool，
+ * 命中行锁后会被阻塞，避免 idx 撞车 unique constraint 冲突。
+ * 当行锁释放后，本事务的 INSERT 也已经 commit，最大 idx 已前进，对方读到正确的 MAX。
  */
 export async function applyMergeInTx(
   targetRunId: string,
   entry: MergedInput,
+  client?: PoolClient,
 ): Promise<void> {
-  const client = await getPool().connect();
+  const ownClient = !client;
+  const c = client ?? (await getPool().connect());
   try {
-    await client.query('BEGIN');
-    const { rows: idxRows } = await client.query(
+    if (ownClient) await c.query('BEGIN');
+    const lockRes = await c.query(
+      `SELECT status FROM agent_runs WHERE id = $1 FOR UPDATE`,
+      [targetRunId],
+    );
+    if (lockRes.rowCount === 0) {
+      if (ownClient) await c.query('ROLLBACK');
+      throw new MergeTargetTerminalError(targetRunId);
+    }
+    const status = lockRes.rows[0].status as string;
+    if (TERMINAL_STATUSES.has(status)) {
+      if (ownClient) await c.query('ROLLBACK');
+      throw new MergeTargetTerminalError(targetRunId);
+    }
+
+    const { rows: idxRows } = await c.query(
       `SELECT COALESCE(MAX(idx), -1) AS m FROM agent_steps WHERE run_id = $1`,
       [targetRunId],
     );
     const nextIdx = ((idxRows[0]?.m as number | null) ?? -1) + 1;
-    await client.query(
+    await c.query(
       `INSERT INTO agent_steps (id, run_id, idx, kind, input, output, tokens, duration_ms)
          VALUES ($1, $2, $3, 'user_message_appended', $4::jsonb, NULL, 0, 0)`,
-      [
-        // randomUUID 已在 store.ts L1 `import { randomUUID } from 'crypto'`
-        randomUUID(),
-        targetRunId,
-        nextIdx,
-        JSON.stringify(entry),
-      ],
+      [randomUUID(), targetRunId, nextIdx, JSON.stringify(entry)],
     );
-    const updateRes = await client.query(
+    await c.query(
       `UPDATE agent_runs
-         SET merged_inputs = COALESCE(merged_inputs, '[]'::jsonb) || $1::jsonb
-       WHERE id = $2
-         AND status NOT IN ('completed','failed','cancelled','budget_exhausted')`,
+         SET merged_inputs = COALESCE(merged_inputs, '[]'::jsonb) || $1::jsonb,
+             status = CASE
+                        WHEN status IN ('planning','running','awaiting_approval','awaiting_user_input')
+                          THEN 'replanning'
+                        ELSE status
+                      END,
+             updated_at = NOW()
+       WHERE id = $2`,
       [JSON.stringify([entry]), targetRunId],
     );
-    if (updateRes.rowCount === 0) {
-      await client.query('ROLLBACK');
-      throw new MergeTargetTerminalError(targetRunId);
-    }
-    await client.query('COMMIT');
+    if (ownClient) await c.query('COMMIT');
   } catch (e) {
-    await client.query('ROLLBACK').catch(() => {});
+    if (ownClient) await c.query('ROLLBACK').catch(() => {});
     throw e;
   } finally {
-    client.release();
+    if (ownClient) c.release();
   }
 }
 
@@ -782,8 +820,9 @@ export async function applyMergeInTx(
  */
 export async function getMergedInputCounts(
   runId: string,
+  client?: PoolClient,
 ): Promise<{ total: number; consumed: number } | null> {
-  const { rows } = await getPool().query(
+  const { rows } = await exec(client).query(
     `SELECT jsonb_array_length(COALESCE(merged_inputs, '[]'::jsonb))::int AS total,
             COALESCE(merged_inputs_consumed_count, 0)::int AS consumed
        FROM agent_runs WHERE id = $1`,
@@ -792,29 +831,11 @@ export async function getMergedInputCounts(
   if (!rows[0]) return null;
   return { total: Number(rows[0].total), consumed: Number(rows[0].consumed) };
 }
-
-/**
- * M7：把 topic id 哈希成 64-bit advisory key，acquireTopicSlot 事务内串行同 topic。
- * pg_advisory_xact_lock 自动随事务释放，避免泄漏。
- *
- * 注意：caller 必须**在自己的事务里**先 BEGIN，再调本函数。
- */
-export async function lockTopicForCoordination(
-  client: import('pg').PoolClient,
-  topicId: string,
-): Promise<void> {
-  // hashtext 返回 32-bit；用两位避免哈希碰撞概率
-  await client.query(
-    `SELECT pg_advisory_xact_lock(
-       hashtext('agent_topic_coord:' || $1),
-       hashtext('m7')
-     )`,
-    [topicId],
-  );
-}
 ```
 
-> 注意：`MergedInput` 类型需在文件顶部 import 块已经 import（T1c 已加）。
+> 注意：`MergedInput` 类型需在文件顶部 import 块已经 import（T1c 已加）。`PoolClient` 是新增 import，加在文件顶部 `import { Pool } from 'pg';` 附近：`import type { PoolClient } from 'pg';`。
+
+> 没有放 `lockTopicForCoordination` —— advisory lock 改为 `topicCoord.withTopicCoordination` helper 提供，避免 store 层暴露 "事务调用约束"（lock 必须在事务里、必须 commit 释放）。
 
 ### Step 4：跑测试验证 PASS
 
@@ -830,7 +851,7 @@ Expected：全绿（4 case）。
 
 ```bash
 git add apps/api/src/lib/agent/store.ts apps/api/src/lib/agent/__tests__/store.topicSlot.test.ts
-git commit -m "feat(agent/m7-t2a): store helpers findBlocking/findQueued/count/applyMergeInTx/getMergedInputCounts/lockTopicForCoordination"
+git commit -m "feat(agent/m7-t2a): store helpers findBlocking/findQueued/count/applyMergeInTx (client-aware)"
 ```
 
 ---
@@ -857,10 +878,22 @@ git commit -m "feat(agent/m7-t2a): store helpers findBlocking/findQueued/count/a
  * TB16: 同 topic 1 running + 1 queued → findBlocking 只返 running；不 merge 到 queued
  */
 import { describe, it, expect, beforeEach } from 'vitest';
+import type { PoolClient } from 'pg';
 import { getPool } from '../../../db/client.js';
-import { acquireTopicSlot } from '../topicCoord.js';
+import { acquireTopicSlot, withTopicCoordination, type SlotDecision } from '../topicCoord.js';
 import { ensureUser, ensureGroup } from './_groupFixture.js';
 import { randomUUID } from 'crypto';
+
+/**
+ * Helper：跑一次 withTopicCoordination 并把决策返出来（测试关注 decision，不做实际写入）。
+ * 用真实 helper 而非裸 acquireTopicSlot，可以一并验证 advisory lock 不会自锁/死锁。
+ */
+async function decide(input: Parameters<typeof acquireTopicSlot>[0]): Promise<SlotDecision> {
+  if (input.channel !== 'group' || !input.topicId) {
+    return acquireTopicSlot(input);
+  }
+  return withTopicCoordination(input.topicId, (client) => acquireTopicSlot(input, client));
+}
 
 async function insertRun(opts: {
   ownerId: string;
@@ -905,7 +938,7 @@ describe('acquireTopicSlot (M7 T2b)', () => {
 
   // TB1
   it('private channel → always create_fresh', async () => {
-    const d = await acquireTopicSlot({
+    const d = await decide({
       channel: 'private',
       topicId: null,
       ownerId: user1.id,
@@ -915,7 +948,7 @@ describe('acquireTopicSlot (M7 T2b)', () => {
 
   // TB1.1
   it('group with no active → create_fresh', async () => {
-    const d = await acquireTopicSlot({
+    const d = await decide({
       channel: 'group',
       topicId,
       ownerId: user1.id,
@@ -926,7 +959,7 @@ describe('acquireTopicSlot (M7 T2b)', () => {
   // TB5
   it('parentRunId set → force create_fresh', async () => {
     await insertRun({ ownerId: user1.id, groupId, topicId, status: 'running' });
-    const d = await acquireTopicSlot({
+    const d = await decide({
       channel: 'group',
       topicId,
       ownerId: user1.id,
@@ -941,7 +974,7 @@ describe('acquireTopicSlot (M7 T2b)', () => {
       ownerId: user1.id, groupId, topicId, status: 'running',
       createdAt: new Date(Date.now() - 5 * 60_000),  // 5 min ago
     });
-    const d = await acquireTopicSlot({
+    const d = await decide({
       channel: 'group',
       topicId,
       ownerId: user1.id,
@@ -959,7 +992,7 @@ describe('acquireTopicSlot (M7 T2b)', () => {
       ownerId: user1.id, groupId, topicId, status: 'running',
       createdAt: new Date(Date.now() - 5_000),
     });
-    const d = await acquireTopicSlot({
+    const d = await decide({
       channel: 'group',
       topicId,
       ownerId: user2.id,
@@ -977,7 +1010,7 @@ describe('acquireTopicSlot (M7 T2b)', () => {
       ownerId: user1.id, groupId, topicId, status: 'running',
       createdAt: new Date(Date.now() - 60_000),
     });
-    const d = await acquireTopicSlot({
+    const d = await decide({
       channel: 'group',
       topicId,
       ownerId: user2.id,
@@ -999,7 +1032,7 @@ describe('acquireTopicSlot (M7 T2b)', () => {
       createdAt: new Date(Date.now() - 30_000),
     });
     // u2 进来：blocking = running，跨 owner 60s 前 → queue（precedingCount=2: 1 running + 1 queued）
-    const d = await acquireTopicSlot({
+    const d = await decide({
       channel: 'group',
       topicId,
       ownerId: user2.id,
@@ -1008,6 +1041,13 @@ describe('acquireTopicSlot (M7 T2b)', () => {
     if (d.action === 'queue') {
       expect(d.precedingCount).toBe(2);
     }
+  });
+
+  // 契约保护：群聊不传 client 直接调 acquireTopicSlot 必抛错
+  it('group channel without client throws contract error', async () => {
+    await expect(
+      acquireTopicSlot({ channel: 'group', topicId, ownerId: user1.id }),
+    ).rejects.toThrow(/withTopicCoordination/);
   });
 });
 ```
@@ -1022,21 +1062,22 @@ cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx v
 
 Expected：FAIL（模块不存在）。
 
-### Step 3：实现 acquireTopicSlot
+### Step 3：实现 acquireTopicSlot + withTopicCoordination
 
 - [ ] 创建 `apps/api/src/lib/agent/topicCoord.ts`：
 
 ```typescript
 /**
- * M7 子项目 B：群聊 Agent 并发协调入口。
+ * M7 子项目 B：群聊 Agent 并发协调入口（ADR-M7-14 + R13）。
  *
- * acquireTopicSlot 决定一个新 agent_run 请求该如何落地：
- *   - create_fresh：正常 createAgentRun
- *   - merge      ：合并到现有 active run 的 merged_inputs JSONB
- *   - queue      ：status='queued'，等队首 dequeue
+ * 核心契约：
+ *   1. 群聊 agent_run 创建路径必须套在 withTopicCoordination(topicId, fn) 内执行；
+ *   2. fn 接到的 client 已经在 BEGIN + pg_advisory_xact_lock 状态下，acquireTopicSlot
+ *      + 后续 createFreshInTx / applyMergeInTx / applyQueueInTx 必须复用同 client；
+ *   3. fn 返回后 helper 统一 COMMIT 释放锁；异常路径 ROLLBACK。
  *
- * 串行化：同 topic 多次 acquire 在 pg advisory_xact_lock 下排队（避免两个
- * 并发触发都决策 create_fresh，产生双 active run）。
+ *   "先 acquireTopicSlot commit 再 createAgentRun" 是错误模式 —— 两个并发请求都能在锁外
+ *   看到 "无 active"，从而双写 fresh run。R13 / TB1 / TB16 verify。
  *
  * 决策矩阵（详见 design spec §8.1）：
  *   parentRunId 非空 ............ create_fresh （ADR-M7-7：子 run 不被合并）
@@ -1046,6 +1087,7 @@ Expected：FAIL（模块不存在）。
  *   blocking.createdAt 30s 内 ... merge        （跨 owner 30s 窗口合并）
  *   其它 ........................ queue
  */
+import type { PoolClient } from 'pg';
 import { getPool } from '../../db/client.js';
 import * as store from './store.js';
 import type { AgentChannel } from './types.js';
@@ -1064,56 +1106,81 @@ export type AcquireTopicSlotInput = {
   parentRunId?: string | null;
 };
 
-export async function acquireTopicSlot(
-  input: AcquireTopicSlotInput,
-): Promise<SlotDecision> {
-  // ADR-M7-7：子 run 强制 fresh（防自合并到父 run）
-  if (input.parentRunId) return { action: 'create_fresh' };
-
-  // 私聊 / 无 topicId：不参与协调
-  if (input.channel !== 'group' || !input.topicId) {
-    return { action: 'create_fresh' };
-  }
-
-  const topicId = input.topicId;
+/**
+ * 同 topic 决策 + 落库的串行化 helper。fn 内的所有 store 写入必须把 client 透传过去。
+ */
+export async function withTopicCoordination<T>(
+  topicId: string,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
-    await store.lockTopicForCoordination(client, topicId);
-
-    const blocking = await store.findBlockingActiveOnTopic(topicId);
-    if (!blocking) {
-      await client.query('COMMIT');
-      return { action: 'create_fresh' };
-    }
-
-    // 同 owner → 任意时间合并
-    if (blocking.ownerId === input.ownerId) {
-      await client.query('COMMIT');
-      return { action: 'merge', targetRunId: blocking.id };
-    }
-
-    // 跨 owner + 窗口内 → 合并
-    const ageMs = Date.now() - blocking.createdAt.getTime();
-    if (ageMs < MERGE_WINDOW_MS) {
-      await client.query('COMMIT');
-      return {
-        action: 'merge',
-        targetRunId: blocking.id,
-        mergedByUserId: input.ownerId,
-      };
-    }
-
-    // 跨 owner + 窗口外 → queue
-    const precedingCount = await store.countBlockingPlusQueuedOnTopic(topicId);
+    // hashtext 返回 32-bit → 用两位 key 降低跨 topic 哈希碰撞概率
+    await client.query(
+      `SELECT pg_advisory_xact_lock(
+         hashtext('agent_topic_coord:' || $1),
+         hashtext('m7')
+       )`,
+      [topicId],
+    );
+    const result = await fn(client);
     await client.query('COMMIT');
-    return { action: 'queue', precedingCount };
+    return result;
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;
   } finally {
     client.release();
   }
+}
+
+/**
+ * 仅做决策（读 blocking + 算 precedingCount），不开事务/不持锁。
+ * 群聊路径必须由 withTopicCoordination 提供持锁的 client；客户端否则会触发 race（R13）。
+ */
+export async function acquireTopicSlot(
+  input: AcquireTopicSlotInput,
+  client?: PoolClient,
+): Promise<SlotDecision> {
+  // ADR-M7-7：子 run 强制 fresh（防自合并到父 run）
+  if (input.parentRunId) return { action: 'create_fresh' };
+
+  // 私聊 / 无 topicId：不参与协调（无需持锁）
+  if (input.channel !== 'group' || !input.topicId) {
+    return { action: 'create_fresh' };
+  }
+
+  // 严格契约：群聊场景必须传 client（来自 withTopicCoordination）
+  if (!client) {
+    throw new Error(
+      '[acquireTopicSlot] group channel requires a transactional client; ' +
+        'wrap the call in withTopicCoordination(topicId, async (client) => ...)',
+    );
+  }
+
+  const topicId = input.topicId;
+  const blocking = await store.findBlockingActiveOnTopic(topicId, client);
+  if (!blocking) return { action: 'create_fresh' };
+
+  // 同 owner → 任意时间合并
+  if (blocking.ownerId === input.ownerId) {
+    return { action: 'merge', targetRunId: blocking.id };
+  }
+
+  // 跨 owner + 窗口内 → 合并
+  const ageMs = Date.now() - blocking.createdAt.getTime();
+  if (ageMs < MERGE_WINDOW_MS) {
+    return {
+      action: 'merge',
+      targetRunId: blocking.id,
+      mergedByUserId: input.ownerId,
+    };
+  }
+
+  // 跨 owner + 窗口外 → queue
+  const precedingCount = await store.countBlockingPlusQueuedOnTopic(topicId, client);
+  return { action: 'queue', precedingCount };
 }
 ```
 
@@ -1125,13 +1192,13 @@ export async function acquireTopicSlot(
 cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx vitest run src/lib/agent/__tests__/topicCoord.acquireSlot.test.ts
 ```
 
-Expected：全绿（7 case）。
+Expected：全绿（8 case）。
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add apps/api/src/lib/agent/topicCoord.ts apps/api/src/lib/agent/__tests__/topicCoord.acquireSlot.test.ts
-git commit -m "feat(agent/m7-t2b): acquireTopicSlot decision + pg_advisory_xact_lock topic serialization"
+git commit -m "feat(agent/m7-t2b): acquireTopicSlot + withTopicCoordination (single-tx advisory lock)"
 ```
 
 ---
@@ -1309,6 +1376,44 @@ describe('intentExecute group agent_run M7', () => {
     expect(merged[0].text).toBe('追问 X');
   });
 
+  it('TB1-race: two parallel fresh requests → exactly one creates blocking run', async () => {
+    // R13 / ADR-M7-14：两个并发请求必须串行 → 只有 1 个 create_fresh，另一个走 merge
+    const [r1, r2] = await Promise.all([
+      executeIntent({
+        userId: owner.id,
+        text: 'race A',
+        kind: 'agent_run',
+        channel: 'group',
+        groupId, topicId,
+        apiKey: '',
+      }),
+      executeIntent({
+        userId: owner.id,
+        text: 'race B',
+        kind: 'agent_run',
+        channel: 'group',
+        groupId, topicId,
+        apiKey: '',
+      }),
+    ]);
+    expect(r1.type).toBe('agent');
+    expect(r2.type).toBe('agent');
+    // 唯一存活的 blocking run（status NOT IN terminal/queued）必须只有 1 个
+    const { rows } = await getPool().query(
+      `SELECT COUNT(*)::int AS c FROM agent_runs
+       WHERE topic_id = $1
+         AND status IN ('draft','planning','running','replanning','awaiting_approval','awaiting_user_input')`,
+      [topicId],
+    );
+    expect(rows[0].c).toBe(1);
+    // 其中一个必定 mergedIntoRunId 指向另一个的 runId
+    if (r1.type === 'agent' && r2.type === 'agent') {
+      const merged = r1.mergedIntoRunId ?? r2.mergedIntoRunId;
+      const fresh = r1.mergedIntoRunId ? r2.runId : r1.runId;
+      expect(merged).toBe(fresh);
+    }
+  });
+
   it('TB-intent-queue: cross owner after window → queued', async () => {
     await insertActiveRun({
       ownerId: owner.id, groupId, topicId,
@@ -1347,37 +1452,63 @@ cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx v
 
 Expected：FAIL（acquireTopicSlot 未接入；返回普通 fresh）。
 
-### Step 3：runLifecycle 加 `queued` 直创建路径
+### Step 3：runLifecycle 让 `createAgentRun` 接受 `existingRun`（关键：critical section 内只 INSERT row）
 
-- [ ] 在 `apps/api/src/lib/agent/runLifecycle.ts` `CreateAgentRunInput` 类型追加：
+R13 + ADR-M7-14 要求：群聊新建 run 时，"决策 + INSERT agent_runs row" 必须在 `withTopicCoordination` 提供的同一事务内完成；否则两个并发请求都能在锁外看到"无 active"双写 fresh run。但 `createAgentRun` 当前是个完整流程（INSERT + writePlaceholder + updateRun），把整体塞进事务侵入太大。改为：先在事务内 `store.insertAgentRun(client, ...)`，commit 释放锁；再调 `createAgentRun({ ..., existingRun })` 跳过 INSERT 直接做后续 placeholder/worker 联动。
+
+- [ ] 在 `apps/api/src/lib/agent/runLifecycle.ts` 扩展 `CreateAgentRunInput`：
 
 ```typescript
-  // M7：T3 queue 分支专用。non-undefined 时走"只 INSERT row + writeGroupPlaceholder"路径，
-  // 不写 chat / 不开启 LLM job 的 ready 信号。
+  /** M7：T3 queue 分支专用，决定 INSERT 的初始 status。默认 'draft'。 */
   initialStatus?: 'draft' | 'queued';
+  /** M7：queued 时记录入队 N。 */
   queuePosition?: number;
+  /**
+   * M7：调用方已经在持锁事务里 INSERT 了 run 行（R13 闭环），
+   * 传入时 createAgentRun 跳过 store.insertAgentRun，直接走 placeholder/updateRun 后续。
+   */
+  existingRun?: AgentRun;
 ```
 
-- [ ] 在 `createAgentRun` 函数顶部（紧接 sealUserApiKeys 之后、`store.insertAgentRun` 之前），把 `status: 'draft'` 改为：
+- [ ] 改 `createAgentRun` 函数：在 `const run = await store.insertAgentRun(...)` 之前插入：
 
 ```typescript
   const runStatus = input.initialStatus ?? 'draft';
-  // ... 后面 store.insertAgentRun({ ..., status: runStatus, ... })
+  const run = input.existingRun ?? await store.insertAgentRun({
+    ownerId: input.ownerId,
+    channel: input.channel,
+    sessionId: input.sessionId ?? null,
+    groupId: input.groupId ?? null,
+    topicId: input.topicId ?? null,
+    intentTurnId: input.intentTurnId ?? null,
+    role: 'generalist',
+    status: runStatus,
+    inputText: input.inputText,
+    budget: input.budget ?? DEFAULT_BUDGET,
+    apiKeyOwnerId: input.apiKeySource === 'user' ? input.ownerId : null,
+    apiKeySource: input.apiKeySource,
+    userApiKeyEnc,
+    userZenmuxKeyEnc,
+    providerId,
+    modelId: input.modelId,
+    userApiKeysEnc,
+    parentRunId: input.parentRunId ?? null,
+    queuePosition: input.queuePosition ?? null,  // M7
+  });
 ```
 
-并在 `insertAgentRun` 调用处把 `status: 'draft'` 改为 `status: runStatus`。
+> 注意：`existingRun` 路径下 `userApiKeyEnc / userZenmuxKeyEnc / userApiKeysEnc` 等密封字段都已经在事务里写入（intentExecute 提前 seal 并塞给 insertAgentRunInTx），跳过 store.insertAgentRun 不会丢失。
 
-- [ ] `store.insertAgentRun` 当前不接 `queue_position`；快速扩展 `InsertAgentRunInput` 加：
+- [ ] `store.insertAgentRun` 当前不接 `queue_position` / `status` 形参；快速扩展 `InsertAgentRunInput` 加：
 
 ```typescript
-  /** M7：queued 时记录入队 N。 */
-  queuePosition?: number | null;
+  status?: AgentRunStatus;        // M7：默认 'draft'，T3 queue 分支传 'queued'
+  queuePosition?: number | null;  // M7
 ```
 
-并把 INSERT SQL 改成：
+并把 INSERT SQL 改成（保留向后兼容）：
 
 ```typescript
-  // 在 column 列表末尾加 queue_position；values 列表末尾加 $20
   `INSERT INTO agent_runs (
      id, owner_id, channel, session_id, group_id, topic_id,
      intent_turn_id, role, status, input_text, budget,
@@ -1385,7 +1516,8 @@ Expected：FAIL（acquireTopicSlot 未接入；返回普通 fresh）。
      user_zenmux_key_enc, provider_id, model_id, user_api_keys_enc,
      parent_run_id, queue_position
    ) VALUES (
-     $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+     $1,$2,$3,$4,$5,$6,$7,$8, COALESCE($9, 'draft'), $10, $11,
+     $12,$13,$14,$15,
      COALESCE($16, 'deepseek'),
      COALESCE($17, 'deepseek-v4-pro'),
      COALESCE($18::jsonb, '{}'),
@@ -1395,18 +1527,23 @@ Expected：FAIL（acquireTopicSlot 未接入；返回普通 fresh）。
    RETURNING ${RUN_COLUMNS}`
 ```
 
-values 末尾加 `input.queuePosition ?? null`。
+`$9` 改为 `input.status ?? null`、`$20` 为 `input.queuePosition ?? null`。
 
-- [ ] 在 `createAgentRun` 把 `queuePosition` 透传：
+- [ ] **关键新增：`store.insertAgentRunInTx(client, input)`**：与 `insertAgentRun` 同 SQL，但跑在 caller 提供的 `PoolClient` 上（withTopicCoordination 的事务客户端）。最干净的实现是把现有 SQL 抽出常量，两个函数共享，例如：
 
 ```typescript
-  const run = await store.insertAgentRun({
-    // ... 现有字段 ...
-    queuePosition: input.queuePosition ?? null,
-  });
+export async function insertAgentRunInTx(
+  client: PoolClient,
+  input: InsertAgentRunInput,
+): Promise<AgentRun> {
+  const { rows } = await client.query(INSERT_AGENT_RUN_SQL, buildInsertAgentRunParams(input));
+  return parseRun(rows[0]);
+}
 ```
 
-### Step 4：intentExecute 群聊分支改造
+把 `insertAgentRun` 内部也改为 `getPool().query(INSERT_AGENT_RUN_SQL, buildInsertAgentRunParams(input))`，确保两条路径完全等价。
+
+### Step 4：intentExecute 群聊分支改造（withTopicCoordination 全程持锁）
 
 - [ ] 改 `apps/api/src/lib/intentExecute.ts` group `agent_run` 分支（L205-225）。整段替换：
 
@@ -1416,130 +1553,174 @@ values 末尾加 `input.queuePosition ?? null`。
         return { type: 'skipped', reason: 'AGENT_GROUP_REQUIRES_GROUP_TOPIC' };
       }
 
-      // M7 T3：acquireTopicSlot + retry-once on MergeTargetTerminalError
-      const { acquireTopicSlot } = await import('./agent/topicCoord.js');
-      const { applyMergeInTx, MergeTargetTerminalError } = await import('./agent/store.js');
+      // M7 T3：withTopicCoordination 持锁事务内决策 + 写入 → commit 后做 placeholder/hook
+      const { withTopicCoordination, acquireTopicSlot } =
+        await import('./agent/topicCoord.js');
+      const {
+        applyMergeInTx,
+        insertAgentRunInTx,
+        MergeTargetTerminalError,
+      } = await import('./agent/store.js');
       const { getUserById } = await import('../store/pg-profile.js');
+      const { createAgentRun } = await import('./agent/runtime.js');
+      const { agentHookBus } = await import('./agent/hooks.js');
+      const { getMergedInputCounts, getAgentRun } = await import('./agent/store.js');
+      const { getPool } = await import('../db/client.js');
 
+      // 提前准备所有需要落到 agent_runs 行的字段（含 user key 密封），让事务内部仅做 INSERT。
+      const sealedKeys = await sealUserApiKeysForInsert({  // 抽个本地 helper，封装 sealUserApiKey/sealUserApiKeys
+        apiKey, apiKeySource, providerId, userApiKeys: input.userApiKeys,
+        ownerId: input.userId,
+      });
+
+      type SlotResult =
+        | { kind: 'merge'; targetRunId: string; mergedByUserId?: string }
+        | { kind: 'fresh'; run: AgentRun }
+        | { kind: 'queue'; run: AgentRun; precedingCount: number };
+
+      let slot: SlotResult | null = null;
       for (let attempt = 0; attempt < 2; attempt++) {
-        const decision = await acquireTopicSlot({
-          channel: 'group',
-          topicId: input.topicId,
-          ownerId: input.userId,
-          parentRunId: null,
-        });
-
-        if (decision.action === 'merge') {
-          const profile = await getUserById(input.userId);
-          const byUsername = profile?.displayName ?? profile?.username ?? input.userId;
-          try {
-            await applyMergeInTx(decision.targetRunId, {
-              text: input.text,
-              byUserId: input.userId,
-              byUsername,
-              at: new Date().toISOString(),
-            });
-          } catch (err) {
-            if (err instanceof MergeTargetTerminalError && attempt === 0) {
-              continue;  // 目标在事务期间 terminal，重判
-            }
-            throw err;
-          }
-
-          // emit run.merged_input_appended hook（给 long-poll 推送）
-          const { agentHookBus } = await import('./agent/hooks.js');
-          const { getMergedInputCounts, getAgentRun } = await import('./agent/store.js');
-          const counts = await getMergedInputCounts(decision.targetRunId);
-          const targetRun = await getAgentRun(decision.targetRunId);
-          if (targetRun && counts) {
-            agentHookBus.emitEvent({
-              type: 'run.merged_input_appended',
-              runId: decision.targetRunId,
-              mergedInputsCount: counts.total,
-            });
-          }
-
-          // 写 1 条 invoker 群消息（人类发言），指向原 run
-          const invoke = await social.addGroupMessage(
-            input.userId,
-            input.groupId,
-            input.topicId,
-            { kind: 'human', content: input.text },
-          );
-          if (invoke) {
-            const { getPool } = await import('../db/client.js');
-            await getPool().query(
-              `UPDATE group_messages
-                 SET payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object(
-                   'agentRun', jsonb_build_object(
-                     'agentRunId', $2::text,
-                     'role', 'merged_invoker',
-                     'mergedByUserId', $3::text
-                   )
-                 )
-               WHERE id = $1`,
-              [invoke.id, decision.targetRunId, input.userId],
+        try {
+          slot = await withTopicCoordination(input.topicId, async (client) => {
+            const decision = await acquireTopicSlot(
+              { channel: 'group', topicId: input.topicId, ownerId: input.userId, parentRunId: null },
+              client,
             );
-          }
-
-          return {
-            type: 'agent',
-            runId: decision.targetRunId,
-            userMessageId: invoke?.id ?? null,
-            placeholderMessageId: null,
-            mergedIntoRunId: decision.targetRunId,
-          };
-        }
-
-        if (decision.action === 'queue') {
-          const { createAgentRun } = await import('./agent/runtime.js');
-          const r = await createAgentRun({
-            ownerId: input.userId,
-            channel: 'group',
-            groupId: input.groupId,
-            topicId: input.topicId,
-            inputText: input.text,
-            apiKey,
-            apiKeySource,
-            providerId,
-            modelId,
-            initialStatus: 'queued',
-            queuePosition: decision.precedingCount,
+            if (decision.action === 'merge') {
+              const profile = await getUserById(input.userId);
+              const byUsername = profile?.displayName ?? profile?.username ?? input.userId;
+              await applyMergeInTx(
+                decision.targetRunId,
+                { text: input.text, byUserId: input.userId, byUsername, at: new Date().toISOString() },
+                client,
+              );
+              return { kind: 'merge', targetRunId: decision.targetRunId, mergedByUserId: decision.mergedByUserId };
+            }
+            if (decision.action === 'queue') {
+              const run = await insertAgentRunInTx(client, {
+                ownerId: input.userId,
+                channel: 'group',
+                sessionId: null,
+                groupId: input.groupId,
+                topicId: input.topicId,
+                intentTurnId: null,
+                role: 'generalist',
+                status: 'queued',
+                inputText: input.text,
+                budget: DEFAULT_BUDGET,
+                apiKeyOwnerId: apiKeySource === 'user' ? input.userId : null,
+                apiKeySource,
+                ...sealedKeys,
+                providerId,
+                modelId,
+                parentRunId: null,
+                queuePosition: decision.precedingCount,
+              });
+              return { kind: 'queue', run, precedingCount: decision.precedingCount };
+            }
+            // create_fresh
+            const run = await insertAgentRunInTx(client, {
+              ownerId: input.userId,
+              channel: 'group',
+              sessionId: null,
+              groupId: input.groupId,
+              topicId: input.topicId,
+              intentTurnId: null,
+              role: 'generalist',
+              status: 'draft',
+              inputText: input.text,
+              budget: DEFAULT_BUDGET,
+              apiKeyOwnerId: apiKeySource === 'user' ? input.userId : null,
+              apiKeySource,
+              ...sealedKeys,
+              providerId,
+              modelId,
+              parentRunId: null,
+              queuePosition: null,
+            });
+            return { kind: 'fresh', run };
           });
-          return {
-            type: 'agent',
-            runId: r.run.id,
-            userMessageId: r.userMessageId,
-            placeholderMessageId: r.placeholderMessageId,
-            queued: true,
-            queuePosition: decision.precedingCount,
-          };
+          break;  // 成功，跳出 retry
+        } catch (err) {
+          if (err instanceof MergeTargetTerminalError && attempt === 0) {
+            continue;  // 目标 run 在 merge 事务期间转 terminal，重判
+          }
+          throw err;
         }
+      }
+      if (!slot) throw new Error('agent run slot acquisition failed after retry');
 
-        // create_fresh
-        const { createAgentRun } = await import('./agent/runtime.js');
-        const r = await createAgentRun({
-          ownerId: input.userId,
-          channel: 'group',
-          groupId: input.groupId,
-          topicId: input.topicId,
-          inputText: input.text,
-          apiKey,
-          apiKeySource,
-          providerId,
-          modelId,
-        });
+      // ====== 锁已释放：以下都是非互斥后续工作 ======
+      if (slot.kind === 'merge') {
+        const counts = await getMergedInputCounts(slot.targetRunId);
+        const targetRun = await getAgentRun(slot.targetRunId);
+        if (targetRun && counts) {
+          agentHookBus.emitEvent({
+            type: 'run.merged_input_appended',
+            runId: slot.targetRunId,
+            mergedInputsCount: counts.total,
+          });
+        }
+        // 写 1 条 invoker 群消息（人类发言），指向原 run
+        const invoke = await social.addGroupMessage(
+          input.userId,
+          input.groupId,
+          input.topicId,
+          { kind: 'human', content: input.text },
+        );
+        if (invoke) {
+          await getPool().query(
+            `UPDATE group_messages
+               SET payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object(
+                 'agentRun', jsonb_build_object(
+                   'agentRunId', $2::text,
+                   'role', 'merged_invoker',
+                   'mergedByUserId', $3::text
+                 )
+               )
+             WHERE id = $1`,
+            [invoke.id, slot.targetRunId, input.userId],
+          );
+        }
+        return {
+          type: 'agent',
+          runId: slot.targetRunId,
+          userMessageId: invoke?.id ?? null,
+          placeholderMessageId: null,
+          mergedIntoRunId: slot.targetRunId,
+        };
+      }
+
+      // queue / fresh：复用 createAgentRun 后半段写 placeholder / 联动 worker
+      const r = await createAgentRun({
+        ownerId: input.userId,
+        channel: 'group',
+        groupId: input.groupId,
+        topicId: input.topicId,
+        inputText: input.text,
+        apiKey, apiKeySource, providerId, modelId,
+        existingRun: slot.run,  // ← 关键：跳过重复 INSERT
+      });
+      if (slot.kind === 'queue') {
         return {
           type: 'agent',
           runId: r.run.id,
           userMessageId: r.userMessageId,
           placeholderMessageId: r.placeholderMessageId,
+          queued: true,
+          queuePosition: slot.precedingCount,
         };
       }
-      // 不会到这里：merge 重判后必走 create_fresh / queue / 第二次 merge 成功
-      throw new Error('agent run slot acquisition failed after retry');
+      return {
+        type: 'agent',
+        runId: r.run.id,
+        userMessageId: r.userMessageId,
+        placeholderMessageId: r.placeholderMessageId,
+      };
     }
 ```
+
+`sealUserApiKeysForInsert` 是本文件内的小 helper（10 行）：把 `createAgentRun` 现有的 sealUserApiKey + sealUserApiKeys 提前跑一次返回 `{ userApiKeyEnc, userZenmuxKeyEnc, userApiKeysEnc }`，避免 critical section 内做加密 IO 拉长锁时长。复制 `runLifecycle.createAgentRun` 内的对应逻辑即可。
 
 > 注：本块用 `await import('../db/client.js')` 拿 `getPool`，避免在文件顶部新增 import（intentExecute.ts 现有 import 块没有 `db/client`）。如未来重构允许，可移到顶部 import。
 
@@ -1567,9 +1748,9 @@ Expected：全绿。
 
 ```bash
 git add apps/api/src/lib/intentExecute.ts apps/api/src/lib/agent/runLifecycle.ts \
-        apps/api/src/lib/agent/store.ts \
+        apps/api/src/lib/agent/store.ts apps/api/src/lib/agent/topicCoord.ts \
         apps/api/src/lib/__tests__/intentExecute.m7.test.ts
-git commit -m "feat(agent/m7-t3): intentExecute group agent_run → acquireTopicSlot + merge/queue/fresh routes"
+git commit -m "feat(agent/m7-t3): intentExecute group agent_run → withTopicCoordination + fresh/merge/queue (R13 safe)"
 ```
 
 ---
@@ -2831,15 +3012,19 @@ git commit -m "feat(agent/m7-t6c): runExecute paused branch sets askUser group f
 
 ### Step 1：写失败测试（TB8/9/10）
 
-- [ ] 在 `apps/api/src/routes/__tests__/agent.routes.resume.test.ts` 末尾追加新 describe block（沿用文件已有 `makeApp/tokenFor` 等 helper；如未有，参考 `agent.routes.test.ts` 同样 import）：
+- [ ] 在 `apps/api/src/routes/__tests__/agent.routes.resume.test.ts` 末尾追加新 describe block。该文件已有 `makeApp / tokenFor` helper（`tokenFor(u: { id, username, displayName })` 返回 `Promise<string>`），直接复用 —— **务必 `await tokenFor(user)` 并把 helper 接收的是 `user object`，不是 `userId` 字符串**。`ensureUser` 也返回完整 user object（含 username/displayName）：
 
 ```typescript
 import { agentHookBus } from '../../lib/agent/hooks.js';
+import { randomUUID } from 'crypto';
+import { ensureGroup } from '../../lib/agent/__tests__/_groupFixture.js';
+
+type TestUser = Awaited<ReturnType<typeof ensureUser>>;  // { id; username; displayName; ... }
 
 describe('M7 T6d ask_user group resume permission', () => {
-  let owner: { id: string };
-  let other: { id: string };
-  let outsider: { id: string };
+  let owner: TestUser;
+  let other: TestUser;
+  let outsider: TestUser;
   let groupId: string;
   let topicId: string;
   let runId: string;
@@ -2871,10 +3056,11 @@ describe('M7 T6d ask_user group resume permission', () => {
 
   it('TB8: non-owner within owner-lock window → 403', async () => {
     const app = makeApp();
+    const token = await tokenFor(other);
     const res = await app.fetch(
       new Request(`http://x/api/agent/runs/${runId}/resume`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${tokenFor(other.id)}`, 'content-type': 'application/json' },
+        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ userInput: '我来答' }),
       }),
     );
@@ -2887,10 +3073,11 @@ describe('M7 T6d ask_user group resume permission', () => {
       [runId],
     );
     const app = makeApp();
+    const token = await tokenFor(other);
     const res = await app.fetch(
       new Request(`http://x/api/agent/runs/${runId}/resume`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${tokenFor(other.id)}`, 'content-type': 'application/json' },
+        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ userInput: '我来答' }),
       }),
     );
@@ -2903,10 +3090,29 @@ describe('M7 T6d ask_user group resume permission', () => {
       [runId],
     );
     const app = makeApp();
+    const token = await tokenFor(outsider);
     const res = await app.fetch(
       new Request(`http://x/api/agent/runs/${runId}/resume`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${tokenFor(outsider.id)}`, 'content-type': 'application/json' },
+        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ userInput: '我来答' }),
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('TB10b: non-member set as askUserTargetUserId still 403 (membership 优先)', async () => {
+    // 极端兜底：未来 planner 如果误把 target 设成非群成员，必须仍然拒绝
+    await getPool().query(
+      `UPDATE agent_runs SET ask_user_target_user_id = $2 WHERE id = $1`,
+      [runId, outsider.id],
+    );
+    const app = makeApp();
+    const token = await tokenFor(outsider);
+    const res = await app.fetch(
+      new Request(`http://x/api/agent/runs/${runId}/resume`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ userInput: '我来答' }),
       }),
     );
@@ -2915,7 +3121,25 @@ describe('M7 T6d ask_user group resume permission', () => {
 });
 ```
 
-> 若该测试文件没有 `ensureGroup/ensureUser/tokenFor/makeApp`，从兄弟 `agent.routes.test.ts` 复制 setup 块（已有完整范例）。
+> `agent.routes.resume.test.ts` 头部已经定义了 `makeApp`/`tokenFor`（见现有 longpoll/resume 测试 L26 范例）：
+
+```typescript
+async function tokenFor(u: { id: string; username: string; displayName: string }) {
+  const { accessToken } = await signAccessToken({
+    id: u.id, username: u.username, displayName: u.displayName,
+    createdAt: new Date().toISOString(),
+  });
+  return accessToken;
+}
+function makeApp() {
+  const app = new Hono<{ Variables: AppVariables }>();
+  app.use('*', async (c, next) => { c.set('requestId', randomUUID()); await next(); });
+  app.route('/api/agent', agentRouter);
+  return app;
+}
+```
+
+直接复用，不要重新发明。
 
 ### Step 2：跑验证 fail
 
@@ -2935,24 +3159,27 @@ Expected：TB8 / TB10 通过（现有 `canAccessRun` 已禁非成员），但 TB
 /**
  * M7 T6d：群聊 ask_user resume 权限。比 canAccessRun 更严：
  *   - 私聊：仅 owner
- *   - 群聊 owner：永远可答
- *   - 群聊 ask_user target：可答（默认 = owner，未来 planner 可指定别人）
- *   - 群聊 openedForAll 之后：任意群成员可答
- *   - 非群成员：永远不可答
+ *   - 群聊 owner：永远可答（无论是否群成员表 —— owner 隐式拥有最高权限）
+ *   - 群聊其他人：必须先是群成员，然后满足以下任一条件：
+ *     · 是 askUserTargetUserId（planner 指定的目标）
+ *     · openedForAll 已生效（30s 倒计时后）
+ *   - 非群成员：永远不可答（即便 askUserTargetUserId 被错误设置为非群成员，也兜底拒绝）
  *
  * 注意：本函数仅判断 ask_user resume 权限；GET /runs/:id 等读权限仍用 canAccessRun。
  */
 export async function canAnswerAskUser(run: AgentRun, userId: string): Promise<boolean> {
   if (run.channel !== 'group') return userId === run.ownerId;
+  // owner 直通（无论 ask_user 配置如何）
   if (userId === run.ownerId) return true;
-  if (run.askUserTargetUserId && userId === run.askUserTargetUserId) return true;
-  // 必须先是群成员
+  // 严格：先 enforce 群成员身份，再看 target / openedForAll
   const { rows } = await getPool().query(
     `SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1`,
     [run.groupId, userId],
   );
   if (rows.length === 0) return false;
-  // 已经升级为开放 → 任意群成员可答
+  // 是群成员 + 被指定为 target → 可答
+  if (run.askUserTargetUserId && userId === run.askUserTargetUserId) return true;
+  // 是群成员 + 已升级为开放 → 任意群成员可答
   if (run.askUserOpenedForAllAt && new Date(run.askUserOpenedForAllAt) <= new Date()) {
     return true;
   }
@@ -2989,7 +3216,7 @@ Expected：全绿（含原有 + TB8 / TB9 / TB10）。
 
 ```bash
 git add apps/api/src/routes/agent.ts apps/api/src/routes/__tests__/agent.routes.resume.test.ts
-git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>" -m "feat(agent/m7-t6d): canAnswerAskUser + resume route enforces group owner-lock / openedForAll / non-member"
+git commit -m "feat(agent/m7-t6d): canAnswerAskUser + resume route enforces group owner-lock / openedForAll / non-member"
 ```
 
 ---
@@ -3217,7 +3444,7 @@ Expected：全绿（2 case）。
 ```bash
 git add apps/api/src/lib/agent/openAskUserForAll.ts apps/api/src/lib/agent/worker.ts \
         apps/api/src/lib/agent/__tests__/openAskUserForAll.test.ts
-git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>" -m "feat(agent/m7-t6e): autoOpenAskUserForAll worker checker (30s owner lock → openedForAll)"
+git commit -m "feat(agent/m7-t6e): autoOpenAskUserForAll worker checker (30s owner lock → openedForAll)"
 ```
 
 ---
@@ -3390,7 +3617,7 @@ Expected：全绿。
 
 ```bash
 git add apps/api/src/lib/agent/runLifecycle.ts
-git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>" -m "feat(agent/m7-t7b): createAgentRun + surfaceMode='child_card' routes to writeGroupChildPlaceholder"
+git commit -m "feat(agent/m7-t7b): createAgentRun + surfaceMode='child_card' routes to writeGroupChildPlaceholder"
 ```
 
 ---
@@ -3564,39 +3791,52 @@ git commit -m "feat(agent/m7-t7c): deep_research routes child run to group when 
 /**
  * M7 TB15：long-poll 在 hold 期间订阅 4 个新 hook，命中立即出 batch。
  *
- * 测试约定（对齐 agent.longpoll.test.ts）：
- *   - 用 makeApp() 拼装 Hono router
- *   - tokenFor() 签 JWT
- *   - 用 ?_holdMs=500 缩短等待
- *   - 不真等 25s；hook emit 触发 < 200ms 出 batch
+ * 测试约定（对齐 agent.longpoll.test.ts，直接搬运 makeApp / tokenFor）：
+ *   - tokenFor 接 user object（{ id, username, displayName }），返回 Promise<string>
+ *   - _holdMs=3000 缩短等待
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { Hono } from 'hono';
+import { randomUUID } from 'crypto';
 import { getPool } from '../../db/client.js';
+import { runMigrations } from '../../db/migrate.js';
 import { agentHookBus } from '../../lib/agent/hooks.js';
 import { ensureUser, ensureGroup } from '../../lib/agent/__tests__/_groupFixture.js';
-import { randomUUID } from 'crypto';
-// 复用同目录现有 agent.longpoll.test.ts 的 makeApp / tokenFor 套路；
-// 若该文件没 export，直接从 ../agent.ts 引 agentRouter 自拼。
 import { agentRouter } from '../agent.js';
-import { Hono } from 'hono';
-
-function tokenFor(userId: string): string {
-  // 复用 agent.routes.test.ts 已有 tokenFor 套路；具体实现详见该文件。
-  // 这里给个占位：实际实施时 import 同源 helper。
-  throw new Error('replace with project tokenFor helper');
-}
+import { signAccessToken } from '../../lib/auth.js';
+import type { AppVariables } from '../../types.js';
 
 function makeApp() {
-  const app = new Hono();
+  const app = new Hono<{ Variables: AppVariables }>();
+  app.use('*', async (c, next) => {
+    c.set('requestId', randomUUID());
+    await next();
+  });
   app.route('/api/agent', agentRouter);
   return app;
 }
 
+async function tokenFor(u: { id: string; username: string; displayName: string }) {
+  const { accessToken } = await signAccessToken({
+    id: u.id,
+    username: u.username,
+    displayName: u.displayName,
+    createdAt: new Date().toISOString(),
+  });
+  return accessToken;
+}
+
+type TestUser = Awaited<ReturnType<typeof ensureUser>>;
+
 describe('long-poll subscribes to M7 status-only events (TB15)', () => {
-  let owner: { id: string };
+  let owner: TestUser;
   let groupId: string;
   let topicId: string;
   let runId: string;
+
+  beforeAll(async () => {
+    await runMigrations();
+  });
 
   beforeEach(async () => {
     owner = await ensureUser('m7-lp');
@@ -3614,86 +3854,61 @@ describe('long-poll subscribes to M7 status-only events (TB15)', () => {
     );
   });
 
-  it('returns batch immediately when run.status_changed fires', async () => {
+  async function startLongPollAndEmit(emit: () => void) {
     const app = makeApp();
+    const token = await tokenFor(owner);
     const fetchPromise = app.fetch(
       new Request(
         `http://x/api/agent/runs/${runId}/long-poll?after=-1&_holdMs=3000`,
-        { headers: { Authorization: `Bearer ${tokenFor(owner.id)}` } },
+        { headers: { Authorization: `Bearer ${token}` } },
       ),
     );
-    // 50ms 后 emit 一个 status_changed
-    setTimeout(() => {
+    setTimeout(emit, 50);
+    const res = await fetchPromise;
+    return await res.text();
+  }
+
+  it('returns batch immediately when run.status_changed fires', async () => {
+    const txt = await startLongPollAndEmit(() => {
       agentHookBus.emitEvent({
         type: 'run.status_changed',
         run: { id: runId } as never,
         from: 'running', to: 'replanning',
       });
-    }, 50);
-    const res = await fetchPromise;
-    const txt = await res.text();
+    });
     expect(txt).toContain('"type":"batch"');
   }, 5000);
 
   it('returns batch immediately when run.dequeued fires', async () => {
-    const app = makeApp();
-    const fetchPromise = app.fetch(
-      new Request(
-        `http://x/api/agent/runs/${runId}/long-poll?after=-1&_holdMs=3000`,
-        { headers: { Authorization: `Bearer ${tokenFor(owner.id)}` } },
-      ),
-    );
-    setTimeout(() => {
+    const txt = await startLongPollAndEmit(() => {
       agentHookBus.emitEvent({ type: 'run.dequeued', run: { id: runId } as never });
-    }, 50);
-    const res = await fetchPromise;
-    const txt = await res.text();
+    });
     expect(txt).toContain('"type":"batch"');
   }, 5000);
 
   it('returns batch immediately when ask_user.opened_for_all fires', async () => {
-    const app = makeApp();
-    const fetchPromise = app.fetch(
-      new Request(
-        `http://x/api/agent/runs/${runId}/long-poll?after=-1&_holdMs=3000`,
-        { headers: { Authorization: `Bearer ${tokenFor(owner.id)}` } },
-      ),
-    );
-    setTimeout(() => {
+    const txt = await startLongPollAndEmit(() => {
       agentHookBus.emitEvent({
         type: 'ask_user.opened_for_all',
         runId,
         run: { id: runId } as never,
       });
-    }, 50);
-    const res = await fetchPromise;
-    const txt = await res.text();
+    });
     expect(txt).toContain('"type":"batch"');
   }, 5000);
 
   it('returns batch immediately when run.merged_input_appended fires', async () => {
-    const app = makeApp();
-    const fetchPromise = app.fetch(
-      new Request(
-        `http://x/api/agent/runs/${runId}/long-poll?after=-1&_holdMs=3000`,
-        { headers: { Authorization: `Bearer ${tokenFor(owner.id)}` } },
-      ),
-    );
-    setTimeout(() => {
+    const txt = await startLongPollAndEmit(() => {
       agentHookBus.emitEvent({
         type: 'run.merged_input_appended',
         runId,
         mergedInputsCount: 2,
       });
-    }, 50);
-    const res = await fetchPromise;
-    const txt = await res.text();
+    });
     expect(txt).toContain('"type":"batch"');
   }, 5000);
 });
 ```
-
-> ⚠️  Project-local `tokenFor` / `makeApp` 必须从兄弟测试文件复制实现（不能编造）；上面占位仅为示意 —— 实施时打开 `apps/api/src/routes/__tests__/agent.routes.test.ts` 顶部 helper 复用。
 
 ### Step 2：跑验证 fail
 
@@ -3749,7 +3964,7 @@ Expected：全绿（含 M6 + M7 新加 4 case）。
 
 ```bash
 git add apps/api/src/routes/agent.ts apps/api/src/routes/__tests__/agent.longpoll.m7.test.ts
-git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>" -m "feat(agent/m7-t8): long-poll subscribes to 4 new hook events (status_changed/dequeued/opened_for_all/merged_input_appended)"
+git commit -m "feat(agent/m7-t8): long-poll subscribes to 4 new hook events (status_changed/dequeued/opened_for_all/merged_input_appended)"
 ```
 
 ---
@@ -3773,9 +3988,29 @@ ls apps/mobile/src/features/agent/AgentRunCard*
 
 Expected：`AgentRunCard.tsx` 或类似命名。如名字不同（如 `AgentRunCardView.tsx`），后面 step 路径相应替换。
 
-### Step 2：加 queued / merged 后缀
+### Step 2：扩 STATUS_LABEL + 加 queued / merged 后缀
 
-- [ ] 在 `AgentRunCard.tsx` header 段（status / progress 行附近）追加（具体位置按现有布局自然嵌入）：
+> 现状（`apps/mobile/src/features/agent/AgentRunCard.tsx` L44）：`STATUS_LABEL` 类型是 `Record<AgentRunStatus, string>`，T1e 把 `'queued'` 加进 `AgentRunStatus` 后，TS 会编译失败要求补 case。
+
+- [ ] 改 `STATUS_LABEL` 加 `queued` key：
+
+```tsx
+const STATUS_LABEL: Record<AgentRunStatus, string> = {
+  draft: '准备中',
+  planning: '规划中',
+  running: '运行中',
+  awaiting_approval: '等待授权',
+  awaiting_user_input: '等待输入',
+  replanning: '重新规划',
+  queued: '排队中',                  // ← M7 新加
+  completed: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+  budget_exhausted: '预算耗尽',
+};
+```
+
+- [ ] 在 `AgentRunCard.tsx` header 段（status / progress 行附近，即原 `Agent · {STATUS_LABEL[run.status]}` 行下方）追加（具体位置按现有布局自然嵌入）：
 
 ```tsx
 {run.status === 'queued' && (
@@ -3842,7 +4077,7 @@ Expected：exit 0。
 
 ```bash
 git add apps/mobile/src/features/agent/
-git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>" -m "feat(agent/m7-t9): AgentRunCard queued/merged suffix + deep_research child run jump"
+git commit -m "feat(agent/m7-t9): AgentRunCard queued/merged suffix + deep_research child run jump"
 ```
 
 ---
@@ -3883,10 +4118,10 @@ Expected：现有 `payload.agentRun` 分支约在 L500+。
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { useAgentRunPoll } from './useAgentRunPoll';
+import { useAgentRunPoll } from './hooks/useAgentRunPoll';
 import { resumeAgentRun } from './agentApi';
-import { useAuth } from '../../shared/auth';
-import { appAlert } from '../../shared/alert';
+import { useAuth } from '../../components/AuthGate';
+import { appAlert } from '../../lib/appAlert';
 
 export type AskUserPromptCardProps = {
   runId: string;
@@ -3901,7 +4136,9 @@ export type AskUserPromptCardProps = {
 export function AskUserPromptCard(props: AskUserPromptCardProps) {
   const { runId, initial } = props;
   const { run } = useAgentRunPoll(runId);
-  const { userId } = useAuth();
+  // useAuth 返回 { user, logout, applyAuthUser }，user 可能为 null（未登录）
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [input, setInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -3968,14 +4205,18 @@ export function AskUserPromptCard(props: AskUserPromptCardProps) {
 }
 ```
 
-> 假设：`useAgentRunPoll` 已存在（M6）；`resumeAgentRun(runId, text)` 已存在（M3/M4）；`appAlert`、`useAuth` 已存在（参考其他屏幕导入路径）。若名字不对，按真实项目调整 import。
-> 接口校验（不写代码，看 grep 结果）：
+> Import 路径已对齐当前项目（验证过）：
+> - `useAgentRunPoll`：`apps/mobile/src/features/agent/hooks/useAgentRunPoll.ts`
+> - `useAuth`：`apps/mobile/src/components/AuthGate.tsx`，返回 `{ user: User | null; logout; applyAuthUser }`
+> - `appAlert`：`apps/mobile/src/lib/appAlert.ts`
+>
+> 接口校验：
 
 ```bash
 rg "export.*useAgentRunPoll|export.*resumeAgentRun|export.*appAlert" apps/mobile/src -n | head
 ```
 
-如 `resumeAgentRun` 不存在或签名不同，需在 `agentApi.ts` 加一个对齐：
+如 `resumeAgentRun` 不存在或签名不同，需在 `agentApi.ts` 加一个对齐（M3/M4 应该已经有，先 grep 再决定是否补）：
 
 ```typescript
 export async function resumeAgentRun(runId: string, userInput: string): Promise<void> {
@@ -4023,7 +4264,7 @@ Expected：exit 0。如有 import 名不一致，按真实项目改。
 
 ```bash
 git add apps/mobile/src/features/agent/AskUserPromptCard.tsx apps/mobile/src/screens/GroupChatScreen.tsx
-git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>" -m "feat(agent/m7-t10): mobile AskUserPromptCard + GroupChatScreen 'agent_ask_user' branch"
+git commit -m "feat(agent/m7-t10): mobile AskUserPromptCard + GroupChatScreen 'agent_ask_user' branch"
 ```
 
 ---
@@ -4140,7 +4381,7 @@ git tag -a v0.m7 -m "v0.m7: 子项目 B 首期 - 群聊 Agent 并发协调
 | §7 deepResearch group routing | T7c | ✅ |
 | §7 父卡 deep_research 跳转 | T9 | ✅ |
 | §8.1 acquireTopicSlot | T2b | ✅ |
-| §8.1 advisory_xact_lock | T2b（lockTopicForCoordination） | ✅ |
+| §8.1 advisory_xact_lock | T2b（withTopicCoordination） | ✅ |
 | §8.2 merge 分支 + applyMergeInTx | T2a + T3b | ✅ |
 | §8.3 queue 分支 (status='queued') | T3b（initialStatus）| ✅ |
 | §8.4 dequeueNextOnTopic | T4a | ✅ |
@@ -4169,11 +4410,16 @@ Expected：无 hits（或仅命中 spec 引用的 ADR / failureHint 字面字符
 
 - 全文使用一致命名（核对几个易错点）：
   - `MergedInput`（types.ts）vs `MergedInput`（mobile types.ts）：字段对齐 `text/byUserId/byUsername/at` ✅
-  - `acquireTopicSlot` 返回 `SlotDecision`，包含 `create_fresh / merge / queue` ✅
-  - `applyMergeInTx` 在 `store.ts` 内，throw `MergeTargetTerminalError`（同文件 export）✅
+  - `withTopicCoordination(topicId, async (client) => ...)` 是群聊路径**强制**入口；`acquireTopicSlot` 群聊场景不传 `client` 抛错（契约保护，TB1 race test 覆盖）✅
+  - `SlotDecision` 三态：`create_fresh / merge / queue`；intentExecute 在锁事务内分别走 `insertAgentRunInTx` / `applyMergeInTx` / `insertAgentRunInTx(status='queued')`；commit 后再调 `createAgentRun({ existingRun })` 完成 placeholder ✅
+  - `applyMergeInTx(targetRunId, entry, client?)`：客户端持锁时复用同事务，并先 `SELECT ... FOR UPDATE` 锁目标 run 行（防同 run 并发写 step idx 冲突）✅
+  - `MergeTargetTerminalError` 上层 retry-once；超过一次仍命中说明 DB 异常 ✅
   - `dequeueNextOnTopic` 接 `string | null`（safe-guard），早返回 null 时不报错 ✅
   - `surfaceMode` 取值 `'default' | 'child_card'`，全 plan 一致 ✅
-  - `canAnswerAskUser` 与 `canAccessRun` 区分，前者用在 resume，后者用在 GET/cancel ✅
+  - `canAnswerAskUser` 与 `canAccessRun` 区分，前者用在 resume，后者用在 GET/cancel；**owner → 群成员 → target / openedForAll** 顺序判定，非群成员永远拒绝（含被错设为 target 的兜底，TB10b 覆盖）✅
+  - `tokenFor(user)` 接 user 对象返回 `Promise<string>`（参考 `agent.longpoll.test.ts` L40），所有调用必须 `await tokenFor(user)` 而非传 `userId` ✅
+  - `STATUS_LABEL`（mobile `AgentRunCard.tsx` L44）必须包含 `queued: '排队中'`，与 `AgentRunStatus` 类型穷尽匹配 ✅
+  - mobile `AskUserPromptCard` import 路径：`./hooks/useAgentRunPoll` / `../../components/AuthGate` / `../../lib/appAlert`；`useAuth()` 返回 `{ user }`（不是 `{ userId }`）✅
 
 ---
 
