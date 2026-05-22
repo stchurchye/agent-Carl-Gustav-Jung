@@ -3,6 +3,7 @@ export type AgentRunStatus =
   | 'planning'
   | 'running'
   | 'awaiting_approval'
+  | 'awaiting_user_input'
   | 'replanning'
   | 'completed'
   | 'failed'

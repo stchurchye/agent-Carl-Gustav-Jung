@@ -5,6 +5,7 @@ import {
   approveAgentRun,
   cancelAgentRun,
   denyAgentRun,
+  resumeAgentRun,
   retryAgentRun,
   steerAgentRun,
 } from './agentApi';
@@ -42,6 +43,7 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
   planning: '规划中',
   running: '运行中',
   awaiting_approval: '等待授权',
+  awaiting_user_input: '等待输入',
   replanning: '重新规划',
   completed: '已完成',
   failed: '失败',
@@ -185,7 +187,11 @@ export function AgentRunCard({
       ) : null}
 
       <View style={{ marginTop: 8 }}>
-        <AgentStepList steps={steps} />
+        <AgentStepList
+          steps={steps}
+          run={run}
+          resumeRun={resumeAgentRun}
+        />
       </View>
 
       {!terminal ? (
