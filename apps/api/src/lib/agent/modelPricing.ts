@@ -18,8 +18,9 @@ export const MODEL_PRICING: Record<string, PriceEntry> = {
   'deepseek-chat':                 { promptCny: 0.002,   completionCny: 0.008   },
   // input ¥4/M (miss)   output ¥16/M
   'deepseek-reasoner':             { promptCny: 0.004,   completionCny: 0.016   },
-  // 'deepseek-v4-pro' 是 DB DEFAULT；按 deepseek-chat 一档估算
-  'deepseek-v4-pro':               { promptCny: 0.002,   completionCny: 0.008   },
+  // 'deepseek-v4-pro'：list price $1.74/$3.48 per M（2026-05-31 前 75% 折 $0.435/$0.87）
+  // 使用 list price 保守估算，避免折扣过期后低估
+  'deepseek-v4-pro':               { promptCny: 0.013,   completionCny: 0.025   },
 
   // ─── OpenAI via ZenMux（USD × 7.2 → CNY）────────────────────────────────
   // gpt-4o $2.50 / $10 per M → 0.018 / 0.072
@@ -47,6 +48,22 @@ export const MODEL_PRICING: Record<string, PriceEntry> = {
   'google/gemini-2.5-pro':         { promptCny: 0.009,   completionCny: 0.072   },
   // gemini 2.5 flash $0.075 / $0.30 per M → 0.00054 / 0.00216
   'google/gemini-2.5-flash':       { promptCny: 0.00054, completionCny: 0.00216 },
+
+  // ─── DeepSeek V4 Flash（官方定价，2026-05-22 查，source: https://api-docs.deepseek.com/quick_start/pricing）
+  // cache-miss input $0.14/M, output $0.28/M → × 7.2 / 1000
+  'deepseek-v4-flash':             { promptCny: 0.001,   completionCny: 0.002   },
+
+  // ─── OpenAI via ZenMux（官方定价，2026-05-22 查，source: https://openai.com/api/pricing/）
+  // gpt-5.5 input $5.00/M, output $30.00/M → × 7.2 / 1000
+  'openai/gpt-5.5':                { promptCny: 0.036,   completionCny: 0.216   },
+
+  // ─── Anthropic via ZenMux（官方定价，2026-05-22 查，source: https://platform.claude.com/docs/en/about-claude/pricing）
+  // claude-opus-4.7 input $5.00/M, output $25.00/M → × 7.2 / 1000（与 opus-4.6 同价）
+  'anthropic/claude-opus-4.7':     { promptCny: 0.036,   completionCny: 0.180   },
+
+  // ─── Moonshot/Kimi via ZenMux（官方定价，2026-05-22 查，source: https://platform.kimi.ai/docs/pricing/chat-k26）
+  // kimi-k2.6 input $0.95/M, output $4.00/M → × 7.2 / 1000
+  'moonshotai/kimi-k2.6':          { promptCny: 0.0068,  completionCny: 0.0288  },
 };
 
 /**
