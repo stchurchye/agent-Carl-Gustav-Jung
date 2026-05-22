@@ -103,6 +103,10 @@ export type AgentRun = {
   pendingUserPrompt: string | null;
   /** M3 Task 1: ask_user 暂停时停在第几步（0-based），resume 时下一步从这里 +1 接续。 */
   pendingUserStepIdx: number | null;
+  /** M4 Task 1: ask_user 暂停的 24h 超时戳；过期由 worker tick 自动 cancel。null 表示无限期等。 */
+  pendingUserInputExpiresAt: Date | null;
+  /** M4 Task 4: 任务完成时落的聚合摘要（步数 / 工具 / ref 数）；UI 在列表/详情都展示。 */
+  summary: RunSummary | null;
   resultMessageId: string | null;
   invokeMessageId: string | null;
   lastHeartbeatAt: Date | null;
@@ -166,6 +170,23 @@ export class AgentBudgetExhausted extends Error {
     super(`agent budget exhausted on ${dimension}`);
   }
 }
+
+/**
+ * M4 Task 4：run 完成（含 failed / cancelled / budget_exhausted）时由 buildRunSummary
+ * 计算并落到 agent_runs.summary。用于任务面板列表的「N 步 · M 工具 · K 引用」一行摘要。
+ *
+ * 仅统计 useful step：filter out heartbeat / reclaim / system_error，避免把审计步算进数。
+ */
+export type RunSummary = {
+  /** useful step 总数（含 plan / tool_call / observe / reply / approval_* / steer / user_input） */
+  stepCount: number;
+  /** distinct tool name 数 */
+  toolCount: number;
+  /** tool name → call count */
+  toolBreakdown: Record<string, number>;
+  /** 各 step output.result.citations 累加 */
+  refCount: number;
+};
 
 export const DEFAULT_BUDGET: AgentBudget = {
   maxSteps: 20,
