@@ -189,7 +189,14 @@ agentRouter.get('/runs/:id/long-poll', async (c) => {
     return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
 
   const afterRaw = c.req.query('after');
-  const after = afterRaw !== undefined ? Number(afterRaw) : -1;
+  let after = -1;
+  if (afterRaw !== undefined) {
+    const n = Number(afterRaw);
+    if (!Number.isFinite(n) || !Number.isInteger(n)) {
+      return jsonError(c, ErrorCodes.VALIDATION, 400);
+    }
+    after = n;
+  }
   const holdMs = resolveHoldMs(c.req.query('_holdMs'));
 
   const toNdjsonResponse = (lines: unknown[]) => {

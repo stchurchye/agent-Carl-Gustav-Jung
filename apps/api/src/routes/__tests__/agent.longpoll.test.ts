@@ -125,21 +125,54 @@ describe('GET /api/agent/runs/:id/long-poll', { timeout: 40000 }, () => {
     const { owner, run } = await makeRun('lp-hold');
     const token = await tokenFor(owner);
     const app = makeApp();
+    const t0 = Date.now();
     const promise = app.fetch(
-      new Request(`http://test/api/agent/runs/${run.id}/long-poll?after=-1`, {
+      new Request(`http://test/api/agent/runs/${run.id}/long-poll?after=-1&_holdMs=3000`, {
         headers: { authorization: `Bearer ${token}` },
       }),
     );
-    // 给路由 100ms 建立 hold + subscribe
+    // Give handler 100ms to enter hold and subscribe
     await new Promise((r) => setTimeout(r, 100));
-    // recordStep 自身会 emit step.recorded hook 事件 → long-poll handler settle 返回
+    // recordStep emits step.recorded → long-poll wakes immediately (well before 3s hold)
     await recordStep({ runId: run.id, kind: 'plan', output: { goal: 'mid' } });
     const resp = await promise;
+    const elapsed = Date.now() - t0;
     expect(resp.status).toBe(200);
+    // Should have resolved in << 3000ms (the hold timeout)
+    expect(elapsed).toBeLessThan(1500);
     const lines = (await readNdjson(resp)) as Array<{ type: string; [k: string]: any }>;
     const batch = lines.find((l) => l.type === 'batch');
+    expect(batch).toBeDefined();
     expect(batch!.steps.length).toBe(1);
     expect(batch!.steps[0].output).toEqual({ goal: 'mid' });
+  });
+
+  it('hold mode: run transitions to terminal → batch returned immediately', async () => {
+    const { owner, run } = await makeRun('lp-terminal-wakeup');
+    const token = await tokenFor(owner);
+    const app = makeApp();
+    const t0 = Date.now();
+    const promise = app.fetch(
+      new Request(`http://test/api/agent/runs/${run.id}/long-poll?after=-1&_holdMs=3000`, {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    // Give handler 100ms to enter hold and subscribe
+    await new Promise((r) => setTimeout(r, 100));
+    // Emit run.completed event via agentHookBus directly
+    const { agentHookBus } = await import('../../lib/agent/hooks.js');
+    // Also update the DB so emitBatchAndClose picks up terminal status
+    await store.updateAgentRun(run.id, { status: 'completed' });
+    agentHookBus.emitEvent({ type: 'run.completed', run: { ...run, status: 'completed' } });
+    const resp = await promise;
+    const elapsed = Date.now() - t0;
+    expect(resp.status).toBe(200);
+    expect(elapsed).toBeLessThan(1500);
+    const lines = (await readNdjson(resp)) as Array<{ type: string; [k: string]: any }>;
+    const batch = lines.find((l) => l.type === 'batch');
+    expect(batch).toBeDefined();
+    expect(batch!.run.status).toBe('completed');
+    expect(batch!.hasMore).toBe(false);
   });
 
   it('no new step → hold ~500ms (override) → emits idle', async () => {
