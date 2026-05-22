@@ -70,6 +70,14 @@ export type AgentBudget = {
   maxTokens: number;
 };
 
+// M4 T6: run 完成后的摘要统计，由后端 finalizeRun 写入 agent_runs.summary。
+export type RunSummary = {
+  stepCount: number;
+  toolCount: number;
+  toolBreakdown: Record<string, number>;
+  refCount: number;
+};
+
 export type AgentUsage = {
   steps: number;
   elapsedSeconds: number;
@@ -100,6 +108,9 @@ export type AgentRun = {
   pendingUserStepIdx?: number | null;
   // M3 Task 4: 子 run 字段。
   parentRunId?: string | null;
+  // M4 T1: run 完成后的摘要统计 + ask_user 超时时间戳。
+  summary?: RunSummary | null;
+  pendingUserInputExpiresAt?: string | null;
   // 其他后端字段 (plan / cancelReason 等) 按需扩展。
 };
 
