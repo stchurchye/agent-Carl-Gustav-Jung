@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Document } from '@xzz/shared';
 import { formatRevisionTime } from '@xzz/shared';
@@ -26,9 +26,13 @@ import { colors } from '../theme/colors';
 import { wechatChatStyles } from '../theme/wechatChat';
 import { wechatListStyles } from '../theme/wechatList';
 import { zh } from '../locales/zh-CN';
-import type { GroupStackParamList } from '../navigation/types';
 
-type Props = NativeStackScreenProps<GroupStackParamList, 'SettingsDocuments'>;
+type SettingsDocumentsParams = { scope: 'visible' | 'hidden'; highlightId?: string };
+
+type Props = {
+  navigation: NavigationProp<ParamListBase>;
+  route: { params: SettingsDocumentsParams };
+};
 
 export function SettingsDocumentsScreen({ navigation, route }: Props) {
   const { scope, highlightId } = route.params;

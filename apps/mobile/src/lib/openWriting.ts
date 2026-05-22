@@ -1,12 +1,11 @@
-import type { NavigationProp } from '@react-navigation/native';
+import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { displayChapterTitle } from '@xzz/shared';
-import type { GroupStackParamList } from '../navigation/types';
 import { api } from './api';
 import { filterVisibleDocuments } from './documentVisibility';
 import { findChapterIdForBlock } from './writingChapterPreview';
 import { getCachedDocument, getCachedTabs, rememberDocument } from './writingCache';
 
-type Nav = NavigationProp<GroupStackParamList>;
+type Nav = NavigationProp<ParamListBase>;
 
 export type OpenWritingOptions = {
   documentId?: string;
