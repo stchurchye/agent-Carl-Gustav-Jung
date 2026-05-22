@@ -8,6 +8,12 @@ export type ToolCtx = {
   stepId: string;
   ownerId: string;
   channel: 'private' | 'group';
+  /**
+   * M3 Task 2：私聊 session id（来自 run.sessionId）。私聊 run 必有；
+   * 群聊 run 为 undefined。ask_user 等需要往 private_chat_messages 写
+   * 自定义消息的工具会用到；普通工具忽略即可。
+   */
+  sessionId?: string;
   groupId?: string;
   topicId?: string;
   signal: AbortSignal;

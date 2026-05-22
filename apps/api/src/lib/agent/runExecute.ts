@@ -82,6 +82,9 @@ export async function executeRun(runId: string): Promise<void> {
   // ADR-1：awaiting_approval 状态绝对不能进入 tool loop——
   // 等 /approve、/deny 或 worker timeout checker 触发后再 re-pickup。
   if (run.status === 'awaiting_approval') return;
+  // M3 Task 2：awaiting_user_input 同样必须等 resume API 把 status 切回
+  // 'running' 之后 worker 才会再 pickup；提前进入会再问一次同样的问题。
+  if (run.status === 'awaiting_user_input') return;
 
   // 标记本次 executeRun 是否来自 replanning：replanning 会主动 reset usage.steps=0，
   // 这种"假性的 usage 落后于 DB"不应触发 T5 reclaim 逻辑。
@@ -216,6 +219,7 @@ export async function executeRun(runId: string): Promise<void> {
         stepId,
         ownerId: run.ownerId,
         channel: run.channel,
+        sessionId: run.sessionId ?? undefined,
         groupId: run.groupId ?? undefined,
         topicId: run.topicId ?? undefined,
         signal: abortController.signal,
@@ -302,6 +306,31 @@ export async function executeRun(runId: string): Promise<void> {
         todos: newTodos,
         usage,
       }))!;
+
+      // === M3 Task 2: ask_user 暂停语义 ===
+      // 工具返回 { ok: true, paused: true } 视为"请求用户介入"。
+      // 目前只有 ask_user 这么做；把 run 切到 'awaiting_user_input'，
+      // 记下问题文本和 stepIdx，跳出主循环 + return executeRun。
+      // worker 不会再 pickup（awaiting_user_input 与 awaiting_approval
+      // 并列在 workerPickup 跳过列表里）；mobile 端用 resume API 写回
+      // 答案后会把 status 切回 'running'。
+      const obsObj =
+        output != null && typeof output === 'object'
+          ? (output as { ok?: unknown; paused?: unknown })
+          : null;
+      if (
+        tool.name === 'ask_user' &&
+        obsObj?.ok === true &&
+        obsObj?.paused === true
+      ) {
+        const question = (planStep.input as { question?: unknown })?.question;
+        await store.updateAgentRun(runId, {
+          status: 'awaiting_user_input',
+          pendingUserPrompt: typeof question === 'string' ? question : '',
+          pendingUserStepIdx: i,
+        });
+        return;
+      }
 
       // === Critique (M1b-2 stub) ===
       const stepsDone = run.usage.steps;

@@ -21,6 +21,7 @@ import { registerRenderDiagram } from './tools/renderDiagram.js';
 import { registerWikipedia } from './tools/wikipedia.js';
 import { registerGetEconomicSeries } from './tools/getEconomicSeries.js';
 import { registerDocumentReader } from './tools/documentReader.js';
+import { registerAskUser } from './tools/askUser.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -36,4 +37,5 @@ export function registerAgentTools(): void {
   registerWikipedia();
   registerGetEconomicSeries();
   registerDocumentReader();
+  registerAskUser();
 }
