@@ -10,6 +10,9 @@ export type AgentRunStatus =
   | 'draft'
   | 'planning'
   | 'awaiting_approval'
+  // M3 Task 1：ask_user 暂停。worker 把当前 step idx 和问题文本写到 pending_user_*，
+  // 等待 mobile 端把回答通过 resume API 写回来 → status 切回 'running'。
+  | 'awaiting_user_input'
   | 'running'
   | 'replanning'
   | 'completed'
@@ -94,6 +97,12 @@ export type AgentRun = {
   sandboxId: string | null;
   /** M2 Task 1A: encrypted JSONB bag of user-supplied API keys keyed by service name. */
   userApiKeysEnc: Record<string, string>;
+  /** M3 Task 1: 子 run 指向父 run（deep_research spawn 的）。null 表示这是顶层 run。 */
+  parentRunId: string | null;
+  /** M3 Task 1: ask_user 暂停时记录的问题文本，便于前端展示。 */
+  pendingUserPrompt: string | null;
+  /** M3 Task 1: ask_user 暂停时停在第几步（0-based），resume 时下一步从这里 +1 接续。 */
+  pendingUserStepIdx: number | null;
   resultMessageId: string | null;
   invokeMessageId: string | null;
   lastHeartbeatAt: Date | null;

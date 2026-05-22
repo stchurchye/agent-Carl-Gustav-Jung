@@ -45,6 +45,9 @@ function parseRun(row: Row): AgentRun {
     modelId: (row.model_id as string | null) ?? 'deepseek-v4-pro',
     sandboxId: (row.sandbox_id as string | null) ?? null,
     userApiKeysEnc: (row.user_api_keys_enc as Record<string, string>) ?? {},
+    parentRunId: (row.parent_run_id as string | null) ?? null,
+    pendingUserPrompt: (row.pending_user_prompt as string | null) ?? null,
+    pendingUserStepIdx: (row.pending_user_step_idx as number | null) ?? null,
     resultMessageId: (row.result_message_id as string | null) ?? null,
     invokeMessageId: (row.invoke_message_id as string | null) ?? null,
     lastHeartbeatAt: (row.last_heartbeat_at as Date | null) ?? null,
@@ -83,6 +86,7 @@ const RUN_COLUMNS = `id, owner_id, channel, session_id, group_id, topic_id,
   intent_turn_id, role, status, input_text, plan, todos, budget, usage,
   api_key_owner_id, api_key_source, provider_id, model_id,
   sandbox_id, user_api_keys_enc,
+  parent_run_id, pending_user_prompt, pending_user_step_idx,
   result_message_id, invoke_message_id,
   last_heartbeat_at, awaiting_approval_until, awaiting_approval_step_idx,
   pending_approval_tool_name, cancelled_by_user_id, cancel_reason,
@@ -123,6 +127,8 @@ export type InsertAgentRunInput = {
   modelId?: string;
   /** M2 Task 7A: sealed JSONB bag of per-service user API keys (E2B/FRED/Jina etc.). */
   userApiKeysEnc?: Record<string, string>;
+  /** M3 Task 1: parent run id for deep_research child runs。顶层 run 留空。 */
+  parentRunId?: string | null;
 };
 
 export async function insertAgentRun(
@@ -137,12 +143,14 @@ export async function insertAgentRun(
        id, owner_id, channel, session_id, group_id, topic_id,
        intent_turn_id, role, status, input_text, budget,
        api_key_owner_id, api_key_source, user_api_key_enc,
-       user_zenmux_key_enc, provider_id, model_id, user_api_keys_enc
+       user_zenmux_key_enc, provider_id, model_id, user_api_keys_enc,
+       parent_run_id
      ) VALUES (
        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
        COALESCE($16, 'deepseek'),
        COALESCE($17, 'deepseek-v4-pro'),
-       COALESCE($18::jsonb, '{}')
+       COALESCE($18::jsonb, '{}'),
+       $19
      )
      RETURNING ${RUN_COLUMNS}`,
     [
@@ -164,6 +172,7 @@ export async function insertAgentRun(
       input.providerId ?? null,
       input.modelId ?? null,
       input.userApiKeysEnc ? JSON.stringify(input.userApiKeysEnc) : null,
+      input.parentRunId ?? null,
     ],
   );
   return parseRun(rows[0]);
@@ -251,6 +260,10 @@ export type UpdateAgentRunInput = Partial<{
   sandboxId: string | null;
   /** M2 Task 1A: encrypted JSONB bag of user-supplied API keys. */
   userApiKeysEnc: Record<string, string>;
+  /** M3 Task 1: ask_user 暂停时记录的问题文本。清空时传 null。 */
+  pendingUserPrompt: string | null;
+  /** M3 Task 1: ask_user 暂停时停在第几步。清空时传 null。 */
+  pendingUserStepIdx: number | null;
   resultMessageId: string | null;
   invokeMessageId: string | null;
   lastHeartbeatAt: Date | null;
@@ -288,6 +301,8 @@ export async function updateAgentRun(
         ? undefined
         : JSON.stringify(patch.userApiKeysEnc),
     ],
+    pendingUserPrompt: ['pending_user_prompt', patch.pendingUserPrompt],
+    pendingUserStepIdx: ['pending_user_step_idx', patch.pendingUserStepIdx],
     resultMessageId: ['result_message_id', patch.resultMessageId],
     invokeMessageId: ['invoke_message_id', patch.invokeMessageId],
     lastHeartbeatAt: ['last_heartbeat_at', patch.lastHeartbeatAt],
