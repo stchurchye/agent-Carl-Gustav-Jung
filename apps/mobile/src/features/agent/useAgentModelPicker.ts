@@ -12,7 +12,7 @@ export type MissingKeys = { deepseek: boolean; zenmux: boolean };
 
 export function useAgentModelPicker() {
   const [current, setCurrent] = useState<AgentLlmModelOption>(AGENT_LLM_MODEL_OPTIONS[0]);
-  const [missingKeys, setMissingKeys] = useState<MissingKeys>({ deepseek: false, zenmux: false });
+  const [missingKeys, setMissingKeys] = useState<MissingKeys>({ deepseek: true, zenmux: true });
   const [sheetVisible, setSheetVisible] = useState(false);
 
   useEffect(() => {

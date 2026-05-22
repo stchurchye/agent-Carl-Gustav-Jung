@@ -125,7 +125,7 @@ function ArtifactBlock({ artifact }: { artifact: RunArtifact }) {
                 if (ref.kind === 'url') {
                   Linking.openURL(ref.id).catch(() => {});
                 } else {
-                  console.log('ref tap:', ref);
+                  // M5: document/magi_card/diagram ref navigation not yet implemented
                 }
               }}
             >

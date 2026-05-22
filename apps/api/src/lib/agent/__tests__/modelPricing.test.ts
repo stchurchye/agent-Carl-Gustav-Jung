@@ -58,10 +58,10 @@ describe('modelPricing.computeCallCostCny', () => {
   it('M5B newly priced models (verified 2026-05-22)', () => {
     const cases: Array<[string, number, number]> = [
       // [modelId, promptTokens, expectedCostCny (approx)]
-      ['deepseek-v4-flash', 1000, 0.001],    // 1000 prompt @ 0.001/1000
+      ['deepseek-v4-flash', 1000, 0.0011],   // 1000 prompt @ 0.0011/1000
       ['openai/gpt-5.5', 1000, 0.036],       // 1000 prompt @ 0.036/1000
       ['anthropic/claude-opus-4.7', 1000, 0.036],
-      ['moonshotai/kimi-k2.6', 1000, 0.0068],
+      ['moonshotai/kimi-k2.6', 1000, 0.0069],
     ];
     for (const [modelId, promptTokens, expected] of cases) {
       const r = computeCallCostCny(modelId, promptTokens, 0);

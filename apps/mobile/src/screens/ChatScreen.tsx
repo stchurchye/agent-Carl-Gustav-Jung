@@ -541,6 +541,7 @@ export function ChatScreen({ route, navigation }: Props) {
       announceAssistantWaiting,
       chatModel,
       contextSelection,
+      loadMessages,
       navigation,
       refreshSessions,
       revealAssistant,
