@@ -116,7 +116,9 @@ export type NoticeCode =
   | 'SKILL_DROPPED'
   | 'DOC_EXPORT_VERSIONED'
   | 'TOOL_PAYLOAD_TOO_LARGE'
-  | 'MCP_HANDSHAKE_FAILED';
+  | 'MCP_HANDSHAKE_FAILED'
+  // M4: cost accounting
+  | 'COST_UNKNOWN_MODEL';
 
 export type AgentNoticeSeverity = 'info' | 'warn' | 'error';
 

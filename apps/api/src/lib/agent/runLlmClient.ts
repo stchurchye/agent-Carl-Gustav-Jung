@@ -21,7 +21,9 @@ import * as store from './store.js';
 import type { AgentRun } from './types.js';
 import { emitNotice } from './notices.js';
 import { buildLlmClient } from '../llm/factory.js';
-import type { LlmChatClient, LlmProviderId } from '../llm/types.js';
+import type { LlmChatClient, LlmChatMessage, LlmChatOptions, LlmChatResult, LlmProviderId } from '../llm/types.js';
+import { incrementUsage } from './stepRecorder.js';
+import { computeCallCostCny } from './modelPricing.js';
 
 /**
  * @internal 简单 LRU：Map 保留插入顺序，超过 cap 时淘汰最早的 key。
@@ -146,7 +148,8 @@ export async function resolveLlmClient(
   }
 
   try {
-    return buildLlmClient({ providerId, modelId, apiKey });
+    const inner = buildLlmClient({ providerId, modelId, apiKey });
+    return wrapWithCostAccounting(run.id, inner);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn('[runLlmClient.resolveLlmClient] buildLlmClient threw', providerId, modelId, msg);
@@ -157,4 +160,56 @@ export async function resolveLlmClient(
     });
     return null;
   }
+}
+
+/**
+ * M4 Task 3：把 LlmChatClient 包一层 cost accounting。
+ *
+ * 行为：每次 .chat() 返回成功后，按 (modelId, promptTokens, completionTokens)
+ * 算 cost，更新 run.usage.{tokens, costCny}。失败（throw）不计费。
+ *
+ * 未知 modelId：cost=0 + 一次性 emit COST_UNKNOWN_MODEL notice（dedup 走原 LRU）。
+ *
+ * 并发安全：读最新 run → update，极端 race 仅影响估算金额，可接受。
+ */
+function wrapWithCostAccounting(
+  runId: string,
+  inner: LlmChatClient,
+): LlmChatClient {
+  return {
+    providerId: inner.providerId,
+    modelId: inner.modelId,
+    async chat(
+      messages: LlmChatMessage[],
+      opts: LlmChatOptions,
+    ): Promise<LlmChatResult> {
+      const result = await inner.chat(messages, opts);
+      try {
+        const { promptTokens, completionTokens } = result.usage;
+        const { costCny, unknownModel } = computeCallCostCny(
+          inner.modelId,
+          promptTokens,
+          completionTokens,
+        );
+        const latest = await store.getAgentRun(runId);
+        if (latest) {
+          const newUsage = incrementUsage(latest, {
+            tokens: promptTokens + completionTokens,
+            costCny,
+          });
+          await store.updateAgentRun(runId, { usage: newUsage });
+        }
+        if (unknownModel) {
+          await emitOnce(runId, inner.providerId, 'COST_UNKNOWN_MODEL', {
+            severity: 'info',
+            message: `成本估算缺 ${inner.modelId} 的单价表，本次按 0 计；tokens / 步数 / 用时不受影响。`,
+            context: { modelId: inner.modelId, providerId: inner.providerId },
+          });
+        }
+      } catch (e) {
+        console.warn('[runLlmClient.wrapWithCostAccounting] post-chat update failed', e);
+      }
+      return result;
+    },
+  };
 }
