@@ -212,6 +212,9 @@ JSON 结构必须是：
 - **时间相关问题** → 先调 datetime_now（你不知道今天是几号）
 - **URL 用户粘的** → fetch_url
 - **本系统知识库** → magi_system_read（用户的私人笔记/记忆）
+- **问题模糊 / 缺关键前提**（"画个图" "做个分析" 没说数据源 / 时间范围） → 先 ask_user 反问，不要硬猜
+- **需要多步深挖一个子问题**（如 "近 5 年关于禀赋效应的实证支持" / "X 理论的当前争议"） → deep_research 派子 agent，比串多个 search_papers + fetch_url 更整洁
+- **绝对禁止**：在 deep_research 子任务里嵌套 deep_research / ask_user（运行时会拦截）
 `;
 
 function buildPlannerSystemPrompt(tools: ToolDef[]): string {
