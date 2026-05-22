@@ -87,6 +87,19 @@ function parseStep(row: Row): AgentStep {
   };
 }
 
+/**
+ * M6 T3：JSONB 字段写入 helper。
+ * undefined → 不更新；null → SQL NULL；其他 → JSON.stringify。
+ *
+ * 历史 bug：M5 review 发现 summary 等字段把 null 写成字符串 "null"，
+ * IS NULL 判断不命中。artifact 在 M5A 已修；本 helper 统一所有 JSONB 字段。
+ */
+function jsonbOrNull<T>(v: T | null | undefined): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  return JSON.stringify(v);
+}
+
 const RUN_COLUMNS = `id, owner_id, channel, session_id, group_id, topic_id,
   intent_turn_id, role, status, input_text, plan, todos, budget, usage,
   api_key_owner_id, api_key_source, provider_id, model_id,
@@ -294,52 +307,22 @@ export async function updateAgentRun(
 ): Promise<AgentRun | null> {
   const map: Record<string, [string, unknown]> = {
     status: ['status', patch.status],
-    plan: [
-      'plan',
-      patch.plan === undefined ? undefined : JSON.stringify(patch.plan),
-    ],
-    todos: [
-      'todos',
-      patch.todos === undefined ? undefined : JSON.stringify(patch.todos),
-    ],
-    usage: [
-      'usage',
-      patch.usage === undefined ? undefined : JSON.stringify(patch.usage),
-    ],
+    plan: ['plan', jsonbOrNull(patch.plan)],
+    todos: ['todos', jsonbOrNull(patch.todos)],
+    usage: ['usage', jsonbOrNull(patch.usage)],
     sandboxId: ['sandbox_id', patch.sandboxId],
-    userApiKeysEnc: [
-      'user_api_keys_enc',
-      patch.userApiKeysEnc === undefined
-        ? undefined
-        : JSON.stringify(patch.userApiKeysEnc),
-    ],
+    userApiKeysEnc: ['user_api_keys_enc', jsonbOrNull(patch.userApiKeysEnc)],
     pendingUserPrompt: ['pending_user_prompt', patch.pendingUserPrompt],
     pendingUserStepIdx: ['pending_user_step_idx', patch.pendingUserStepIdx],
     pendingUserInputExpiresAt: ['pending_user_input_expires_at', patch.pendingUserInputExpiresAt],
-    summary: [
-      'summary',
-      patch.summary === undefined ? undefined : JSON.stringify(patch.summary),
-    ],
-    artifact: [
-      'artifact',
-      patch.artifact === undefined
-        ? undefined
-        : patch.artifact === null
-          ? null
-          : JSON.stringify(patch.artifact),
-    ],
+    summary: ['summary', jsonbOrNull(patch.summary)],
+    artifact: ['artifact', jsonbOrNull(patch.artifact)],
     resultMessageId: ['result_message_id', patch.resultMessageId],
     invokeMessageId: ['invoke_message_id', patch.invokeMessageId],
     lastHeartbeatAt: ['last_heartbeat_at', patch.lastHeartbeatAt],
     awaitingApprovalUntil: ['awaiting_approval_until', patch.awaitingApprovalUntil],
-    awaitingApprovalStepIdx: [
-      'awaiting_approval_step_idx',
-      patch.awaitingApprovalStepIdx,
-    ],
-    pendingApprovalToolName: [
-      'pending_approval_tool_name',
-      patch.pendingApprovalToolName,
-    ],
+    awaitingApprovalStepIdx: ['awaiting_approval_step_idx', patch.awaitingApprovalStepIdx],
+    pendingApprovalToolName: ['pending_approval_tool_name', patch.pendingApprovalToolName],
     cancelledByUserId: ['cancelled_by_user_id', patch.cancelledByUserId],
     cancelReason: ['cancel_reason', patch.cancelReason],
     startedAt: ['started_at', patch.startedAt],
