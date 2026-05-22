@@ -123,6 +123,9 @@ export type StepKind =
   | 'tool_call'
   | 'tool_error'
   | 'observe'
+  // M3 hotfix: 用户对 ask_user 的回答；不属于 plan step 推进，不应被 reclaim 计数。
+  // 使用独立 kind 而非 'observe' 可让 recordReclaimIfNeeded 精确过滤。
+  | 'user_input'
   | 'reply'
   | 'approval_request'
   | 'approval_grant'

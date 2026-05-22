@@ -417,6 +417,27 @@ export async function maxStepIdx(runId: string): Promise<number> {
  * 在事务内挑一条可运行的 run，加 FOR UPDATE SKIP LOCKED 锁，
  * 顺手把 last_heartbeat_at 写到 now() 以阻止其他 worker 抢同一行。
  */
+/**
+ * M3 hotfix: 将父 run 的加密 LLM key（user_api_key_enc、user_zenmux_key_enc）
+ * 直接复制到子 run，使子 run 继承父 run 的用户密钥配置。
+ *
+ * 背景：createAgentRun 只接收明文 apiKey，而子 run 创建时（deepResearch）无法
+ * 获得父 run 的解密密钥；直接在 DB 层 SQL COPY 是最安全的做法，不让密文离开 DB。
+ */
+export async function copyLlmKeysFromParent(
+  childRunId: string,
+  parentRunId: string,
+): Promise<void> {
+  await getPool().query(
+    `UPDATE agent_runs AS child
+       SET user_api_key_enc     = parent.user_api_key_enc,
+           user_zenmux_key_enc  = parent.user_zenmux_key_enc
+       FROM agent_runs AS parent
+       WHERE child.id = $1 AND parent.id = $2`,
+    [childRunId, parentRunId],
+  );
+}
+
 export async function pickupNextRun(): Promise<AgentRun | null> {
   const client = await getPool().connect();
   try {

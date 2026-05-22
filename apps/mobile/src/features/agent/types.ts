@@ -17,6 +17,8 @@ export type AgentStepKind =
   | 'tool_call'
   | 'tool_error'
   | 'observe'
+  // M3 hotfix: ask_user 的用户回答，不计入 plan 推进计数。
+  | 'user_input'
   | 'critique'
   | 'reply'
   | 'steer'
@@ -91,6 +93,13 @@ export type AgentRun = {
   /** M1e Task 11d/12: 后端 agent_runs.provider_id / model_id 已变成必填带 default。 */
   providerId?: 'deepseek' | 'zenmux';
   modelId?: string;
+  // M3 Task 2: ask_user 暂停相关字段。
+  // 当 status='awaiting_user_input' 时，UI 可用这两个字段直接展示问题，
+  // 无需再 parse step input（更健壮）。
+  pendingUserPrompt?: string | null;
+  pendingUserStepIdx?: number | null;
+  // M3 Task 4: 子 run 字段。
+  parentRunId?: string | null;
   // 其他后端字段 (plan / cancelReason 等) 按需扩展。
 };
 

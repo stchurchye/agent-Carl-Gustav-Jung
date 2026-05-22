@@ -24,7 +24,7 @@ import { recordStep, incrementUsage, startHeartbeat } from './stepRecorder.js';
 import { toolRegistry } from './toolRegistry.js';
 import { checkBudget } from './budget.js';
 import { runControllers } from './runtimeRegistry.js';
-import { TOOL_TIMEOUT_MS, withTimeout } from './runtimeShared.js';
+import { TOOL_TIMEOUT_MS, HIGH_COST_TOOL_TIMEOUT_MS, withTimeout } from './runtimeShared.js';
 import { softComplete } from './runLifecycle.js';
 import { buildInitialPlan } from './runPlanGlue.js';
 import { pickFallbackFinalContent } from './runReply.js';
@@ -225,13 +225,18 @@ export async function executeRun(runId: string): Promise<void> {
         signal: abortController.signal,
       };
 
+      // M3 hotfix: costHint='high' 的工具（如 deep_research）内部轮询时间可能超过
+      // 标准 60s 超时；用更长的超时窗口避免父 run 误触重试并孤儿化子 run。
+      const effectiveTimeout =
+        tool.costHint === 'high' ? HIGH_COST_TOOL_TIMEOUT_MS : TOOL_TIMEOUT_MS;
+
       const t0 = Date.now();
       let output: unknown;
       let retried = false;
       try {
         output = await withTimeout(
           tool.handler(planStep.input as never, ctx),
-          TOOL_TIMEOUT_MS,
+          effectiveTimeout,
         );
       } catch (err) {
         if (abortController.signal.aborted) {
@@ -242,7 +247,7 @@ export async function executeRun(runId: string): Promise<void> {
         try {
           output = await withTimeout(
             tool.handler(planStep.input as never, ctx),
-            TOOL_TIMEOUT_MS,
+            effectiveTimeout,
           );
           retried = true;
         } catch (err2) {

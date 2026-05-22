@@ -90,7 +90,7 @@ export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
           {s.error ? (
             <Text style={{ fontSize: 11, color: '#c33', marginTop: 2 }}>{s.error}</Text>
           ) : null}
-          {s.toolName === 'render_diagram' && s.kind === 'observe' ? (
+          {s.toolName === 'render_diagram' && s.kind === 'tool_call' ? (
             <DiagramStepCard step={s} />
           ) : null}
           {s.toolName === 'ask_user' &&
@@ -100,7 +100,10 @@ export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
             <AskUserPrompt
               runId={s.runId}
               question={
-                (s.input as { question?: string } | null)?.question ?? '请回答：'
+                // run.pendingUserPrompt 是服务端权威来源；fallback 到 step.input.question 兼容老数据。
+                run?.pendingUserPrompt ??
+                (s.input as { question?: string } | null)?.question ??
+                '请回答：'
               }
               options={(s.input as { options?: string[] } | null)?.options}
               resumeRun={resumeRun}

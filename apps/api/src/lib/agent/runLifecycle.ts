@@ -202,6 +202,15 @@ export async function softComplete(
         });
       }
     }
+  } else if (run.parentRunId && status === 'completed') {
+    // M3 hotfix: 子 run（no resultMessageId，有 parentRunId）无法写入 chat placeholder，
+    // LLM 合成内容会丢失。追加一条 synthesized=true 的 reply step，让 deep_research
+    // 轮询结束后能读到完整报告而非简易 fallback digest。
+    await recordStep({
+      runId: run.id,
+      kind: 'reply',
+      output: { content: finalContent, synthesized: true },
+    });
   }
 
   // M2 Task 1B: free E2B sandbox on terminal status (no-op if run never called run_python)
@@ -261,10 +270,13 @@ export async function resumeAgentRun(
   const trimmed = input.userInput.trim();
   if (!trimmed) throw new Error('userInput cannot be empty');
 
-  // 把用户的回答追加为 observe step，executor 重跑时能在上下文里看到答案。
+  // M3 hotfix：使用 'user_input' 而非 'observe'。
+  // 'observe' 会被 recordReclaimIfNeeded 计入 dbAdvancing，导致 completedCount
+  // 多算 1，executor 重入后跳过 ask_user 之后紧跟的那个 plan step（BLOCKER）。
+  // 'user_input' 不在 advancing 过滤集中，只作上下文日志，不推进 plan 指针。
   await recordStep({
     runId: run.id,
-    kind: 'observe',
+    kind: 'user_input',
     toolName: 'ask_user',
     output: { userInput: trimmed, resumedFromStepIdx: run.pendingUserStepIdx },
   });

@@ -8,6 +8,9 @@
  */
 
 export const TOOL_TIMEOUT_MS = 60_000;
+// M3 hotfix: deep_research 内部轮询子 run 最长 5 分钟；给 costHint='high' 工具
+// 一个更宽松的超时（6 分钟），避免父 run 在子 run 完成前误触重试，孤儿化子 run。
+export const HIGH_COST_TOOL_TIMEOUT_MS = 6 * 60_000;
 
 export async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {

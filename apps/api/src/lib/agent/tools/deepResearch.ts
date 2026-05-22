@@ -83,6 +83,12 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
       });
       const childRunId = childResult.run.id;
 
+      // M3 hotfix: 子 run 继承父 run 的加密 LLM 密钥（user-key 场景）。
+      // createAgentRun 只接受明文 apiKey，子 run 创建时传空串，LLM client
+      // 会退回 server key。用 DB-level SQL COPY 把父 run 的加密 key 直接
+      // 写入子 run，密文不经过 Node 进程，最安全。
+      await store.copyLlmKeysFromParent(childRunId, parentRun.id);
+
       // 2. 父取消 → 子取消（用 cancelRun 确保同时 abort 子 run 的活跃 controller）
       const onAbort = () => {
         void cancelRun(childRunId, parentRun.ownerId);
@@ -123,8 +129,19 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
 
       // 5. 聚合子 run 结果
       const steps = await store.listSteps(childRunId);
+      // M3 hotfix: softComplete 对子 run（无 resultMessageId）会追加一条
+      // synthesized=true 的 reply step，包含 LLM 合成内容。
+      // 优先取 synthesized 版本；fallback 到首条 reply；再 fallback 到最后一步。
+      const synthesizedReply = [...steps]
+        .reverse()
+        .find(
+          (s) =>
+            s.kind === 'reply' &&
+            (s.output as { synthesized?: boolean } | undefined)?.synthesized,
+        );
       const replyStep =
-        [...steps].reverse().find((s) => s.kind === 'reply') ?? steps[steps.length - 1];
+        synthesizedReply ??
+        ([...steps].reverse().find((s) => s.kind === 'reply') ?? steps[steps.length - 1]);
       const report: string =
         (replyStep?.output as { content?: string; text?: string } | undefined)?.content ??
         (replyStep?.output as { content?: string; text?: string } | undefined)?.text ??

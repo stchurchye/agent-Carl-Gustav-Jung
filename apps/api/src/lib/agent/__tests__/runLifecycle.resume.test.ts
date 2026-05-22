@@ -59,9 +59,10 @@ describe('resumeAgentRun', () => {
 
     const steps = await store.listSteps(run.id);
     expect(steps.length).toBeGreaterThanOrEqual(1);
-    const observeStep = steps.find((s) => s.kind === 'observe');
-    expect(observeStep).toBeDefined();
-    expect((observeStep!.output as { userInput?: string })?.userInput).toBe('2024 年');
+    // M3 hotfix: resume 写 'user_input' 而非 'observe'，避免 reclaim 误计入 plan advancing。
+    const userInputStep = steps.find((s) => s.kind === 'user_input');
+    expect(userInputStep).toBeDefined();
+    expect((userInputStep!.output as { userInput?: string })?.userInput).toBe('2024 年');
   });
 
   it('wrong status → throws', async () => {
