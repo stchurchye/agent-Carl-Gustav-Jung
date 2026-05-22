@@ -14,6 +14,9 @@ import {
   listNoticesAfter,
   listNoticesForRun,
 } from '../lib/agent/notices.js';
+import { agentHookBus } from '../lib/agent/hooks.js';
+import type { AgentHookEvent } from '../lib/agent/hooks.js';
+import { resolveHoldMs } from '../lib/agent/longPollJitter.js';
 
 export const agentRouter = new Hono<{ Variables: AppVariables }>();
 
@@ -156,6 +159,119 @@ agentRouter.get('/runs/:id/stream', async (c) => {
       await new Promise<void>((r) => setTimeout(r, 1_000));
     }
   });
+});
+
+/**
+ * M6 T1a：增量 long-poll —— 替代 mobile 1.5s 全量轮询。
+ *
+ * 行为：
+ *   1. 立刻 SELECT idx > after 的 step；有 → 立即 batch 返回 + close
+ *   2. 无 → 进入 hold 模式：
+ *      - 启 heartbeat 定时器，每 15s 收集 { type:'heartbeat' } 到 ndjson 行
+ *      - subscribe agentHookBus；收到 step.recorded(runId == id) → 立刻 batch + close
+ *      - 启 idle timer (jitter 20-30s) → emit { type:'idle' } + close
+ *   3. run 已 terminal → 直接 batch（含最新 run + hasMore=false）+ close
+ *
+ * 响应格式：application/x-ndjson（每行一个 JSON）。
+ * Heartbeat 防中间反向代理因 idle 切断连接。
+ *
+ * 实现注意：handler 直接 await hold Promise，确保 app.fetch() 在测试中同步等待，
+ * 而非 ReadableStream（ReadableStream.start 是惰性的，app.fetch() 会立即返回）。
+ */
+const HEARTBEAT_MS = 15000;
+
+agentRouter.get('/runs/:id/long-poll', async (c) => {
+  const userId = c.get('userId')!;
+  const id = c.req.param('id');
+  const run = await store.getAgentRun(id);
+  if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+  if (!(await canAccessRun(run, userId)))
+    return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
+
+  const afterRaw = c.req.query('after');
+  let after = -1;
+  if (afterRaw !== undefined) {
+    const n = Number(afterRaw);
+    if (!Number.isFinite(n) || !Number.isInteger(n)) {
+      return jsonError(c, ErrorCodes.VALIDATION, 400);
+    }
+    after = n;
+  }
+  const holdMs = resolveHoldMs(c.req.query('_holdMs'));
+
+  const toNdjsonResponse = (lines: unknown[]) => {
+    const body = lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
+    return c.body(body, 200, { 'content-type': 'application/x-ndjson' });
+  };
+
+  async function buildBatchLine(): Promise<unknown> {
+    const latest = await store.getAgentRun(id);
+    const steps = await store.listSteps(id);
+    const newSteps = steps.filter((s) => s.idx > after);
+    const notices = await listNoticesForRun(id, { limit: 20 });
+    return { type: 'batch', run: latest, steps: newSteps, notices, hasMore: false };
+  }
+
+  // Terminal → immediate batch
+  const terminalSet = ['completed', 'failed', 'cancelled', 'budget_exhausted'];
+  if (terminalSet.includes(run.status)) {
+    return toNdjsonResponse([await buildBatchLine()]);
+  }
+
+  // Immediate steps check
+  const existing = await store.listSteps(id);
+  const newExisting = existing.filter((s) => s.idx > after);
+  if (newExisting.length > 0) {
+    return toNdjsonResponse([await buildBatchLine()]);
+  }
+
+  // Hold mode: await event or timeout so app.fetch() also waits
+  type HoldReason = 'step' | 'run' | 'idle';
+  const holdLines: unknown[] = [];
+
+  const reason = await new Promise<HoldReason>((resolve) => {
+    let settled = false;
+    let hbTimer: ReturnType<typeof setInterval>;
+    let idleTimer: ReturnType<typeof setTimeout>;
+    let unsubscribeRef: (() => void) | null = null;
+
+    const settle = (r: HoldReason) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(hbTimer);
+      clearTimeout(idleTimer);
+      unsubscribeRef?.();
+      resolve(r);
+    };
+
+    unsubscribeRef = agentHookBus.onEvent((event: AgentHookEvent) => {
+      if (event.type === 'step.recorded' && event.runId === id) {
+        settle('step');
+      } else if (
+        (event.type === 'run.completed' ||
+          event.type === 'run.failed' ||
+          event.type === 'run.cancelled' ||
+          event.type === 'run.budget_exhausted') &&
+        event.run.id === id
+      ) {
+        settle('run');
+      }
+    });
+
+    hbTimer = setInterval(() => {
+      if (!settled) holdLines.push({ type: 'heartbeat', ts: Date.now() });
+    }, HEARTBEAT_MS);
+
+    idleTimer = setTimeout(() => settle('idle'), holdMs);
+  });
+
+  if (reason === 'idle') {
+    const latest = await store.getAgentRun(id);
+    holdLines.push({ type: 'idle', lastIdx: after, run: latest });
+  } else {
+    holdLines.push(await buildBatchLine());
+  }
+  return toNdjsonResponse(holdLines);
 });
 
 agentRouter.post('/runs/:id/cancel', async (c) => {

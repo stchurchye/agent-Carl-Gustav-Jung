@@ -55,6 +55,8 @@ export type BrainStackParamList = {
     topicId?: string;
     sessionId?: string;
   };
+  /** M6 T2: document ref 跳转 —— BrainStack 也注册以支持 navigateBrainTab 跳转 */
+  SettingsDocuments: { scope: 'visible' | 'hidden'; highlightId?: string };
 };
 
 export type GroupStackParamList = {
@@ -81,7 +83,7 @@ export type GroupStackParamList = {
   SettingsClientLogs: undefined;
   SettingsVoice: undefined;
   SettingsTopicExport: undefined;
-  SettingsDocuments: { scope: 'visible' | 'hidden' };
+  SettingsDocuments: { scope: 'visible' | 'hidden'; highlightId?: string };
   StudioManage: undefined;
   StudioSearch: undefined;
   PrivateChat: { sessionId?: string; scrollToMessageId?: string } | undefined;

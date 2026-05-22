@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { fetchAgentRun } from '../agentApi';
+import { fetchAgentRun, longPollAgentRun } from '../agentApi';
 import type { AgentNotice, AgentRun, AgentStep } from '../types';
 
-const POLL_INTERVAL_MS = 1500;
+const CLIENT_TIMEOUT_MS = 35000;        // server max 30s + 5s 余量
+const ERROR_BACKOFF_MS = 1000;
 const TERMINAL_STATUSES: AgentRun['status'][] = [
   'completed',
   'failed',
@@ -11,14 +12,12 @@ const TERMINAL_STATUSES: AgentRun['status'][] = [
 ];
 
 /**
- * M1b-3：轮询 GET /api/agent/runs/:id 拿 { run, steps }。
+ * M6 T1b：增量 long-poll 替代 1.5s polling。
  *
- * M1d 说明：后端 SSE (`/api/agent/runs/:id/stream`) 已支持 `Last-Event-ID`
- * （或 `?after=` query）续传，每条 step 都带 SSE `id` 字段——给 Web /
- * CLI 客户端用 EventSource 用。Mobile 因为 RN 缺 native EventSource，
- * 这里继续走轮询：每轮都是 full state read，天然"断线即续传"，简单且健壮。
- * 切 SSE 的话只需把消费者从这个 hook 切到 useAgentRunSSE，
- * 上层组件用 alias import (`useAgentRunSubscription`) 屏蔽差异。
+ * 行为：
+ *   1. mount 时全量 GET /runs/:id 一次拉初始状态（避免错过历史 step）
+ *   2. 之后循环：long-poll(after=lastIdx) → 累加 steps → 立刻重连
+ *   3. terminal 状态 → break loop
  */
 export function useAgentRunPoll(runId: string | null) {
   const [run, setRun] = useState<AgentRun | null>(null);
@@ -34,33 +33,71 @@ export function useAgentRunPoll(runId: string | null) {
       setConnected(false);
       return;
     }
-    let stopped = false;
+    let cancelled = false;
+    let activeCtl: AbortController | null = null;
+    let knownSteps: AgentStep[] = [];
+    let lastIdx = -1;
+
+    function mergeSteps(incoming: AgentStep[]) {
+      if (incoming.length === 0) return knownSteps;
+      const byId = new Map(knownSteps.map((s) => [s.id, s]));
+      for (const s of incoming) byId.set(s.id, s);
+      const merged = Array.from(byId.values()).sort((a, b) => a.idx - b.idx);
+      knownSteps = merged;
+      return merged;
+    }
+
+    async function bootstrap() {
+      try {
+        const { run: r0, steps: s0, notices: n0 } = await fetchAgentRun(runId!);
+        if (cancelled) return;
+        setRun(r0);
+        setNotices(n0 ?? []);
+        knownSteps = s0;
+        setSteps(s0);
+        lastIdx = s0.length > 0 ? Math.max(...s0.map((s) => s.idx)) : -1;
+        if (TERMINAL_STATUSES.includes(r0.status)) {
+          setConnected(false);
+          cancelled = true;
+        }
+      } catch {
+        // 失败由后续 loop 重试
+      }
+    }
 
     async function loop() {
       setConnected(true);
-      while (!stopped) {
+      await bootstrap();
+      while (!cancelled) {
+        const ctl = new AbortController();
+        activeCtl = ctl;
+        const timeoutId = setTimeout(() => ctl.abort(), CLIENT_TIMEOUT_MS);
         try {
-          const {
-            run: nextRun,
-            steps: nextSteps,
-            notices: nextNotices,
-          } = await fetchAgentRun(runId!);
-          if (stopped) break;
-          setRun(nextRun);
-          setSteps(nextSteps);
-          setNotices(nextNotices ?? []);
-          if (TERMINAL_STATUSES.includes(nextRun.status)) break;
+          const batch = await longPollAgentRun(runId!, lastIdx, ctl.signal);
+          if (cancelled) break;
+          if (batch.run) setRun(batch.run);
+          if (batch.notices) setNotices(batch.notices);
+          if (batch.steps && batch.steps.length > 0) {
+            const merged = mergeSteps(batch.steps);
+            setSteps(merged);
+            lastIdx = Math.max(...batch.steps.map((s) => s.idx));
+          }
+          if (batch.run && TERMINAL_STATUSES.includes(batch.run.status)) break;
         } catch {
-          // 单次失败忽略,下轮重试。
+          if (cancelled) break;
+          await new Promise((r) => setTimeout(r, ERROR_BACKOFF_MS));
+        } finally {
+          clearTimeout(timeoutId);
+          activeCtl = null;
         }
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       }
-      if (!stopped) setConnected(false);
+      if (!cancelled) setConnected(false);
     }
 
     void loop();
     return () => {
-      stopped = true;
+      cancelled = true;
+      activeCtl?.abort();
     };
   }, [runId]);
 

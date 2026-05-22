@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { useNavigation } from '@react-navigation/native';
+import { navigateBrainTab } from '../../lib/navigateBrain';
 import { useAgentRunPoll as useAgentRunSubscription } from './hooks/useAgentRunPoll';
 import {
   approveAgentRun,
@@ -74,7 +76,14 @@ function formatSummaryLine(
 
 const LONG_CONTENT_THRESHOLD = 200;
 
-function ArtifactBlock({ artifact }: { artifact: RunArtifact }) {
+function ArtifactBlock({
+  artifact,
+  onJumpToStep,
+}: {
+  artifact: RunArtifact;
+  onJumpToStep?: (stepId: string) => void;
+}) {
+  const navigation = useNavigation<any>();
   const [expanded, setExpanded] = useState(false);
   const isLong = artifact.finalContent.length > LONG_CONTENT_THRESHOLD;
 
@@ -82,7 +91,6 @@ function ArtifactBlock({ artifact }: { artifact: RunArtifact }) {
     hour: '2-digit',
     minute: '2-digit',
   });
-  const modelName = agentLlmDisplayName(artifact.model.providerId, artifact.model.modelId);
 
   return (
     <View
@@ -124,8 +132,18 @@ function ArtifactBlock({ artifact }: { artifact: RunArtifact }) {
               onPress={() => {
                 if (ref.kind === 'url') {
                   Linking.openURL(ref.id).catch(() => {});
-                } else {
-                  // M5: document/magi_card/diagram ref navigation not yet implemented
+                } else if (ref.kind === 'diagram') {
+                  Alert.alert(
+                    '图表',
+                    `${ref.label ?? '未命名图表'}\n请在下方步骤列表中查找 id: ${ref.id}`,
+                  );
+                } else if (ref.kind === 'document') {
+                  navigateBrainTab(navigation, 'SettingsDocuments', {
+                    scope: 'visible',
+                    highlightId: ref.id,
+                  });
+                } else if (ref.kind === 'magi_card') {
+                  Alert.alert('MAGI 卡片', `${ref.label ?? ref.id}\nID: ${ref.id}`);
                 }
               }}
             >
@@ -158,8 +176,6 @@ function ArtifactBlock({ artifact }: { artifact: RunArtifact }) {
         </TouchableOpacity>
         <Text style={{ fontSize: 12, opacity: 0.45 }}>·</Text>
         <Text style={{ fontSize: 12, opacity: 0.45 }}>产出于 {producedAt}</Text>
-        <Text style={{ fontSize: 12, opacity: 0.45 }}>·</Text>
-        <Text style={{ fontSize: 12, opacity: 0.45 }}>{modelName}</Text>
       </View>
     </View>
   );
@@ -327,7 +343,7 @@ export function AgentRunCard({
       ) : null}
 
       {terminal && run.artifact ? (
-        <ArtifactBlock artifact={run.artifact} />
+        <ArtifactBlock artifact={run.artifact} onJumpToStep={undefined} />
       ) : null}
 
       {terminal && run.status !== 'completed' ? (

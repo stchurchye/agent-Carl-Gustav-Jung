@@ -23,6 +23,7 @@ import { registerGetEconomicSeries } from './tools/getEconomicSeries.js';
 import { registerDocumentReader } from './tools/documentReader.js';
 import { registerAskUser } from './tools/askUser.js';
 import { registerDeepResearch } from './tools/deepResearch.js';
+import { registerYoutubeTranscript } from './tools/youtubeTranscript.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -40,4 +41,5 @@ export function registerAgentTools(): void {
   registerDocumentReader();
   registerAskUser();
   registerDeepResearch();
+  registerYoutubeTranscript();
 }

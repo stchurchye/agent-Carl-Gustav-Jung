@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Document } from '@xzz/shared';
 import { formatRevisionTime } from '@xzz/shared';
@@ -26,16 +26,28 @@ import { colors } from '../theme/colors';
 import { wechatChatStyles } from '../theme/wechatChat';
 import { wechatListStyles } from '../theme/wechatList';
 import { zh } from '../locales/zh-CN';
-import type { GroupStackParamList } from '../navigation/types';
 
-type Props = NativeStackScreenProps<GroupStackParamList, 'SettingsDocuments'>;
+type SettingsDocumentsParams = { scope: 'visible' | 'hidden'; highlightId?: string };
+
+type Props = {
+  navigation: NavigationProp<ParamListBase>;
+  route: { params: SettingsDocumentsParams };
+};
 
 export function SettingsDocumentsScreen({ navigation, route }: Props) {
-  const { scope } = route.params;
+  const { scope, highlightId } = route.params;
   const insets = useSafeAreaInsets();
   const isHidden = scope === 'hidden';
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const [highlightActive, setHighlightActive] = useState<string | null>(highlightId ?? null);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    setHighlightActive(highlightId);
+    const t = setTimeout(() => setHighlightActive(null), 1500);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,19 +111,26 @@ export function SettingsDocumentsScreen({ navigation, route }: Props) {
                 ? time.full
                 : `${time.full} · ${d.revisionCount} 个版本`;
               return (
-                <WeChatListCell
+                <View
                   key={d.id}
-                  label={d.title}
-                  value={value}
-                  showSeparator={idx < docs.length - 1}
-                  onPress={() => {
-                    if (isHidden) {
-                      void restoreDocument(d.id, d.title);
-                    } else {
-                      void openWriting(navigation, { documentId: d.id });
-                    }
+                  style={{
+                    backgroundColor: highlightActive === d.id ? '#fff5b3' : 'transparent',
+                    borderRadius: 8,
                   }}
-                />
+                >
+                  <WeChatListCell
+                    label={d.title}
+                    value={value}
+                    showSeparator={idx < docs.length - 1}
+                    onPress={() => {
+                      if (isHidden) {
+                        void restoreDocument(d.id, d.title);
+                      } else {
+                        void openWriting(navigation, { documentId: d.id });
+                      }
+                    }}
+                  />
+                </View>
               );
             })}
           </WeChatGroupedSection>

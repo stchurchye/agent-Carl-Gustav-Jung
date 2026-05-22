@@ -66,7 +66,7 @@ function contextSelectionQuery(sel?: ContextSelection): string {
   return s ? `&${s}` : '';
 }
 
-async function authHeaders(): Promise<Record<string, string>> {
+export async function authHeaders(): Promise<Record<string, string>> {
   const [deepseek, zenmux, dashscope, dialect, token, chatModel] = await Promise.all([
     getDeepSeekApiKey(),
     getZenMuxApiKey(),
