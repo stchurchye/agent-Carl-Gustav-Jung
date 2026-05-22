@@ -107,6 +107,8 @@ export type AgentRun = {
   pendingUserInputExpiresAt: Date | null;
   /** M4 Task 4: 任务完成时落的聚合摘要（步数 / 工具 / ref 数）；UI 在列表/详情都展示。 */
   summary: RunSummary | null;
+  /** M5A Task 1: run 終態産物（finalContent + refs + 模型快照）；softComplete 同步寫入。 */
+  artifact: RunArtifact | null;
   resultMessageId: string | null;
   invokeMessageId: string | null;
   lastHeartbeatAt: Date | null;
@@ -192,4 +194,33 @@ export const DEFAULT_BUDGET: AgentBudget = {
   maxSteps: 20,
   maxSeconds: 600,
   maxTokens: 100_000,
+};
+
+/**
+ * M5A Task 1：ReplyRef 從 replyGen.ts 搬到 types.ts，
+ * 消除 types ← replyGen ← types 的潛在循環依賴。
+ * replyGen.ts 通過 re-export 保持 backward compatibility。
+ */
+export type ReplyRef = {
+  kind: 'document' | 'url' | 'magi_card' | 'diagram';
+  id: string;
+  label?: string;
+};
+
+/**
+ * M5A Task 1：run 終態産物。softComplete 在寫 status/endedAt/summary
+ * 的同一次 updateAgentRun 呼叫中落庫，避免讀取順序競態。
+ */
+export type RunArtifact = {
+  /** 最終回复正文（與 chat placeholder 內容一致；child run 這里是唯一來源） */
+  finalContent: string;
+  /** 結構化引用：document/url/magi_card/diagram；已 dedupe */
+  refs: ReplyRef[];
+  /** 模型快照——retry/分享時保留産出環境信息 */
+  model: {
+    providerId: string;
+    modelId: string;
+  };
+  /** ISO timestamp，方便前端"産出於 …"展示 */
+  producedAt: string;
 };

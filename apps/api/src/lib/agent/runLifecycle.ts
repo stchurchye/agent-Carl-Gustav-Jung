@@ -17,6 +17,7 @@ import {
   type AgentChannel,
   type AgentRun,
   type CancelReason,
+  type RunArtifact,
 } from './types.js';
 import {
   writePrivatePlaceholder,
@@ -30,6 +31,8 @@ import { buildRunSummary } from './runSummary.js';
 import { killSandboxForRun } from './sandbox.js';
 import { sealUserApiKeys } from './userApiKeys.js';
 import { recordStep } from './stepRecorder.js';
+import { collectReplyRefs } from './replyGen.js';
+import { toolRegistry } from './toolRegistry.js';
 
 export type CreateAgentRunInput = {
   ownerId: string;
@@ -223,10 +226,25 @@ export async function softComplete(
   const stepsForSummary = await store.listSteps(run.id);
   const summary = buildRunSummary(stepsForSummary);
 
+  // M5A Task 1: Build artifact for all terminal states.
+  // Uses same toolRegistry as generateFinalReply for consistent ref extraction.
+  const toolMap = new Map(toolRegistry.list().map((t) => [t.name, t]));
+  const refs = collectReplyRefs(stepsForSummary, toolMap);
+  const artifact: RunArtifact = {
+    finalContent,
+    refs,
+    model: {
+      providerId: run.providerId ?? 'deepseek',
+      modelId: run.modelId ?? 'deepseek-v4-pro',
+    },
+    producedAt: new Date().toISOString(),
+  };
+
   await store.updateAgentRun(run.id, {
     status,
     endedAt: new Date(),
     summary,
+    artifact,
   });
 
   // Emit terminal hook event with the latest run snapshot (including endedAt).
@@ -340,12 +358,26 @@ export async function cancelRun(
   const stepsForSummary = await store.listSteps(runId);
   const summary = buildRunSummary(stepsForSummary);
 
+  // M5A Task 1: Build artifact for idle-path cancel (no active controller).
+  const toolMap = new Map(toolRegistry.list().map((t) => [t.name, t]));
+  const refs = collectReplyRefs(stepsForSummary, toolMap);
+  const artifact: RunArtifact = {
+    finalContent: '[任务已取消]',
+    refs,
+    model: {
+      providerId: run.providerId ?? 'deepseek',
+      modelId: run.modelId ?? 'deepseek-v4-pro',
+    },
+    producedAt: new Date().toISOString(),
+  };
+
   await store.updateAgentRun(runId, {
     status: 'cancelled',
     cancelledByUserId: byUserId,
     cancelReason: reasonOverride ?? 'user',
     endedAt: new Date(),
     summary,
+    artifact,
   });
   const latest = (await store.getAgentRun(runId)) ?? run;
   agentHookBus.emitEvent({
