@@ -51,6 +51,26 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
   budget_exhausted: '预算耗尽',
 };
 
+function formatCny(n?: number): string {
+  if (!n || n <= 0) return '¥0.00';
+  if (n < 0.01) return `¥${n.toFixed(4)}`;
+  return `¥${n.toFixed(2)}`;
+}
+
+function formatSummaryLine(
+  summary: { stepCount: number; toolCount: number; refCount: number } | null | undefined,
+  costCny: number | undefined,
+): string {
+  const cost = formatCny(costCny);
+  if (!summary) return `${cost} 估算`;
+  const parts: string[] = [];
+  parts.push(`${summary.stepCount} 步`);
+  if (summary.toolCount > 0) parts.push(`${summary.toolCount} 工具`);
+  if (summary.refCount > 0) parts.push(`${summary.refCount} 引用`);
+  parts.push(`${cost} 估算`);
+  return parts.join(' · ');
+}
+
 export function AgentRunCard({
   runId,
   onRetry,
@@ -202,6 +222,14 @@ export function AgentRunCard({
             steerAgentRun(runId, text).catch((e) => Alert.alert('steer 失败', String(e)))
           }
         />
+      ) : null}
+
+      {terminal ? (
+        <View style={{ marginTop: 8 }}>
+          <Text style={{ fontSize: 11, opacity: 0.55 }}>
+            {formatSummaryLine(run.summary, run.usage?.costCny)}
+          </Text>
+        </View>
       ) : null}
 
       {terminal && run.status !== 'completed' ? (

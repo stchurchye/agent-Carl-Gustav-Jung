@@ -1,9 +1,9 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -11,12 +11,26 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { api } from '../../lib/api';
+import { listAgentRuns } from '../../features/agent/agentApi';
 import type { AgentRun, AgentRunStatus } from '../../features/agent/types';
 import type { BrainStackParamList } from '../../navigation/types';
 import { evaBrain } from '../../theme/evaBrain';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainAgentTasks'>;
+
+type FilterKey = 'all' | 'inflight' | 'completed' | 'failed' | 'cancelled';
+
+const FILTERS: { key: FilterKey; label: string; statuses: AgentRunStatus[] | null }[] = [
+  { key: 'all', label: '全部', statuses: null },
+  {
+    key: 'inflight',
+    label: '进行中',
+    statuses: ['draft', 'planning', 'running', 'replanning', 'awaiting_approval', 'awaiting_user_input'],
+  },
+  { key: 'completed', label: '已完成', statuses: ['completed'] },
+  { key: 'failed', label: '失败', statuses: ['failed', 'budget_exhausted'] },
+  { key: 'cancelled', label: '取消', statuses: ['cancelled'] },
+];
 
 const STATUS_LABEL: Record<AgentRunStatus, string> = {
   draft: '准备中',
@@ -31,41 +45,85 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
   budget_exhausted: '预算耗尽',
 };
 
-const TERMINAL: AgentRunStatus[] = ['completed', 'failed', 'cancelled', 'budget_exhausted'];
-
-function statusColor(status: AgentRunStatus): string {
-  if (status === 'completed') return '#0a8';
-  if (status === 'failed' || status === 'budget_exhausted') return '#c33';
-  if (status === 'cancelled') return '#888';
-  if (status === 'awaiting_approval') return '#d80';
-  return '#369';
+function statusColor(s: AgentRunStatus): string {
+  if (s === 'completed') return '#0a6';
+  if (s === 'failed' || s === 'budget_exhausted') return '#c33';
+  if (s === 'cancelled') return '#999';
+  return evaBrain.accent;
 }
+
+function formatCny(n?: number): string {
+  if (!n || n <= 0) return '¥0.00';
+  if (n < 0.01) return `¥${n.toFixed(4)}`;
+  return `¥${n.toFixed(2)}`;
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  return `${Math.floor(diff / 86_400_000)} 天前`;
+}
+
+function expiresCountdown(iso?: string | null): string | null {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return '已过期';
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return `剩 ${h}h ${m}m`;
+}
+
+const INFLIGHT_STATUSES: AgentRunStatus[] = [
+  'draft', 'planning', 'running', 'replanning', 'awaiting_approval', 'awaiting_user_input',
+];
 
 export function BrainAgentTasksScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const [filter, setFilter] = useState<FilterKey>('all');
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+
+  const filterDef = FILTERS.find((f) => f.key === filter)!;
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
-      const res = await api.listAgentRuns();
-      const data = res.data as { runs: AgentRun[] };
-      setRuns(data.runs ?? []);
+      const { runs: fetched, hasMore: hm } = await listAgentRuns({ limit: 100 });
+      setRuns(fetched);
+      setHasMore(hm);
     } catch (e) {
-      setError(String(e));
+      console.warn('[BrainAgentTasksScreen.load]', e);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  const filteredRuns = useMemo(() => {
+    if (!filterDef.statuses) return runs;
+    return runs.filter((r) => filterDef.statuses!.includes(r.status));
+  }, [runs, filterDef]);
+
+  const aggregate = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const month = new Date(today.getFullYear(), today.getMonth(), 1);
+    let todayCost = 0;
+    let monthCost = 0;
+    let inflightCount = 0;
+    for (const r of runs) {
+      const cost = r.usage?.costCny ?? 0;
+      const created = new Date(r.createdAt);
+      if (created >= today) todayCost += cost;
+      if (created >= month) monthCost += cost;
+      if (INFLIGHT_STATUSES.includes(r.status)) inflightCount++;
+    }
+    return { todayCost, monthCost, inflightCount };
+  }, [runs]);
 
   return (
     <View style={[styles.page, { paddingTop: insets.top }]}>
@@ -74,50 +132,68 @@ export function BrainAgentTasksScreen({ navigation }: Props) {
           <Text style={styles.back}>← 返回</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Agent 任务</Text>
-        <TouchableOpacity onPress={() => void load()}>
-          <Text style={styles.refresh}>刷新</Text>
-        </TouchableOpacity>
+        <View style={{ width: 60 }} />
       </View>
 
-      {error ? <Text style={styles.errorRow}>{error}</Text> : null}
+      <View style={styles.banner}>
+        <Text style={styles.bannerText}>
+          今日 {formatCny(aggregate.todayCost)} · 本月 {formatCny(aggregate.monthCost)} · {aggregate.inflightCount} 个进行中
+        </Text>
+        <Text style={styles.bannerHint}>费用为估算值（按 cache-miss 上限算）</Text>
+      </View>
+
+      <View style={styles.filterRow}>
+        {FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            style={[styles.chip, filter === f.key && styles.chipActive]}
+            onPress={() => setFilter(f.key)}
+          >
+            <Text style={[styles.chipText, filter === f.key && styles.chipTextActive]}>
+              {f.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       <FlatList
-        data={runs}
-        keyExtractor={(r) => r.id}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={() => void load()} />
-        }
+        data={filteredRuns}
+        keyExtractor={(item) => item.id}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={
-          !loading ? (
-            <Text style={styles.emptyRow}>
-              还没有 agent 任务。在聊天里输入 /agent 或带"研究 / 整理一份…"的消息触发。
-            </Text>
-          ) : null
+          loading
+            ? <View style={styles.empty}><ActivityIndicator color={evaBrain.accent} /></View>
+            : <Text style={styles.emptyText}>暂无任务</Text>
         }
-        renderItem={({ item }) => (
-          <Pressable
-            style={styles.cell}
-            onPress={() => navigation.navigate('BrainAgentTaskDetail', { runId: item.id })}
-          >
-            <View style={styles.cellHeader}>
-              <Text style={[styles.cellStatus, { color: statusColor(item.status) }]}>
-                {STATUS_LABEL[item.status] ?? item.status}
+        ListFooterComponent={hasMore ? <Text style={styles.footerHint}>仅显示最近 100 条</Text> : null}
+        renderItem={({ item }) => {
+          const cost = item.usage?.costCny ?? 0;
+          const { summary } = item;
+          const expiresLabel = item.status === 'awaiting_user_input'
+            ? expiresCountdown(item.pendingUserInputExpiresAt)
+            : null;
+          return (
+            <TouchableOpacity
+              style={styles.row}
+              onPress={() => navigation.navigate('BrainAgentTaskDetail', { runId: item.id })}
+            >
+              <View style={styles.rowTop}>
+                <Text style={[styles.statusBadge, { color: statusColor(item.status) }]}>
+                  ● {STATUS_LABEL[item.status] ?? item.status}
+                </Text>
+                <Text style={styles.relTime}>{relativeTime(item.createdAt)}</Text>
+                {expiresLabel ? <Text style={styles.expiresBadge}>⏱ {expiresLabel}</Text> : null}
+              </View>
+              <Text style={styles.inputText} numberOfLines={2}>{item.inputText}</Text>
+              <Text style={styles.metaLine}>
+                {summary
+                  ? `${summary.stepCount} 步 · ${summary.toolCount} 工具${summary.refCount > 0 ? ` · ${summary.refCount} 引用` : ''} · `
+                  : ''}
+                {formatCny(cost)} 估算
               </Text>
-              <Text style={styles.cellChannel}>
-                {item.channel === 'group' ? '群聊' : '私聊'}
-              </Text>
-            </View>
-            <Text style={styles.cellText} numberOfLines={2}>
-              {item.inputText}
-            </Text>
-            <Text style={styles.cellMeta}>
-              步骤 {item.usage?.steps ?? 0}/{item.budget?.maxSteps ?? '?'}
-              {!TERMINAL.includes(item.status) && item.status !== 'awaiting_approval'
-                ? ' · 进行中'
-                : ''}
-            </Text>
-          </Pressable>
-        )}
+            </TouchableOpacity>
+          );
+        }}
       />
     </View>
   );
@@ -134,33 +210,41 @@ const styles = StyleSheet.create({
   },
   back: { color: evaBrain.accent, fontSize: 14 },
   title: { color: evaBrain.text, fontSize: 18, fontWeight: '600' },
-  refresh: { color: evaBrain.accent, fontSize: 14 },
-  errorRow: {
-    paddingHorizontal: 16,
+  banner: {
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    color: '#c33',
+    backgroundColor: evaBrain.bgCard,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: evaBrain.borderSubtle,
   },
-  emptyRow: {
-    paddingHorizontal: 24,
-    paddingVertical: 48,
-    color: evaBrain.textDim,
-    textAlign: 'center',
+  bannerText: { fontSize: 13, fontWeight: '600', color: evaBrain.text },
+  bannerHint: { fontSize: 10, color: evaBrain.textDim, marginTop: 2 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 8 },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginRight: 6,
+    marginBottom: 6,
+    backgroundColor: evaBrain.bgCard,
+    borderRadius: 12,
   },
-  cell: {
+  chipActive: { backgroundColor: evaBrain.accent },
+  chipText: { fontSize: 12, color: evaBrain.accent },
+  chipTextActive: { color: '#fff', fontWeight: '600' },
+  row: {
     marginHorizontal: 12,
-    marginVertical: 6,
+    marginVertical: 4,
     padding: 12,
     backgroundColor: evaBrain.bgCard,
     borderRadius: 8,
   },
-  cellHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  cellStatus: { fontWeight: '600', fontSize: 13 },
-  cellChannel: { color: evaBrain.textDim, fontSize: 12 },
-  cellText: { color: evaBrain.text, fontSize: 14 },
-  cellMeta: { color: evaBrain.textDim, fontSize: 12, marginTop: 4 },
+  rowTop: { flexDirection: 'row', alignItems: 'center' },
+  statusBadge: { fontSize: 12, fontWeight: '600' },
+  relTime: { fontSize: 10, color: evaBrain.textDim, marginLeft: 'auto' },
+  expiresBadge: { fontSize: 10, color: '#a60' },
+  inputText: { fontSize: 13, color: evaBrain.text, marginTop: 4 },
+  metaLine: { fontSize: 11, color: evaBrain.textDim, marginTop: 4 },
+  empty: { padding: 40, alignItems: 'center' },
+  emptyText: { color: evaBrain.textDim, textAlign: 'center', padding: 40 },
+  footerHint: { textAlign: 'center', color: evaBrain.textDim, fontSize: 11, paddingVertical: 12 },
 });

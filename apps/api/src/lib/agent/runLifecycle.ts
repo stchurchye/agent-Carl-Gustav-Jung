@@ -16,6 +16,7 @@ import {
   type AgentBudget,
   type AgentChannel,
   type AgentRun,
+  type CancelReason,
 } from './types.js';
 import {
   writePrivatePlaceholder,
@@ -25,6 +26,7 @@ import {
 } from './messageBridge.js';
 import { runControllers } from './runtimeRegistry.js';
 import { buildFinalContent } from './runReply.js';
+import { buildRunSummary } from './runSummary.js';
 import { killSandboxForRun } from './sandbox.js';
 import { sealUserApiKeys } from './userApiKeys.js';
 import { recordStep } from './stepRecorder.js';
@@ -216,9 +218,15 @@ export async function softComplete(
   // M2 Task 1B: free E2B sandbox on terminal status (no-op if run never called run_python)
   await killSandboxForRun(run.id);
 
+  // M4 Task 4：算 summary 并合并进 status update —— failed / cancelled / budget_exhausted
+  // 同样落 summary，让任务面板列表能统一显示"做了什么"。
+  const stepsForSummary = await store.listSteps(run.id);
+  const summary = buildRunSummary(stepsForSummary);
+
   await store.updateAgentRun(run.id, {
     status,
     endedAt: new Date(),
+    summary,
   });
 
   // Emit terminal hook event with the latest run snapshot (including endedAt).
@@ -296,6 +304,7 @@ export async function resumeAgentRun(
 export async function cancelRun(
   runId: string,
   byUserId: string,
+  reasonOverride?: CancelReason,
 ): Promise<void> {
   const controller = runControllers.get(runId);
   if (controller) {
@@ -316,11 +325,17 @@ export async function cancelRun(
   ) {
     return;
   }
+  // M4 review fix：idle-path cancel（无 controller）不经过 softComplete，
+  // 需要在这里计算 summary，保证所有 terminal status 都有 summary 落库。
+  const stepsForSummary = await store.listSteps(runId);
+  const summary = buildRunSummary(stepsForSummary);
+
   await store.updateAgentRun(runId, {
     status: 'cancelled',
     cancelledByUserId: byUserId,
-    cancelReason: 'user',
+    cancelReason: reasonOverride ?? 'user',
     endedAt: new Date(),
+    summary,
   });
   const latest = (await store.getAgentRun(runId)) ?? run;
   agentHookBus.emitEvent({

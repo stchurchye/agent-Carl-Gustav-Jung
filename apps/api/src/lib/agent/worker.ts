@@ -1,6 +1,7 @@
 import * as store from './store.js';
 import { executeRun } from './runtime.js';
 import { autoResolveExpiredApprovals } from './approval.js';
+import { autoExpireAwaitingUserInput } from './expireAwaitingUserInput.js';
 
 export type WorkerHandle = {
   stop: () => void;
@@ -16,6 +17,13 @@ async function tick() {
     await autoResolveExpiredApprovals(new Date());
   } catch (e) {
     console.error('[agent worker] autoResolveExpiredApprovals failed', e);
+  }
+
+  // 1.5) M4 Task 5：过期 awaiting_user_input → auto cancel('user_timeout')
+  try {
+    await autoExpireAwaitingUserInput(new Date());
+  } catch (e) {
+    console.error('[agent worker] autoExpireAwaitingUserInput failed', e);
   }
 
   // 2) Pickup 下一个 draft/running/replanning 待办 run。

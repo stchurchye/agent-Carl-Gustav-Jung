@@ -77,6 +77,10 @@ describe('executor: ask_user pause semantics (M3 Task 2)', () => {
     expect(finalRun?.status).toBe('awaiting_user_input');
     expect(finalRun?.pendingUserPrompt).toBe(question);
     expect(finalRun?.pendingUserStepIdx).toBe(0);
+    // M4 Task 5：pendingUserInputExpiresAt 落库 = now() + 24h (±5s 容错)
+    const expectedExpiresMs = Date.now() + 24 * 3600 * 1000;
+    const actualExpiresMs = finalRun?.pendingUserInputExpiresAt?.getTime() ?? 0;
+    expect(Math.abs(actualExpiresMs - expectedExpiresMs)).toBeLessThan(5000);
   });
 
   it('ask_user at step 1 → subsequent steps are not executed', async () => {
