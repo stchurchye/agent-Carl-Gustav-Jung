@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -31,11 +31,19 @@ import type { GroupStackParamList } from '../navigation/types';
 type Props = NativeStackScreenProps<GroupStackParamList, 'SettingsDocuments'>;
 
 export function SettingsDocumentsScreen({ navigation, route }: Props) {
-  const { scope } = route.params;
+  const { scope, highlightId } = route.params;
   const insets = useSafeAreaInsets();
   const isHidden = scope === 'hidden';
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const [highlightActive, setHighlightActive] = useState<string | null>(highlightId ?? null);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    setHighlightActive(highlightId);
+    const t = setTimeout(() => setHighlightActive(null), 1500);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,19 +107,26 @@ export function SettingsDocumentsScreen({ navigation, route }: Props) {
                 ? time.full
                 : `${time.full} · ${d.revisionCount} 个版本`;
               return (
-                <WeChatListCell
+                <View
                   key={d.id}
-                  label={d.title}
-                  value={value}
-                  showSeparator={idx < docs.length - 1}
-                  onPress={() => {
-                    if (isHidden) {
-                      void restoreDocument(d.id, d.title);
-                    } else {
-                      void openWriting(navigation, { documentId: d.id });
-                    }
+                  style={{
+                    backgroundColor: highlightActive === d.id ? '#fff5b3' : 'transparent',
+                    borderRadius: 8,
                   }}
-                />
+                >
+                  <WeChatListCell
+                    label={d.title}
+                    value={value}
+                    showSeparator={idx < docs.length - 1}
+                    onPress={() => {
+                      if (isHidden) {
+                        void restoreDocument(d.id, d.title);
+                      } else {
+                        void openWriting(navigation, { documentId: d.id });
+                      }
+                    }}
+                  />
+                </View>
               );
             })}
           </WeChatGroupedSection>
