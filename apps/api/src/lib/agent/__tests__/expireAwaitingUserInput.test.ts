@@ -89,4 +89,17 @@ describe('autoExpireAwaitingUserInput', { timeout: 15000 }, () => {
     const n = await autoExpireAwaitingUserInput(new Date());
     expect(n).toBe(0);
   });
+
+  it('run already resumed to running → skipped（user_timeout 竞态防护）', async () => {
+    // 模拟：用户先 resume，run 已变 'running'；worker tick 延迟到此时才触发
+    const u = await ensureUser();
+    const r = await makeAwaitingRun(u, new Date(Date.now() - 1000));
+    // 手动把 status 切回 running（模拟 resume 已发生）
+    await store.updateAgentRun(r.id, { status: 'running' });
+
+    const n = await autoExpireAwaitingUserInput(new Date());
+    expect(n).toBe(0);
+    const re = await store.getAgentRun(r.id);
+    expect(re?.status).toBe('running'); // 不应被取消
+  });
 });

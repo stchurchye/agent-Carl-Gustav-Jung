@@ -199,10 +199,14 @@ export async function executeRun(runId: string): Promise<void> {
           const elapsedC = Math.floor(
             (Date.now() - startedAt.getTime()) / 1000,
           );
-          const usageC = incrementUsage(run, {
+          // M4 review fix：从 DB 拉最新 run，避免用旧 usage 基准覆盖
+          // wrapWithCostAccounting 刚写入的 costCny / tokens。
+          // idempotency 命中路径不会触发 LLM，但统一 reload 保持一致。
+          const runLatestC = (await store.getAgentRun(runId)) ?? run;
+          const usageC = incrementUsage(runLatestC, {
             steps: 1,
             tokens: 0,
-            elapsedSeconds: elapsedC - run.usage.elapsedSeconds,
+            elapsedSeconds: elapsedC - runLatestC.usage.elapsedSeconds,
           });
           run = (await store.updateAgentRun(runId, {
             todos: newTodosC,
@@ -302,10 +306,14 @@ export async function executeRun(runId: string): Promise<void> {
       const elapsedFinal = Math.floor(
         (Date.now() - startedAt.getTime()) / 1000,
       );
-      const usage = incrementUsage(run, {
+      // M4 review fix：tool handler 可能内部调用 LLM（如 critique_last_answer），
+      // wrapWithCostAccounting 会把 costCny/tokens 写入 DB。
+      // 必须先 reload 最新 run，再 incrementUsage，避免旧 usage 覆盖已累加的 cost。
+      const runAfterTool = (await store.getAgentRun(runId)) ?? run;
+      const usage = incrementUsage(runAfterTool, {
         steps: 1,
         tokens: 0,
-        elapsedSeconds: elapsedFinal - run.usage.elapsedSeconds,
+        elapsedSeconds: elapsedFinal - runAfterTool.usage.elapsedSeconds,
       });
       run = (await store.updateAgentRun(runId, {
         todos: newTodos,

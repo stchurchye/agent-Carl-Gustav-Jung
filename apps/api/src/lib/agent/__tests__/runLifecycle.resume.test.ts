@@ -46,6 +46,7 @@ describe('resumeAgentRun', () => {
       status: 'awaiting_user_input',
       pendingUserPrompt: '哪个年份？',
       pendingUserStepIdx: 2,
+      pendingUserInputExpiresAt: new Date(Date.now() + 24 * 3600 * 1000),
     });
 
     const { run: updated } = await resumeAgentRun({
@@ -56,6 +57,8 @@ describe('resumeAgentRun', () => {
     expect(updated.status).toBe('running');
     expect(updated.pendingUserPrompt).toBeNull();
     expect(updated.pendingUserStepIdx).toBeNull();
+    // M4 review fix：resume 应同时清掉过期时间戳
+    expect(updated.pendingUserInputExpiresAt).toBeNull();
 
     const steps = await store.listSteps(run.id);
     expect(steps.length).toBeGreaterThanOrEqual(1);

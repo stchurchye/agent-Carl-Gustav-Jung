@@ -293,6 +293,8 @@ export async function resumeAgentRun(
     status: 'running',
     pendingUserPrompt: null,
     pendingUserStepIdx: null,
+    // M4 review fix：清掉过期时间戳，避免 stale 字段在 UI 或 worker 层被误读。
+    pendingUserInputExpiresAt: null,
   });
 
   const updated = await store.getAgentRun(run.id);
@@ -323,6 +325,14 @@ export async function cancelRun(
     run.status === 'cancelled' ||
     run.status === 'budget_exhausted'
   ) {
+    return;
+  }
+  // M4 review fix (critical)：user_timeout 竞态防护。
+  // worker SELECT 到过期 awaiting_user_input 之后、cancelRun 执行之前，
+  // 用户可能已经 resume（status 已变回 'running'）。
+  // 只有 run 仍在 awaiting_user_input 时才允许 user_timeout 取消；
+  // 其他原因（'user' / 'steer'）不做此限制，保持原有语义。
+  if (reasonOverride === 'user_timeout' && run.status !== 'awaiting_user_input') {
     return;
   }
   // M4 review fix：idle-path cancel（无 controller）不经过 softComplete，
