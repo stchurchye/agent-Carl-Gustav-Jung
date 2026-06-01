@@ -628,8 +628,11 @@ export class MergeTargetTerminalError extends Error {
  * - 传入 `client` 时：复用调用方事务（withTopicCoordination 持锁场景），不自己 BEGIN/COMMIT。
  * - 不传 `client` 时：自管理短事务（向后兼容）。
  *
- * 防并发：先 SELECT ... FOR UPDATE 锁目标 run 行，再读 MAX(idx)；同 run 的其他
- * INSERT step 命中行锁后会被阻塞，避免 idx 撞 unique constraint。
+ * 防并发（为何 MAX(idx)+1 在这里是安全的）：先 `SELECT ... FOR UPDATE` 锁目标 run 行。
+ * 往 agent_steps 插一行会对父表 agent_runs 的该行取 FOR KEY SHARE 锁（FK 约束），
+ * 而 FOR KEY SHARE 与 FOR UPDATE 冲突 —— 所以 merge 持锁期间，worker 的 recordStep
+ * 插 step 会被阻塞，反之亦然。两侧因此串行，MAX(idx)+1 不会撞 UNIQUE(run_id, idx)。
+ * （已用双连接经验验证：FOR UPDATE 确实阻塞并发 agent_steps INSERT。）
  */
 export async function applyMergeInTx(
   targetRunId: string,
