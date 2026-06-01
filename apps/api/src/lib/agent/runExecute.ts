@@ -385,6 +385,7 @@ export async function executeRun(runId: string): Promise<void> {
           plan,
           recentSteps: recentTail,
           reason: 'periodic',
+          mergedInputs: run.mergedInputs, // M7 P3
         });
         await recordStep({ runId, kind: 'critique', output: c });
       }
@@ -398,6 +399,7 @@ export async function executeRun(runId: string): Promise<void> {
           plan,
           recentSteps: allSteps.slice(-4),
           reason: 'consecutive_failures',
+          mergedInputs: run.mergedInputs, // M7 P3
         });
         await recordStep({ runId, kind: 'critique', output: c });
         if (c.shouldReplan) {
