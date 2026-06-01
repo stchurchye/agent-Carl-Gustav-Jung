@@ -19,15 +19,16 @@ async function insertRunRaw(opts: {
   groupId: string;
   status: AgentRunStatus;
   createdAt?: Date;
+  parentRunId?: string | null;
 }): Promise<string> {
   const id = randomUUID();
   await getPool().query(
     `INSERT INTO agent_runs (id, owner_id, channel, group_id, topic_id, role,
-       status, input_text, budget, api_key_source, created_at, last_heartbeat_at)
+       status, input_text, budget, api_key_source, created_at, last_heartbeat_at, parent_run_id)
      VALUES ($1, $2, 'group', $3, $4, 'generalist',
        $5, 'test', '{"maxSteps":5,"maxSeconds":60,"maxTokens":1000}'::jsonb,
-       'server', $6, NULL)`,
-    [id, opts.ownerId, opts.groupId, opts.topicId, opts.status, opts.createdAt ?? new Date()],
+       'server', $6, NULL, $7)`,
+    [id, opts.ownerId, opts.groupId, opts.topicId, opts.status, opts.createdAt ?? new Date(), opts.parentRunId ?? null],
   );
   return id;
 }
@@ -75,5 +76,28 @@ describe('store topic slot queries (M7 T2a)', () => {
     await insertRunRaw({ ownerId: owner.id, groupId, topicId, status: 'completed' }); // 不算
     const n = await store.countBlockingPlusQueuedOnTopic(topicId);
     expect(n).toBe(3);
+  });
+
+  // M7 T7 review fix：deep_research 子 run 也落到群 topic 上，但 topic 协调只应
+  // 看顶层 run —— 否则新追问会 merge 进更新的 child 而非 parent。
+  it('findBlockingActiveOnTopic excludes child runs (parent_run_id set)', async () => {
+    const parentId = await insertRunRaw({
+      ownerId: owner.id, groupId, topicId, status: 'running',
+      createdAt: new Date(Date.now() - 5000),
+    });
+    // 更新的 child（同 topic，parent_run_id 指向 parent）—— 不能被当成 blocking target。
+    await insertRunRaw({
+      ownerId: owner.id, groupId, topicId, status: 'running',
+      createdAt: new Date(Date.now() - 1000), parentRunId: parentId,
+    });
+    const r = await store.findBlockingActiveOnTopic(topicId);
+    expect(r?.id).toBe(parentId);
+  });
+
+  it('countBlockingPlusQueuedOnTopic excludes child runs', async () => {
+    const parentId = await insertRunRaw({ ownerId: owner.id, groupId, topicId, status: 'running' });
+    await insertRunRaw({ ownerId: owner.id, groupId, topicId, status: 'running', parentRunId: parentId });
+    const n = await store.countBlockingPlusQueuedOnTopic(topicId);
+    expect(n).toBe(1); // 只数 parent，不数 child
   });
 });

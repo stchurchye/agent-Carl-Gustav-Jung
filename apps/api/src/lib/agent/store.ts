@@ -580,6 +580,7 @@ export async function findBlockingActiveOnTopic(
     `SELECT ${RUN_COLUMNS} FROM agent_runs
      WHERE topic_id = $1
        AND status IN ${BLOCKING_STATUSES_SQL}
+       AND parent_run_id IS NULL
      ORDER BY created_at DESC
      LIMIT 1`,
     [topicId],
@@ -615,6 +616,7 @@ export async function countBlockingPlusQueuedOnTopic(
   const { rows } = await exec(client).query(
     `SELECT COUNT(*)::int AS c FROM agent_runs
      WHERE topic_id = $1
+       AND parent_run_id IS NULL
        AND (status IN ${BLOCKING_STATUSES_SQL} OR status = 'queued')`,
     [topicId],
   );
