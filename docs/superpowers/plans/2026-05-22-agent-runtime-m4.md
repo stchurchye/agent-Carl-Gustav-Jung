@@ -33,7 +33,7 @@ cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx v
 - [ ] **Step 1：开分支 + 验证 baseline 通过**
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git checkout main && git pull --ff-only
 git checkout -b feat/agent-runtime-m4
 cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx vitest run --reporter=summary
@@ -301,7 +301,7 @@ Expected: 4 PASS。
 ### Step 6：commit
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git add apps/api/src/db/migrations/019_agent_run_summary_and_user_input_expires.sql \
         apps/api/src/lib/agent/types.ts \
         apps/api/src/lib/agent/store.ts \

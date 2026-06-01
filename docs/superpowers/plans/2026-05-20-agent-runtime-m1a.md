@@ -65,7 +65,7 @@ apps/api/src/types.ts                       # （可能）扩展 AppVariables（
 - [ ] **Step 0.1：确认在正确分支**
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git status
 ```
 

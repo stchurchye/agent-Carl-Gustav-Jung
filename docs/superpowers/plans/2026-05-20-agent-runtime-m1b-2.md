@@ -74,7 +74,7 @@ apps/api/src/index.ts                             # registerRiskyEcho (仅 NODE_
 ```bash
 git checkout feat/agent-runtime-m1b-1  # 假设 m1b-1 已合并到这个分支或 main
 git checkout -b feat/agent-runtime-m1b-2
-pkill -f "tsx watch.*行动中止派" 2>/dev/null; sleep 2
+pkill -f "tsx watch.*agent-Carl-Gustav-Jung" 2>/dev/null; sleep 2
 set -a; source .env; set +a
 npm run typecheck && npm run test -w @xzz/api  # baseline green
 ```
@@ -1332,7 +1332,7 @@ git commit -m "test(agent): approval + steer e2e (T4 + T11)"
 
 ```bash
 set -a; source .env; set +a
-pkill -f "tsx watch.*行动中止派" 2>/dev/null; sleep 2
+pkill -f "tsx watch.*agent-Carl-Gustav-Jung" 2>/dev/null; sleep 2
 npm run typecheck
 npm run test -w @xzz/api
 ```

@@ -187,7 +187,7 @@ Use this checklist only to track restart state. Detailed steps live in the origi
 Start with original plan section `T0：分支 + baseline`:
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git checkout main && git pull --ff-only
 git checkout -b feat/agent-runtime-m7
 cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx vitest run
@@ -196,7 +196,7 @@ cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx v
 Then run:
 
 ```bash
-cd /Users/hongpengwang/行动中止派/apps/mobile && npx tsc --noEmit
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung/apps/mobile && npx tsc --noEmit
 ```
 
 After T0 passes, continue with `T1a：migration 021_agent_topic_coord.sql` in the original plan.

@@ -78,7 +78,7 @@ app.get('/health', async (c) => {
   }
   return c.json({
     ok: true,
-    service: '行动中止派-api',
+    service: 'agent-Carl-Gustav-Jung-api',
     db: dbOk,
     requestId: c.get('requestId'),
   });
@@ -126,7 +126,7 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error('[行动中止派-api] 启动失败', e);
+  console.error('[agent-Carl-Gustav-Jung-api] 启动失败', e);
   process.exit(1);
 });
 

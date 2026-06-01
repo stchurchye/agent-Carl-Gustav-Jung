@@ -43,7 +43,7 @@ cd apps/mobile && npx tsc --noEmit
 - [ ] **Step 1: 拉新分支 + 后端全量测试**
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git checkout main && git pull --ff-only
 git checkout -b feat/agent-runtime-m7
 cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx vitest run
@@ -62,7 +62,7 @@ Expected：exit 0。
 - [ ] **Step 3: 锁定 migration 序号**
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 ls apps/api/src/db/migrations/ | tail -5
 ```
 
@@ -119,7 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_topic_queued
 - [ ] 执行：
 
 ```bash
-cd /Users/hongpengwang/行动中止派/apps/api
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api
 DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx tsx src/db/migrate.ts
 ```
 

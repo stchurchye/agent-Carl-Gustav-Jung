@@ -1,4 +1,4 @@
-# 行动中止派 — 家人辅助写作 App
+# agent-Carl-Gustav-Jung — 家人辅助写作 App
 
 双端（Expo）+ Node API。写作与问答分开；多文稿标签；增删对比与版本回滚；全中文界面。
 
@@ -16,7 +16,7 @@ docker-compose.yml
 ## 方式一：Docker 跑后端（推荐）
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 
 # 复制环境变量（Docker 必填 JWT_SECRET，至少 32 字符随机串）
 cp .env.example .env

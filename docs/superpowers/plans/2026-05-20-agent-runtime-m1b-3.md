@@ -58,7 +58,7 @@ README.md
 ```bash
 git checkout feat/agent-runtime-m1b-2
 git checkout -b feat/agent-runtime-m1b-3
-pkill -f "tsx watch.*行动中止派" 2>/dev/null
+pkill -f "tsx watch.*agent-Carl-Gustav-Jung" 2>/dev/null
 set -a; source .env; set +a
 npm run typecheck && npm run test -w @xzz/api  # baseline
 ```
@@ -736,7 +736,7 @@ git commit -m "feat(mobile): IntentChipBar agent chip + AgentRunCard in chat row
 
 ```bash
 set -a; source .env; set +a
-pkill -f "tsx watch.*行动中止派" 2>/dev/null
+pkill -f "tsx watch.*agent-Carl-Gustav-Jung" 2>/dev/null
 npm run typecheck
 npm run test -w @xzz/api
 npm run test -w @xzz/shared

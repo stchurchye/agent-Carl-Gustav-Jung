@@ -55,7 +55,7 @@ README.md                                              # 群聊入口 + skills H
 - [ ] **Step 0.1**：从 M1a 分支拉新分支
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git checkout feat/agent-runtime-m1a
 git pull --ff-only origin main 2>/dev/null || true   # 若已 merge 到 main
 git checkout -b feat/agent-runtime-m1b-1
@@ -66,7 +66,7 @@ git checkout -b feat/agent-runtime-m1b-1
 ```bash
 set -a; source .env; set +a
 # 杀掉 dev:api 避免和测试争抢(M1a 同样的教训)
-pkill -f "tsx watch.*行动中止派" 2>/dev/null; sleep 2
+pkill -f "tsx watch.*agent-Carl-Gustav-Jung" 2>/dev/null; sleep 2
 lsof -ti tcp:3922 2>/dev/null && echo "STILL RUNNING — 找父进程杀掉再继续" && exit 1
 
 npm run build -w @xzz/shared
@@ -1439,7 +1439,7 @@ git commit -m "test(agent): group runtime e2e (cancel by any member)"
 ```bash
 set -a; source .env; set +a
 # 确保没有 dev:api 在跑
-pkill -f "tsx watch.*行动中止派" 2>/dev/null; sleep 2
+pkill -f "tsx watch.*agent-Carl-Gustav-Jung" 2>/dev/null; sleep 2
 
 npm run build -w @xzz/shared
 npm run typecheck
