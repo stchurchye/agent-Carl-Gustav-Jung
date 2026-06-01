@@ -55,6 +55,15 @@ export type CreateAgentRunInput = {
   userApiKeys?: Record<string, string>;
   /** M3 Task 4：子 run 的父 run ID（deep_research spawn 时填）。null/undefined 表示顶层 run。 */
   parentRunId?: string | null;
+  /** M7：T3 queue 分支专用，决定 INSERT 的初始 status。默认 'draft'。 */
+  initialStatus?: 'draft' | 'queued';
+  /** M7：queued 时记录入队 N。 */
+  queuePosition?: number;
+  /**
+   * M7：调用方已经在持锁事务里 INSERT 了 run 行（R13 闭环），
+   * 传入时 createAgentRun 跳过 store.insertAgentRun，直接走 placeholder/updateRun 后续。
+   */
+  existingRun?: AgentRun;
 };
 
 export type CreateAgentRunResult = {
@@ -97,7 +106,8 @@ export async function createAgentRun(
       ? (userApiKeysSealedRaw as Record<string, string>)
       : undefined;
 
-  const run = await store.insertAgentRun({
+  // M7：existingRun 已由调用方在持锁事务里 INSERT（R13），跳过重复 INSERT。
+  const run = input.existingRun ?? await store.insertAgentRun({
     ownerId: input.ownerId,
     channel: input.channel,
     sessionId: input.sessionId ?? null,
@@ -105,7 +115,7 @@ export async function createAgentRun(
     topicId: input.topicId ?? null,
     intentTurnId: input.intentTurnId ?? null,
     role: 'generalist',
-    status: 'draft',
+    status: input.initialStatus ?? 'draft',
     inputText: input.inputText,
     budget: input.budget ?? DEFAULT_BUDGET,
     apiKeyOwnerId: input.apiKeySource === 'user' ? input.ownerId : null,
@@ -116,6 +126,7 @@ export async function createAgentRun(
     modelId: input.modelId,
     userApiKeysEnc,
     parentRunId: input.parentRunId ?? null,
+    queuePosition: input.queuePosition ?? null,
   });
 
   let userMessageId: string | null = null;
