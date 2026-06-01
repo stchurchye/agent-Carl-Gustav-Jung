@@ -281,6 +281,12 @@ export async function softComplete(
       resource: detail ?? 'unknown',
     });
   }
+
+  // M7：群聊 run 终态 → 释放 slot，触发同 topic 队首 dequeue。
+  if (run.channel === 'group' && run.topicId) {
+    const { dequeueNextOnTopic } = await import('./topicCoord.js');
+    await dequeueNextOnTopic(run.topicId);
+  }
 }
 
 // ─── M3 Task 3: resumeAgentRun ────────────────────────────────────────────────
@@ -415,5 +421,12 @@ export async function cancelRun(
         });
       }
     }
+  }
+
+  // M7：cancelled 也是 terminal，释放 slot 触发队首 dequeue。
+  // （dequeueNextOnTopic 幂等：提为 draft 后该 run 即算 blocking，softComplete 再调时 no-op。）
+  if (run.channel === 'group' && run.topicId) {
+    const { dequeueNextOnTopic } = await import('./topicCoord.js');
+    await dequeueNextOnTopic(run.topicId);
   }
 }
