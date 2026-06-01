@@ -96,6 +96,7 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       signal,
       previousFailure,
       isSubagent: !!run.parentRunId,
+      mergedInputs: run.mergedInputs ?? [], // M7 P1a
     });
   } catch (e) {
     // M1e Task 13.4：之前 catch 后静默 fallback echo plan，用户毫无感知。现在写一条

@@ -112,6 +112,8 @@ export type LlmPlannerInput = {
    * 防止子 agent 调 deep_research / ask_user / run_python 等危险/递归工具。
    */
   isSubagent?: boolean;
+  /** M7 P1a：合并的追问；非空时 buildPlannerUserPrompt 拼入 "# 后续追问" 段。 */
+  mergedInputs?: Array<{ text: string; byUserId: string; byUsername: string; at: string }>;
 };
 
 /**
@@ -238,7 +240,14 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   const failure = input.previousFailure
     ? `\n\n# 上一步失败原因\n${input.previousFailure}\n请基于这个失败重新规划剩余步骤，避免重复同样错误。`
     : '';
-  return `# 用户请求\n${input.inputText}${summary}${failure}`;
+  // M7 P1a：合并的追问段（不污染 DB，每次 planner 调用按当前 merged_inputs 全量拼）。
+  const merged = input.mergedInputs ?? [];
+  const mergedSection =
+    merged.length > 0
+      ? `\n\n# 后续追问（合并自其他成员，需在新 plan 中一并回应）\n` +
+        merged.map((m, i) => `${i + 1}. @${m.byUsername} (${m.at}): ${m.text}`).join('\n')
+      : '';
+  return `# 用户请求\n${input.inputText}${mergedSection}${summary}${failure}`;
 }
 
 type LooseStep = {
