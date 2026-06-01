@@ -686,6 +686,10 @@ export async function applyMergeInTx(
       [randomUUID(), targetRunId, nextIdx, JSON.stringify(entry)],
     );
     // 注：agent_runs 无 updated_at 列（live schema 核实），故只更新 merged_inputs + status。
+    // M7 holistic review fix：若 run 当前在 awaiting_user_input（暂停等答 ask_user），
+    // merge 会把它 flip 到 replanning —— 那个 pending 的问题被放弃，必须同时清掉
+    // pending_user_* / ask_user_* —— 否则 resumeAgentRun（要求 status=awaiting_user_input）
+    // 会对残留的问题报错，群聊里也会留一张已废弃的 ask_user 卡片。
     await c.query(
       `UPDATE agent_runs
          SET merged_inputs = COALESCE(merged_inputs, '[]'::jsonb) || $1::jsonb,
@@ -693,7 +697,13 @@ export async function applyMergeInTx(
                         WHEN status IN ('planning','running','awaiting_approval','awaiting_user_input')
                           THEN 'replanning'
                         ELSE status
-                      END
+                      END,
+             pending_user_prompt = CASE WHEN status = 'awaiting_user_input' THEN NULL ELSE pending_user_prompt END,
+             pending_user_step_idx = CASE WHEN status = 'awaiting_user_input' THEN NULL ELSE pending_user_step_idx END,
+             pending_user_input_expires_at = CASE WHEN status = 'awaiting_user_input' THEN NULL ELSE pending_user_input_expires_at END,
+             ask_user_target_user_id = CASE WHEN status = 'awaiting_user_input' THEN NULL ELSE ask_user_target_user_id END,
+             ask_user_started_at = CASE WHEN status = 'awaiting_user_input' THEN NULL ELSE ask_user_started_at END,
+             ask_user_opened_for_all_at = CASE WHEN status = 'awaiting_user_input' THEN NULL ELSE ask_user_opened_for_all_at END
        WHERE id = $2`,
       [JSON.stringify([entry]), targetRunId],
     );
