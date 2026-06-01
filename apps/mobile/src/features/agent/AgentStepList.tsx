@@ -1,5 +1,6 @@
 import React from 'react';
-import { ScrollView, View, Text } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import type { AgentRun, AgentStep } from './types';
 import AskUserPrompt from '../../components/AskUserPrompt';
 import DeepResearchReport from '../../components/DeepResearchReport';
@@ -78,6 +79,7 @@ type Props = {
 };
 
 export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
+  const navigation = useNavigation<any>();
   if (!steps.length) return null;
   return (
     <ScrollView style={{ maxHeight: 200 }}>
@@ -119,18 +121,33 @@ export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
                   report?: string;
                   citations?: Array<{ kind: string; id: string; label?: string }>;
                   stepsUsed?: number;
+                  childRunId?: string;
                 };
               } | null;
               const out = raw?.result ?? null;
               const inp = s.input as { question?: string } | null;
               if (!out?.ok) return null;
               return (
-                <DeepResearchReport
-                  question={inp?.question ?? '子任务'}
-                  report={out.report ?? ''}
-                  citations={out.citations}
-                  stepsUsed={out.stepsUsed ?? 0}
-                />
+                <>
+                  <DeepResearchReport
+                    question={inp?.question ?? '子任务'}
+                    report={out.report ?? ''}
+                    citations={out.citations}
+                    stepsUsed={out.stepsUsed ?? 0}
+                  />
+                  {/* M7 T9：群聊子卡片 → 跳到子 run 详情 */}
+                  {out.childRunId ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        navigation.navigate('BrainAgentTaskDetail', { runId: out.childRunId })
+                      }
+                    >
+                      <Text style={{ color: '#0a66c2', fontSize: 12, marginTop: 4 }}>
+                        研究子任务（→ 查看详情）
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
               );
             })()
           ) : null}
