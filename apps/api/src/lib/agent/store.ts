@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import type { PoolClient } from 'pg';
 import { getPool } from '../../db/client.js';
 import {
   type AgentRun,
@@ -509,4 +510,71 @@ export async function pickupNextRun(): Promise<AgentRun | null> {
   } finally {
     client.release();
   }
+}
+
+// ============================================================
+// M7：topic slot 查询 + 合并/排队事务原语
+//
+// 设计约束（ADR-M7-14 + R13）：本节所有可能与 acquireTopicSlot 写入冲突的函数
+// 都接受 `client?: PoolClient`，调用方（withTopicCoordination）持有 advisory lock
+// 的事务客户端会原样透传；不传 client 时退回独立连接（旧路径 / 非协调场景）。
+// ============================================================
+
+const BLOCKING_STATUSES_SQL = `('draft','planning','running','replanning','awaiting_approval','awaiting_user_input')`;
+
+function exec(client: PoolClient | undefined) {
+  return client ?? getPool();
+}
+
+/**
+ * M7：找 topic 上正在跑（不含 queued）的最新 run。
+ * acquireTopicSlot 判定 merge / queue 时用。
+ */
+export async function findBlockingActiveOnTopic(
+  topicId: string,
+  client?: PoolClient,
+): Promise<AgentRun | null> {
+  const { rows } = await exec(client).query(
+    `SELECT ${RUN_COLUMNS} FROM agent_runs
+     WHERE topic_id = $1
+       AND status IN ${BLOCKING_STATUSES_SQL}
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [topicId],
+  );
+  return rows[0] ? parseRun(rows[0]) : null;
+}
+
+/**
+ * M7：拿 topic 上 status='queued' 的队首（FIFO）。
+ * dequeueNextOnTopic 用。
+ */
+export async function findQueuedHeadOnTopic(
+  topicId: string,
+  client?: PoolClient,
+): Promise<AgentRun | null> {
+  const { rows } = await exec(client).query(
+    `SELECT ${RUN_COLUMNS} FROM agent_runs
+     WHERE topic_id = $1 AND status = 'queued'
+     ORDER BY created_at ASC
+     LIMIT 1`,
+    [topicId],
+  );
+  return rows[0] ? parseRun(rows[0]) : null;
+}
+
+/**
+ * M7：blocking + queued 总数。queue 分支算 precedingCount 用。
+ */
+export async function countBlockingPlusQueuedOnTopic(
+  topicId: string,
+  client?: PoolClient,
+): Promise<number> {
+  const { rows } = await exec(client).query(
+    `SELECT COUNT(*)::int AS c FROM agent_runs
+     WHERE topic_id = $1
+       AND (status IN ${BLOCKING_STATUSES_SQL} OR status = 'queued')`,
+    [topicId],
+  );
+  return (rows[0]?.c as number | null) ?? 0;
 }
