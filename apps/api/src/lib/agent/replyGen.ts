@@ -1,5 +1,6 @@
 import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
 import type { AgentRun, AgentStep, Plan, ReplyRef } from './types.js';
+import { sanitizeMergedUsername } from './types.js';
 import { toolRegistry, type ToolDef, type ToolReplyMeta } from './toolRegistry.js';
 
 export type { ReplyRef };
@@ -135,7 +136,7 @@ export function buildReplyMessages(params: {
   const mergedSection =
     merged.length > 0
       ? `\n\n# 后续追问列表（共 ${merged.length} 条，需在 reply 中统一回应）\n` +
-        merged.map((m) => `- @${m.byUsername}: ${m.text}`).join('\n')
+        merged.map((m) => `- @${sanitizeMergedUsername(m.byUsername)}: ${m.text}`).join('\n')
       : '';
 
   const user = `用户原始请求：${run.inputText}

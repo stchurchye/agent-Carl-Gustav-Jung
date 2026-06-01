@@ -82,6 +82,15 @@ export type MergedInput = {
   at: string; // ISO timestamp
 };
 
+/**
+ * M7 review fix：byUsername 来自用户可改的 displayName，渲染进 LLM prompt 前剥掉
+ * 换行 / 制表符并 clamp 长度，避免用换行 + "# 用户请求" 之类伪造段落标题做注入。
+ */
+export function sanitizeMergedUsername(name: string | null | undefined): string {
+  const cleaned = (name ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 48);
+  return cleaned || '成员';
+}
+
 export type AgentRun = {
   id: string;
   ownerId: string;

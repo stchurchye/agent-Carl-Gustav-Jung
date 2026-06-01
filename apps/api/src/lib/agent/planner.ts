@@ -1,4 +1,5 @@
 import type { Plan, PlanStep, TodoItem } from './types.js';
+import { sanitizeMergedUsername } from './types.js';
 import { toolRegistry, type ToolDef } from './toolRegistry.js';
 import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
 import type { AgentContextSnapshot } from './contextAdapter.js';
@@ -245,7 +246,7 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   const mergedSection =
     merged.length > 0
       ? `\n\n# 后续追问（合并自其他成员，需在新 plan 中一并回应）\n` +
-        merged.map((m, i) => `${i + 1}. @${m.byUsername} (${m.at}): ${m.text}`).join('\n')
+        merged.map((m, i) => `${i + 1}. @${sanitizeMergedUsername(m.byUsername)} (${m.at}): ${m.text}`).join('\n')
       : '';
   return `# 用户请求\n${input.inputText}${mergedSection}${summary}${failure}`;
 }

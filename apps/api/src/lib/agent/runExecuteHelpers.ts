@@ -73,12 +73,14 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
   const steerIsNewest =
     !!lastSteer && (!lastDeny || lastSteer.idx > lastDeny.idx);
 
-  // M7 P1：P1 路径已写过一条 replan(reason='merge_trigger')，这里别重复 record，
+  // M7 P1：P1 路径刚写过一条 replan(reason='merge_trigger')，这里别重复 record，
   // 但仍要清 plan 让 executeRun 重新规划（追问已进 merged_inputs / context）。
-  const lastReplanStep = [...steps].reverse().find((s) => s.kind === 'replan');
+  // 关键：只看「最后一条 step」是否就是 merge_trigger replan —— 若其后又跑了步骤
+  // 再因 critique 进 replanning，最后一条不再是它，critique 的审计 replan 不被误抑制。
+  const lastStep = steps[steps.length - 1];
   const mergeTriggered =
-    (lastReplanStep?.output as { reason?: string } | null)?.reason ===
-    'merge_trigger';
+    lastStep?.kind === 'replan' &&
+    (lastStep.output as { reason?: string } | null)?.reason === 'merge_trigger';
 
   if (denyIsNewest) {
     const newPlan = generatePlanForApprovalDeny(

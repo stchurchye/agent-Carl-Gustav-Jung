@@ -459,6 +459,22 @@ export async function listSteps(runId: string): Promise<AgentStep[]> {
   return rows.map(parseStep);
 }
 
+/**
+ * M7：只取某一 kind 的 step（定向过滤推到 DB，避免热路径全表扫）。
+ * contextAdapter 每次群聊快照取 user_message_appended 用。
+ */
+export async function listStepsByKind(
+  runId: string,
+  kind: StepKind,
+): Promise<AgentStep[]> {
+  const { rows } = await getPool().query(
+    `SELECT ${STEP_COLUMNS}
+     FROM agent_steps WHERE run_id = $1 AND kind = $2 ORDER BY idx ASC`,
+    [runId, kind],
+  );
+  return rows.map(parseStep);
+}
+
 export async function findStepByToolCallKey(
   runId: string,
   toolCallKey: string,
