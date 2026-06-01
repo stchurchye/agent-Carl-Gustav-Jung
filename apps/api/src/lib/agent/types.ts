@@ -15,6 +15,8 @@ export type AgentRunStatus =
   | 'awaiting_user_input'
   | 'running'
   | 'replanning'
+  // M7：同 topic active run 占用时，新触发的群聊 run 入队等待。
+  | 'queued'
   | 'completed'
   | 'failed'
   | 'cancelled'
@@ -69,6 +71,17 @@ export type AgentUsage = {
   costCny: number;
 };
 
+/**
+ * M7：合并到活动 run 的追问。acquireTopicSlot 的 merge 分支 append 到
+ * agent_runs.merged_inputs JSONB 数组；runExecute 据 consumed count 推进消化。
+ */
+export type MergedInput = {
+  text: string;
+  byUserId: string;
+  byUsername: string;
+  at: string; // ISO timestamp
+};
+
 export type AgentRun = {
   id: string;
   ownerId: string;
@@ -117,6 +130,18 @@ export type AgentRun = {
   pendingApprovalToolName: string | null;
   cancelledByUserId: string | null;
   cancelReason: CancelReason | null;
+  /** M7：追问数组，acquireTopicSlot merge 分支 append。 */
+  mergedInputs: MergedInput[];
+  /** M7：runExecute 已注入 planner / replan 的追问数。每步前比较推进。 */
+  mergedInputsConsumedCount: number;
+  /** M7：queued 状态下记录的初始位次（UI hint，非真源）。 */
+  queuePosition: number | null;
+  /** M7：ask_user 群聊期待谁答（默认 = ownerId）。 */
+  askUserTargetUserId: string | null;
+  /** M7：本次 ask_user 进入 awaiting 时刻；30s 后 worker 升级为开放。 */
+  askUserStartedAt: Date | null;
+  /** M7：worker checker 升级后 set；UI 据此切显示+权限。 */
+  askUserOpenedForAllAt: Date | null;
   createdAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -132,6 +157,8 @@ export type StepKind =
   // M3 hotfix: 用户对 ask_user 的回答；不属于 plan step 推进，不应被 reclaim 计数。
   // 使用独立 kind 而非 'observe' 可让 recordReclaimIfNeeded 精确过滤。
   | 'user_input'
+  // M7：merge 时写的追问（同 topic 的后续 agent_run 被合并到活动 run）。
+  | 'user_message_appended'
   | 'reply'
   | 'approval_request'
   | 'approval_grant'
