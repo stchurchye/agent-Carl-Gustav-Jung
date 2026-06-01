@@ -366,13 +366,27 @@ export async function executeRun(runId: string): Promise<void> {
         obsObj?.paused === true
       ) {
         const question = (planStep.input as { question?: unknown })?.question;
+        const fromStatus = run.status; // ADR-M7-12：update 前 capture
         // M4 Task 5：写 24h timeout 戳。worker tick 的
         // autoExpireAwaitingUserInput 会自动 cancel('user_timeout')。
-        await store.updateAgentRun(runId, {
+        const patch: store.UpdateAgentRunPatch = {
           status: 'awaiting_user_input',
           pendingUserPrompt: typeof question === 'string' ? question : '',
           pendingUserStepIdx: i,
           pendingUserInputExpiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+        };
+        // M7 T6c：群聊扩展 —— 记录 owner 30s 独占应答的起点。
+        if (run.channel === 'group') {
+          patch.askUserTargetUserId = run.ownerId;
+          patch.askUserStartedAt = new Date();
+          patch.askUserOpenedForAllAt = null;
+        }
+        const updated = (await store.updateAgentRun(runId, patch))!;
+        agentHookBus.emitEvent({
+          type: 'run.status_changed',
+          run: updated,
+          from: fromStatus,
+          to: 'awaiting_user_input',
         });
         return;
       }
