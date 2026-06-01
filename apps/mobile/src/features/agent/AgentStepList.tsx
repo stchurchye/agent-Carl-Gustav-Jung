@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScrollView, View, Text, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { navigateBrainTab } from '../../lib/navigateBrain';
 import type { AgentRun, AgentStep } from './types';
 import AskUserPrompt from '../../components/AskUserPrompt';
 import DeepResearchReport from '../../components/DeepResearchReport';
@@ -139,7 +140,9 @@ export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
                   {out.childRunId ? (
                     <TouchableOpacity
                       onPress={() =>
-                        navigation.navigate('BrainAgentTaskDetail', { runId: out.childRunId })
+                        navigateBrainTab(navigation, 'BrainAgentTaskDetail', {
+                          runId: out.childRunId!,
+                        })
                       }
                     >
                       <Text style={{ color: '#0a66c2', fontSize: 12, marginTop: 4 }}>

@@ -58,7 +58,7 @@ export function AskUserPromptCard(props: AskUserPromptCardProps) {
 
   const onSubmit = async () => {
     const trimmed = input.trim();
-    if (!trimmed || submitting) return;
+    if (!trimmed || submitting || !userId) return; // 未登录直接挡掉，避免 403
     setSubmitting(true);
     try {
       await resumeAgentRun(runId, trimmed);
@@ -76,7 +76,9 @@ export function AskUserPromptCard(props: AskUserPromptCardProps) {
       <Text style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>
         {openedForAll
           ? '任意群成员可回答'
-          : `请 @${target} 回答 · ${remainSec}s 后开放`}
+          : startedAtMs
+            ? `请 @${target} 回答 · ${remainSec}s 后开放`
+            : `请 @${target} 回答`}
       </Text>
       {canAnswer ? (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
