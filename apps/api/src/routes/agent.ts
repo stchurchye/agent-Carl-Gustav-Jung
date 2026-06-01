@@ -279,6 +279,14 @@ agentRouter.get('/runs/:id/long-poll', async (c) => {
         event.run.id === id
       ) {
         settle('run');
+      } else if (
+        // M7 T8：状态-only 变化也立即出 batch（出队 / ask_user 升级 / 追问入队 / 状态切换）。
+        (event.type === 'run.status_changed' && event.run.id === id) ||
+        (event.type === 'run.dequeued' && event.run.id === id) ||
+        (event.type === 'ask_user.opened_for_all' && event.runId === id) ||
+        (event.type === 'run.merged_input_appended' && event.runId === id)
+      ) {
+        settle('run');
       }
     });
 
