@@ -39,6 +39,29 @@ export async function canAccessRun(run: AgentRun, userId: string): Promise<boole
 }
 
 /**
+ * M7 T6d：群聊 ask_user resume 权限。比 canAccessRun 更严：
+ *   - 私聊：仅 owner
+ *   - 群聊 owner：永远可答（隐式最高权限）
+ *   - 群聊其他人：必须先是群成员，再满足任一：是 askUserTargetUserId，或 openedForAll 已生效
+ *   - 非群成员：永远不可答（即便 target 被误设为非成员，也兜底拒绝）
+ */
+export async function canAnswerAskUser(run: AgentRun, userId: string): Promise<boolean> {
+  if (run.channel !== 'group') return userId === run.ownerId;
+  if (userId === run.ownerId) return true;
+  // 严格：先 enforce 群成员身份，再看 target / openedForAll。
+  const { rows } = await getPool().query(
+    `SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1`,
+    [run.groupId, userId],
+  );
+  if (rows.length === 0) return false;
+  if (run.askUserTargetUserId && userId === run.askUserTargetUserId) return true;
+  // openedForAllAt 由 worker 在 30s 后置为 NOW()，一旦非空即代表已开放。
+  // 不和 JS new Date() 比大小 —— DB 时钟与进程时钟有偏移（实测 OrbStack PG 快 ~20ms）。
+  if (run.askUserOpenedForAllAt) return true;
+  return false;
+}
+
+/**
  * M1d Task 4：任务面板列表。按 owner=me 或 me 是 run.groupId 群成员过滤。
  * 可选 ?status= 过滤、?limit= 控量（默认 50，最大 100）。
  */
@@ -298,7 +321,8 @@ agentRouter.post('/runs/:id/resume', async (c) => {
   const id = c.req.param('id');
   const run = await store.getAgentRun(id);
   if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
-  if (!(await canAccessRun(run, userId))) return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
+  // M7 T6d：resume 用更严的 canAnswerAskUser（群聊 owner-lock / openedForAll / 成员校验）。
+  if (!(await canAnswerAskUser(run, userId))) return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   if (run.status !== 'awaiting_user_input') return jsonError(c, ErrorCodes.VALIDATION, 409);
 
   let body: { userInput?: string } = {};
