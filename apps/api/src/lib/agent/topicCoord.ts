@@ -113,3 +113,26 @@ export async function acquireTopicSlot(
   const precedingCount = await store.countBlockingPlusQueuedOnTopic(topicId, client);
   return { action: 'queue', precedingCount };
 }
+
+/**
+ * M7：active run 进 terminal 时调用，把同 topic 队首 'queued' run 提到 'draft'，
+ * worker 下一 tick 自然 pickup。
+ *
+ * 触发点（T4b）：softComplete / cancelRun 两个出口调；reclaim 仅延续 run 不释放 slot。
+ */
+export async function dequeueNextOnTopic(topicId: string | null): Promise<void> {
+  if (!topicId) return;
+  // queued 本身不算 blocking；如果还有 running 等就别 dequeue（让它跑完）。
+  const stillBlocking = await store.findBlockingActiveOnTopic(topicId);
+  if (stillBlocking) return;
+  const next = await store.findQueuedHeadOnTopic(topicId);
+  if (!next) return;
+  const updated = await store.updateAgentRun(next.id, {
+    status: 'draft',
+    queuePosition: null,
+  });
+  if (updated) {
+    const { agentHookBus } = await import('./hooks.js');
+    agentHookBus.emitEvent({ type: 'run.dequeued', run: updated });
+  }
+}
