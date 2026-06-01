@@ -122,6 +122,35 @@ export async function executeRun(runId: string): Promise<void> {
     let pendingGrantBypass = await detectPendingGrantBypass(runId);
 
     for (let i = completedCount; i < plan.steps.length; i++) {
+      // === M7 P1：检查未消化追问 → 触发 replan，让 worker re-pickup 走 applyReplanningIfNeeded ===
+      // 仅 SELECT 2 列，<1ms（R12）。inputText 永不改写（ADR-M7-13），追问只进 merged_inputs。
+      const mergedCounts = await store.getMergedInputCounts(runId);
+      if (mergedCounts && mergedCounts.total > mergedCounts.consumed) {
+        const fromStatus = run.status;
+        await recordStep({
+          runId,
+          kind: 'replan',
+          output: {
+            reason: 'merge_trigger',
+            mergedTotal: mergedCounts.total,
+            previouslyConsumed: mergedCounts.consumed,
+          },
+        });
+        await store.updateAgentRun(runId, {
+          mergedInputsConsumedCount: mergedCounts.total,
+          status: 'replanning',
+        });
+        const latest = (await store.getAgentRun(runId))!;
+        agentHookBus.emitEvent({
+          type: 'run.status_changed',
+          run: latest,
+          from: fromStatus,
+          to: 'replanning',
+        });
+        return;
+      }
+      // === End M7 P1 ===
+
       if (abortController.signal.aborted) {
         // 区分 steer vs user cancel：steerRun 已经写了 status='replanning'
         const cur = await store.getAgentRun(runId);
