@@ -144,6 +144,21 @@ export async function snapshotForAgent(
         : m.authorDisplayName ?? '成员';
     return { role, content: `[${speaker}] ${m.content}` };
   });
+  // M7 P4：把本 run 的 user_message_appended steps（合并进来的追问）拼到 history 末尾，
+  // 让 planner / reply 的上下文里能看到追问原文。
+  if (params.runId) {
+    const { listSteps } = await import('./store.js');
+    const apSteps = await listSteps(params.runId);
+    for (const s of apSteps) {
+      if (s.kind !== 'user_message_appended') continue;
+      const input = s.input as { text?: string; byUsername?: string } | null;
+      if (!input?.text) continue;
+      history.push({
+        role: 'user',
+        content: `[${input.byUsername ?? '成员'}] ${input.text}`,
+      });
+    }
+  }
   const last6 = selected
     .slice(-6)
     .map((m) => `${m.authorDisplayName ?? '成员'}: ${m.content.slice(0, 80)}`)
