@@ -69,10 +69,15 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
     const maxSteps = Math.max(1, Math.min(input.maxSteps ?? 5, 8));
 
     try {
-      // 1. 创建子 run（parentRunId 指向父 run，budget 限制）
+      // 1. 创建子 run（parentRunId 指向父 run，budget 限制）。
+      // M7 T7：父是群聊 → 子也落到同 group/topic，走无 invoker 的子卡片占位。
+      const isParentGroup =
+        parentRun.channel === 'group' && !!parentRun.groupId && !!parentRun.topicId;
       const childResult = await createAgentRun({
         ownerId: parentRun.ownerId,
-        channel: 'private',
+        channel: isParentGroup ? 'group' : 'private',
+        groupId: isParentGroup ? parentRun.groupId! : undefined,
+        topicId: isParentGroup ? parentRun.topicId! : undefined,
         inputText: input.question,
         apiKey: '',
         apiKeySource: parentRun.apiKeySource,
@@ -80,6 +85,7 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
         modelId: parentRun.modelId,
         parentRunId: parentRun.id,
         budget: { maxSteps, maxSeconds: 120, maxTokens: 50_000 },
+        surfaceMode: isParentGroup ? 'child_card' : 'default',
       });
       const childRunId = childResult.run.id;
 
