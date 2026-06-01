@@ -5,6 +5,7 @@ export type AgentRunStatus =
   | 'awaiting_approval'
   | 'awaiting_user_input'
   | 'replanning'
+  | 'queued' // M7：同 topic active run 占用时入队
   | 'completed'
   | 'failed'
   | 'cancelled'
@@ -19,6 +20,7 @@ export type AgentStepKind =
   | 'observe'
   // M3 hotfix: ask_user 的用户回答，不计入 plan 推进计数。
   | 'user_input'
+  | 'user_message_appended' // M7：merge 时写的追问
   | 'critique'
   | 'reply'
   | 'steer'
@@ -98,6 +100,14 @@ export type AgentUsage = {
   costCny: number;
 };
 
+// M7：合并到活动 run 的追问，与后端 MergedInput 对齐。
+export type MergedInput = {
+  text: string;
+  byUserId: string;
+  byUsername: string;
+  at: string;
+};
+
 export type AgentRun = {
   id: string;
   ownerId: string;
@@ -126,6 +136,13 @@ export type AgentRun = {
   pendingUserInputExpiresAt?: string | null;
   // M5 T4: 终态产物（reply step 的 finalContent + refs + model 信息）。
   artifact?: RunArtifact | null;
+  // M7 新字段（都 optional，老 backend 不会返回）。
+  mergedInputs?: MergedInput[];
+  mergedInputsConsumedCount?: number;
+  queuePosition?: number | null;
+  askUserTargetUserId?: string | null;
+  askUserStartedAt?: string | null; // ISO（mobile 侧 Date 全部 ISO string）
+  askUserOpenedForAllAt?: string | null;
   // 其他后端字段 (plan / cancelReason 等) 按需扩展。
   createdAt: string;
 };

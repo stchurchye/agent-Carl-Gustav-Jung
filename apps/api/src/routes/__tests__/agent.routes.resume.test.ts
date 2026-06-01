@@ -213,3 +213,84 @@ describe('POST /api/agent/runs/:id/resume', () => {
     expect(res.status).toBe(400);
   });
 });
+
+type TestUser = Awaited<ReturnType<typeof ensureUser>>;
+
+describe('M7 T6d ask_user group resume permission', () => {
+  let owner: TestUser;
+  let other: TestUser;
+  let outsider: TestUser;
+  let groupId: string;
+  let topicId: string;
+  let runId: string;
+
+  beforeEach(async () => {
+    owner = await ensureUser('m7-resume-o');
+    other = await ensureUser('m7-resume-x');
+    outsider = await ensureUser('m7-resume-z');
+    const g = await ensureGroup(owner.id, 'rt-' + Math.random());
+    groupId = g.groupId;
+    topicId = g.topicId;
+    await getPool().query(
+      `INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'member')
+       ON CONFLICT DO NOTHING`,
+      [groupId, other.id],
+    );
+    runId = randomUUID();
+    await getPool().query(
+      `INSERT INTO agent_runs (id, owner_id, channel, group_id, topic_id, role,
+         status, input_text, budget, api_key_source,
+         pending_user_prompt, pending_user_step_idx, pending_user_input_expires_at,
+         ask_user_target_user_id, ask_user_started_at)
+       VALUES ($1, $2, 'group', $3, $4, 'generalist',
+         'awaiting_user_input', 'q', '{"maxSteps":5,"maxSeconds":60,"maxTokens":1000}'::jsonb,
+         'server', 'pick A or B', 1, NOW() + INTERVAL '1 hour',
+         $2, NOW())`,
+      [runId, owner.id, groupId, topicId],
+    );
+  });
+
+  async function resume(user: TestUser) {
+    const app = makeApp();
+    const token = await tokenFor(user);
+    return app.fetch(
+      new Request(`http://x/api/agent/runs/${runId}/resume`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ userInput: '我来答' }),
+      }),
+    );
+  }
+
+  it('TB8: non-owner within owner-lock window → 403', async () => {
+    const res = await resume(other);
+    expect(res.status).toBe(403);
+  });
+
+  it('TB9: after openedForAll, group member can answer', async () => {
+    await getPool().query(
+      `UPDATE agent_runs SET ask_user_opened_for_all_at = NOW() WHERE id = $1`,
+      [runId],
+    );
+    const res = await resume(other);
+    expect(res.status).toBe(200);
+  });
+
+  it('TB10: non-member always 403 even after openedForAll', async () => {
+    await getPool().query(
+      `UPDATE agent_runs SET ask_user_opened_for_all_at = NOW() WHERE id = $1`,
+      [runId],
+    );
+    const res = await resume(outsider);
+    expect(res.status).toBe(403);
+  });
+
+  it('TB10b: non-member set as askUserTargetUserId still 403 (membership 优先)', async () => {
+    await getPool().query(
+      `UPDATE agent_runs SET ask_user_target_user_id = $2 WHERE id = $1`,
+      [runId, outsider.id],
+    );
+    const res = await resume(outsider);
+    expect(res.status).toBe(403);
+  });
+});

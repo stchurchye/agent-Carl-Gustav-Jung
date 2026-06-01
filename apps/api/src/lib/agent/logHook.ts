@@ -72,6 +72,34 @@ function serializeEvent(e: AgentHookEvent): {
         userId: e.run.ownerId,
         payload: { status: e.run.status, resource: e.resource },
       };
+    // M7：状态-only 变化 —— 保留 from/to 转换信息，审计才完整。
+    case 'run.status_changed':
+      return {
+        runId: e.run.id,
+        userId: e.run.ownerId,
+        payload: { status: e.run.status, from: e.from, to: e.to },
+      };
+    // M7：出队（queued → draft）。
+    case 'run.dequeued':
+      return {
+        runId: e.run.id,
+        userId: e.run.ownerId,
+        payload: { status: e.run.status, dequeued: true },
+      };
+    // M7：群聊 ask_user 升级为全员可答。
+    case 'ask_user.opened_for_all':
+      return {
+        runId: e.runId,
+        userId: e.run.ownerId,
+        payload: { status: e.run.status, openedForAll: true },
+      };
+    // M7：唯一不带 `run` 的事件 —— 只有 runId + 计数。
+    case 'run.merged_input_appended':
+      return {
+        runId: e.runId,
+        userId: null,
+        payload: { mergedInputsCount: e.mergedInputsCount },
+      };
     default:
       return {
         runId: e.run.id,

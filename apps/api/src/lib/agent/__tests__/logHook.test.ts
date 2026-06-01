@@ -113,4 +113,29 @@ describe('logHook', () => {
     });
     expect(row.payload.error).toBe('boom');
   });
+
+  // M7：run.status_changed 审计要保留 from/to 转换信息（不能只记当前 status）。
+  it('persists run.status_changed with from/to transition', async () => {
+    const run = makeRun({ id: 'r-status', status: 'replanning' });
+    agentHookBus.emitEvent({
+      type: 'run.status_changed',
+      run,
+      from: 'running',
+      to: 'replanning',
+    });
+
+    const row = await waitFor(async () => {
+      const { rows } = await getPool().query(
+        `SELECT payload FROM agent_event_logs
+          WHERE run_id = $1 AND event_type = 'agent.run.status_changed' LIMIT 1`,
+        [run.id],
+      );
+      return rows[0];
+    });
+    expect(row.payload).toMatchObject({
+      status: 'replanning',
+      from: 'running',
+      to: 'replanning',
+    });
+  });
 });

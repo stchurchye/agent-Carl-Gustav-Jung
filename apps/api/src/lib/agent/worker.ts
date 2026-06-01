@@ -2,6 +2,7 @@ import * as store from './store.js';
 import { executeRun } from './runtime.js';
 import { autoResolveExpiredApprovals } from './approval.js';
 import { autoExpireAwaitingUserInput } from './expireAwaitingUserInput.js';
+import { autoOpenAskUserForAll } from './openAskUserForAll.js';
 
 export type WorkerHandle = {
   stop: () => void;
@@ -24,6 +25,13 @@ async function tick() {
     await autoExpireAwaitingUserInput(new Date());
   } catch (e) {
     console.error('[agent worker] autoExpireAwaitingUserInput failed', e);
+  }
+
+  // 1.6) M7 T6e：群聊 ask_user owner 独占 30s 后升级为任意群成员可答
+  try {
+    await autoOpenAskUserForAll(new Date());
+  } catch (e) {
+    console.error('[agent worker] autoOpenAskUserForAll failed', e);
   }
 
   // 2) Pickup 下一个 draft/running/replanning 待办 run。

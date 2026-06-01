@@ -73,6 +73,15 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
   const steerIsNewest =
     !!lastSteer && (!lastDeny || lastSteer.idx > lastDeny.idx);
 
+  // M7 P1：P1 路径刚写过一条 replan(reason='merge_trigger')，这里别重复 record，
+  // 但仍要清 plan 让 executeRun 重新规划（追问已进 merged_inputs / context）。
+  // 关键：只看「最后一条 step」是否就是 merge_trigger replan —— 若其后又跑了步骤
+  // 再因 critique 进 replanning，最后一条不再是它，critique 的审计 replan 不被误抑制。
+  const lastStep = steps[steps.length - 1];
+  const mergeTriggered =
+    lastStep?.kind === 'replan' &&
+    (lastStep.output as { reason?: string } | null)?.reason === 'merge_trigger';
+
   if (denyIsNewest) {
     const newPlan = generatePlanForApprovalDeny(
       run.plan!,
@@ -88,15 +97,17 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
     // critique 触发（或其他非 steer / 非 deny 的 replan 源）→ 清 plan，
     // 让 executeRun 走 buildInitialPlan 重生成；previousFailure 由
     // buildPreviousFailureSummary 从 DB 取最近 failed step 拼出。
-    await recordStep({
-      runId: run.id,
-      kind: 'replan',
-      output: {
-        reason: 'critique_or_unspecified',
-        clearedPlan: true,
-        prevPlanVersion: run.plan?.version ?? null,
-      },
-    });
+    if (!mergeTriggered) {
+      await recordStep({
+        runId: run.id,
+        kind: 'replan',
+        output: {
+          reason: 'critique_or_unspecified',
+          clearedPlan: true,
+          prevPlanVersion: run.plan?.version ?? null,
+        },
+      });
+    }
     next = (await store.updateAgentRun(run.id, {
       plan: null,
       todos: [],

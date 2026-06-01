@@ -39,6 +39,7 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
   awaiting_approval: '等待授权',
   awaiting_user_input: '等待输入',
   replanning: '重新规划',
+  queued: '排队中',
   completed: '已完成',
   failed: '失败',
   cancelled: '已取消',

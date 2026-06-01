@@ -61,4 +61,31 @@ describe('012_agent_runtime migration', () => {
     const indexes = rows.map((r) => r.indexname);
     expect(indexes).toContain('idx_agent_steps_tool_call_key');
   });
+
+  it('021: agent_runs has M7 topic-coordination columns', async () => {
+    const { rows } = await getPool().query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'agent_runs' ORDER BY ordinal_position`,
+    );
+    const names = rows.map((r) => r.column_name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'merged_inputs',
+        'merged_inputs_consumed_count',
+        'queue_position',
+        'ask_user_target_user_id',
+        'ask_user_started_at',
+        'ask_user_opened_for_all_at',
+      ]),
+    );
+  });
+
+  it('021: agent_runs has the two M7 partial indexes', async () => {
+    const { rows } = await getPool().query(
+      `SELECT indexname FROM pg_indexes WHERE tablename = 'agent_runs'`,
+    );
+    const indexes = rows.map((r) => r.indexname);
+    expect(indexes).toContain('idx_agent_runs_topic_blocking');
+    expect(indexes).toContain('idx_agent_runs_topic_queued');
+  });
 });

@@ -48,6 +48,7 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
   awaiting_approval: '等待授权',
   awaiting_user_input: '等待输入',
   replanning: '重新规划',
+  queued: '排队中',
   completed: '已完成',
   failed: '失败',
   cancelled: '已取消',
@@ -225,6 +226,18 @@ export function AgentRunCard({
           </TouchableOpacity>
         ) : null}
       </View>
+
+      {/* M7 T9：排队 / 已合并追问 后缀 */}
+      {run.status === 'queued' ? (
+        <Text style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+          排队中 · 前面还有 {run.queuePosition ?? '?'} 个任务
+        </Text>
+      ) : null}
+      {run.mergedInputs && run.mergedInputs.length > 0 ? (
+        <Text style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+          已合并 {run.mergedInputs.length} 个追问
+        </Text>
+      ) : null}
 
       <Text style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }} numberOfLines={3}>
         {run.inputText}

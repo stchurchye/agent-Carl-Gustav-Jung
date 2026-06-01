@@ -1,4 +1,4 @@
-import type { AgentStep, Plan } from './types.js';
+import type { AgentStep, MergedInput, Plan } from './types.js';
 
 export type CritiqueReason = 'periodic' | 'consecutive_failures';
 
@@ -6,6 +6,8 @@ export type CritiqueInput = {
   plan: Plan;
   recentSteps: AgentStep[];
   reason: CritiqueReason;
+  /** M7 P3：未消化的追问；当前实现仅 append 到 output.reason 字符串便于调试。 */
+  mergedInputs?: MergedInput[];
 };
 
 export type CritiqueOutput = {
@@ -39,15 +41,20 @@ export function isToolFailure(s: AgentStep): boolean {
  * - reason='periodic'：M1b 始终返回 false（缺真 LLM 评估能力）
  */
 export function runCritique(input: CritiqueInput): CritiqueOutput {
+  // M7 P3：仅作调试提示，不改变现有规则判定。
+  const mergedHint =
+    input.mergedInputs && input.mergedInputs.length > 0
+      ? ` [merged_inputs=${input.mergedInputs.length}]`
+      : '';
   if (input.reason === 'consecutive_failures') {
     const tail = input.recentSteps.slice(-4);
     const failures = tail.filter(isToolFailure);
     if (failures.length >= 2) {
       return {
         shouldReplan: true,
-        reason: '连续两次工具失败,建议重规划',
+        reason: '连续两次工具失败,建议重规划' + mergedHint,
       };
     }
   }
-  return { shouldReplan: false, reason: 'no action needed' };
+  return { shouldReplan: false, reason: 'no action needed' + mergedHint };
 }

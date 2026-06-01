@@ -40,6 +40,7 @@ import { SlashCommandsTip } from '../components/SlashCommandsTip';
 import { zh } from '../locales/zh-CN';
 import { ChatMessageRow, chatBubbleTextStyle } from '../components/ChatMessageRow';
 import { AgentRunCard } from '../features/agent/AgentRunCard';
+import { AskUserPromptCard } from '../features/agent/AskUserPromptCard';
 import { useAgentModelPicker } from '../features/agent/useAgentModelPicker';
 import { AgentModelPickerSheet } from '../features/agent/AgentModelPickerSheet';
 import { ChatMessageContent } from '../components/chat/ChatMessageContent';
@@ -550,6 +551,25 @@ export function GroupChatScreen({ route, navigation }: Props) {
     );
 
     const mark = bubbleMarkProps(item);
+
+    // M7 T10：群聊 ask_user 提示卡（payload.askUser 经 ...payload 平铺到 message）。
+    const askUser = (
+      item as unknown as {
+        askUser?: { runId?: string; target?: string; question?: string; openedForAll?: boolean };
+      }
+    ).askUser;
+    if (askUser?.runId) {
+      return row(
+        <AskUserPromptCard
+          runId={askUser.runId}
+          initial={{
+            question: askUser.question ?? '请回答',
+            target: askUser.target ?? '',
+            openedForAll: !!askUser.openedForAll,
+          }}
+        />,
+      );
+    }
 
     // M1b-3：agent run 占位消息（私聊 / 群聊 placeholderAi 都靠这个字段）
     const agentRunId = (item as unknown as { agentRun?: { agentRunId?: string } })

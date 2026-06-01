@@ -1,5 +1,6 @@
 import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
 import type { AgentRun, AgentStep, Plan, ReplyRef } from './types.js';
+import { sanitizeMergedUsername } from './types.js';
 import { toolRegistry, type ToolDef, type ToolReplyMeta } from './toolRegistry.js';
 
 export type { ReplyRef };
@@ -130,12 +131,20 @@ export function buildReplyMessages(params: {
       refs.map((r) => `- [${r.kind}] ${r.label ?? r.id} (id: ${r.id})`).join('\n')
     : '';
 
+  // M7 P2：合并的追问 → 终稿需统一回应。
+  const merged = run.mergedInputs ?? [];
+  const mergedSection =
+    merged.length > 0
+      ? `\n\n# 后续追问列表（共 ${merged.length} 条，需在 reply 中统一回应）\n` +
+        merged.map((m) => `- @${sanitizeMergedUsername(m.byUsername)}: ${m.text}`).join('\n')
+      : '';
+
   const user = `用户原始请求：${run.inputText}
 
 执行目标：${plan.intentSummary}
 
 工具调用摘要：
-${stepDigest || '（无工具调用）'}${refLines}
+${stepDigest || '（无工具调用）'}${refLines}${mergedSection}
 
 最终回复风格提示：${plan.finalReplyHint || '简明、对话风格'}`;
 

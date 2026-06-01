@@ -122,6 +122,35 @@ export async function executeRun(runId: string): Promise<void> {
     let pendingGrantBypass = await detectPendingGrantBypass(runId);
 
     for (let i = completedCount; i < plan.steps.length; i++) {
+      // === M7 P1：检查未消化追问 → 触发 replan，让 worker re-pickup 走 applyReplanningIfNeeded ===
+      // 仅 SELECT 2 列，<1ms（R12）。inputText 永不改写（ADR-M7-13），追问只进 merged_inputs。
+      const mergedCounts = await store.getMergedInputCounts(runId);
+      if (mergedCounts && mergedCounts.total > mergedCounts.consumed) {
+        const fromStatus = run.status;
+        await recordStep({
+          runId,
+          kind: 'replan',
+          output: {
+            reason: 'merge_trigger',
+            mergedTotal: mergedCounts.total,
+            previouslyConsumed: mergedCounts.consumed,
+          },
+        });
+        await store.updateAgentRun(runId, {
+          mergedInputsConsumedCount: mergedCounts.total,
+          status: 'replanning',
+        });
+        const latest = (await store.getAgentRun(runId))!;
+        agentHookBus.emitEvent({
+          type: 'run.status_changed',
+          run: latest,
+          from: fromStatus,
+          to: 'replanning',
+        });
+        return;
+      }
+      // === End M7 P1 ===
+
       if (abortController.signal.aborted) {
         // 区分 steer vs user cancel：steerRun 已经写了 status='replanning'
         const cur = await store.getAgentRun(runId);
@@ -337,13 +366,27 @@ export async function executeRun(runId: string): Promise<void> {
         obsObj?.paused === true
       ) {
         const question = (planStep.input as { question?: unknown })?.question;
+        const fromStatus = run.status; // ADR-M7-12：update 前 capture
         // M4 Task 5：写 24h timeout 戳。worker tick 的
         // autoExpireAwaitingUserInput 会自动 cancel('user_timeout')。
-        await store.updateAgentRun(runId, {
+        const patch: store.UpdateAgentRunPatch = {
           status: 'awaiting_user_input',
           pendingUserPrompt: typeof question === 'string' ? question : '',
           pendingUserStepIdx: i,
           pendingUserInputExpiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+        };
+        // M7 T6c：群聊扩展 —— 记录 owner 30s 独占应答的起点。
+        if (run.channel === 'group') {
+          patch.askUserTargetUserId = run.ownerId;
+          patch.askUserStartedAt = new Date();
+          patch.askUserOpenedForAllAt = null;
+        }
+        const updated = (await store.updateAgentRun(runId, patch))!;
+        agentHookBus.emitEvent({
+          type: 'run.status_changed',
+          run: updated,
+          from: fromStatus,
+          to: 'awaiting_user_input',
         });
         return;
       }
@@ -356,6 +399,7 @@ export async function executeRun(runId: string): Promise<void> {
           plan,
           recentSteps: recentTail,
           reason: 'periodic',
+          mergedInputs: run.mergedInputs, // M7 P3
         });
         await recordStep({ runId, kind: 'critique', output: c });
       }
@@ -369,6 +413,7 @@ export async function executeRun(runId: string): Promise<void> {
           plan,
           recentSteps: allSteps.slice(-4),
           reason: 'consecutive_failures',
+          mergedInputs: run.mergedInputs, // M7 P3
         });
         await recordStep({ runId, kind: 'critique', output: c });
         if (c.shouldReplan) {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import type { PoolClient } from 'pg';
 import { getPool } from '../../db/client.js';
 import {
   type AgentRun,
@@ -15,6 +16,7 @@ import {
   type AgentRole,
   type RunSummary,
   type RunArtifact,
+  type MergedInput,
 } from './types.js';
 
 type Row = Record<string, unknown>;
@@ -63,6 +65,14 @@ function parseRun(row: Row): AgentRun {
       (row.pending_approval_tool_name as string | null) ?? null,
     cancelledByUserId: (row.cancelled_by_user_id as string | null) ?? null,
     cancelReason: (row.cancel_reason as CancelReason | null) ?? null,
+    mergedInputs: (row.merged_inputs as MergedInput[] | null) ?? [],
+    mergedInputsConsumedCount:
+      (row.merged_inputs_consumed_count as number | null) ?? 0,
+    queuePosition: (row.queue_position as number | null) ?? null,
+    askUserTargetUserId: (row.ask_user_target_user_id as string | null) ?? null,
+    askUserStartedAt: (row.ask_user_started_at as Date | null) ?? null,
+    askUserOpenedForAllAt:
+      (row.ask_user_opened_for_all_at as Date | null) ?? null,
     createdAt: row.created_at as Date,
     startedAt: (row.started_at as Date | null) ?? null,
     endedAt: (row.ended_at as Date | null) ?? null,
@@ -109,7 +119,9 @@ const RUN_COLUMNS = `id, owner_id, channel, session_id, group_id, topic_id,
   result_message_id, invoke_message_id,
   last_heartbeat_at, awaiting_approval_until, awaiting_approval_step_idx,
   pending_approval_tool_name, cancelled_by_user_id, cancel_reason,
-  created_at, started_at, ended_at`;
+  created_at, started_at, ended_at,
+  merged_inputs, merged_inputs_consumed_count, queue_position,
+  ask_user_target_user_id, ask_user_started_at, ask_user_opened_for_all_at`;
 
 const STEP_COLUMNS = `id, run_id, idx, kind, tool_name, tool_call_key,
   input, output, tokens, duration_ms, error, by_user_id, created_at`;
@@ -123,7 +135,8 @@ export type InsertAgentRunInput = {
   topicId: string | null;
   intentTurnId: string | null;
   role: AgentRole;
-  status: AgentRunStatus;
+  /** M7：默认 'draft'（SQL COALESCE）。T3 queue 分支传 'queued'。 */
+  status?: AgentRunStatus;
   inputText: string;
   budget: AgentBudget;
   apiKeyOwnerId: string | null;
@@ -148,51 +161,76 @@ export type InsertAgentRunInput = {
   userApiKeysEnc?: Record<string, string>;
   /** M3 Task 1: parent run id for deep_research child runs。顶层 run 留空。 */
   parentRunId?: string | null;
+  /** M7：queued 时记录入队位次。 */
+  queuePosition?: number | null;
 };
+
+// M1e Task 11d：provider_id / model_id 走 DB DEFAULT（'deepseek' / 'deepseek-v4-pro'）。
+// 只有 caller 传了非 undefined 才覆盖默认；undefined 让 DB 决定，避免 backend
+// 双重默认值漂移。
+// M7：status COALESCE 默认 'draft'；新增 queue_position（$20）。
+const INSERT_AGENT_RUN_SQL = `INSERT INTO agent_runs (
+     id, owner_id, channel, session_id, group_id, topic_id,
+     intent_turn_id, role, status, input_text, budget,
+     api_key_owner_id, api_key_source, user_api_key_enc,
+     user_zenmux_key_enc, provider_id, model_id, user_api_keys_enc,
+     parent_run_id, queue_position
+   ) VALUES (
+     $1,$2,$3,$4,$5,$6,$7,$8, COALESCE($9, 'draft'), $10, $11,$12,$13,$14,$15,
+     COALESCE($16, 'deepseek'),
+     COALESCE($17, 'deepseek-v4-pro'),
+     COALESCE($18::jsonb, '{}'),
+     $19,
+     $20
+   )
+   RETURNING ${RUN_COLUMNS}`;
+
+function buildInsertAgentRunParams(input: InsertAgentRunInput): unknown[] {
+  return [
+    input.id ?? randomUUID(),
+    input.ownerId,
+    input.channel,
+    input.sessionId,
+    input.groupId,
+    input.topicId,
+    input.intentTurnId,
+    input.role,
+    input.status ?? null,
+    input.inputText,
+    JSON.stringify(input.budget),
+    input.apiKeyOwnerId,
+    input.apiKeySource,
+    input.userApiKeyEnc ?? null,
+    input.userZenmuxKeyEnc ?? null,
+    input.providerId ?? null,
+    input.modelId ?? null,
+    input.userApiKeysEnc ? JSON.stringify(input.userApiKeysEnc) : null,
+    input.parentRunId ?? null,
+    input.queuePosition ?? null,
+  ];
+}
 
 export async function insertAgentRun(
   input: InsertAgentRunInput,
 ): Promise<AgentRun> {
-  const id = input.id ?? randomUUID();
-  // M1e Task 11d：provider_id / model_id 走 DB DEFAULT（'deepseek' / 'deepseek-v4-pro'）。
-  // 只有 caller 传了非 undefined 才覆盖默认；undefined 让 DB 决定，避免 backend
-  // 双重默认值漂移。
   const { rows } = await getPool().query(
-    `INSERT INTO agent_runs (
-       id, owner_id, channel, session_id, group_id, topic_id,
-       intent_turn_id, role, status, input_text, budget,
-       api_key_owner_id, api_key_source, user_api_key_enc,
-       user_zenmux_key_enc, provider_id, model_id, user_api_keys_enc,
-       parent_run_id
-     ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-       COALESCE($16, 'deepseek'),
-       COALESCE($17, 'deepseek-v4-pro'),
-       COALESCE($18::jsonb, '{}'),
-       $19
-     )
-     RETURNING ${RUN_COLUMNS}`,
-    [
-      id,
-      input.ownerId,
-      input.channel,
-      input.sessionId,
-      input.groupId,
-      input.topicId,
-      input.intentTurnId,
-      input.role,
-      input.status,
-      input.inputText,
-      JSON.stringify(input.budget),
-      input.apiKeyOwnerId,
-      input.apiKeySource,
-      input.userApiKeyEnc ?? null,
-      input.userZenmuxKeyEnc ?? null,
-      input.providerId ?? null,
-      input.modelId ?? null,
-      input.userApiKeysEnc ? JSON.stringify(input.userApiKeysEnc) : null,
-      input.parentRunId ?? null,
-    ],
+    INSERT_AGENT_RUN_SQL,
+    buildInsertAgentRunParams(input),
+  );
+  return parseRun(rows[0]);
+}
+
+/**
+ * M7：与 insertAgentRun 完全等价，但跑在 caller 提供的事务 client 上
+ * （withTopicCoordination 的持锁连接）。R13：决策 + INSERT 必须同事务。
+ */
+export async function insertAgentRunInTx(
+  client: PoolClient,
+  input: InsertAgentRunInput,
+): Promise<AgentRun> {
+  const { rows } = await client.query(
+    INSERT_AGENT_RUN_SQL,
+    buildInsertAgentRunParams(input),
   );
   return parseRun(rows[0]);
 }
@@ -299,7 +337,17 @@ export type UpdateAgentRunInput = Partial<{
   cancelReason: CancelReason | null;
   startedAt: Date | null;
   endedAt: Date | null;
+  /** M7 P1 推进 consumed_count；与 status 一起 update 时 jsonb 走 jsonbOrNull。 */
+  mergedInputs: MergedInput[] | null;
+  mergedInputsConsumedCount: number;
+  queuePosition: number | null;
+  askUserTargetUserId: string | null;
+  askUserStartedAt: Date | null;
+  askUserOpenedForAllAt: Date | null;
 }>;
+
+/** M7：spec 引用类型别名，方便调用方写具名类型而非 Parameters<typeof updateAgentRun>[1]。 */
+export type UpdateAgentRunPatch = UpdateAgentRunInput;
 
 export async function updateAgentRun(
   id: string,
@@ -327,6 +375,18 @@ export async function updateAgentRun(
     cancelReason: ['cancel_reason', patch.cancelReason],
     startedAt: ['started_at', patch.startedAt],
     endedAt: ['ended_at', patch.endedAt],
+    mergedInputs: ['merged_inputs', jsonbOrNull(patch.mergedInputs)],
+    mergedInputsConsumedCount: [
+      'merged_inputs_consumed_count',
+      patch.mergedInputsConsumedCount,
+    ],
+    queuePosition: ['queue_position', patch.queuePosition],
+    askUserTargetUserId: ['ask_user_target_user_id', patch.askUserTargetUserId],
+    askUserStartedAt: ['ask_user_started_at', patch.askUserStartedAt],
+    askUserOpenedForAllAt: [
+      'ask_user_opened_for_all_at',
+      patch.askUserOpenedForAllAt,
+    ],
   };
 
   const sets: string[] = [];
@@ -395,6 +455,22 @@ export async function listSteps(runId: string): Promise<AgentStep[]> {
     `SELECT ${STEP_COLUMNS}
      FROM agent_steps WHERE run_id = $1 ORDER BY idx ASC`,
     [runId],
+  );
+  return rows.map(parseStep);
+}
+
+/**
+ * M7：只取某一 kind 的 step（定向过滤推到 DB，避免热路径全表扫）。
+ * contextAdapter 每次群聊快照取 user_message_appended 用。
+ */
+export async function listStepsByKind(
+  runId: string,
+  kind: StepKind,
+): Promise<AgentStep[]> {
+  const { rows } = await getPool().query(
+    `SELECT ${STEP_COLUMNS}
+     FROM agent_steps WHERE run_id = $1 AND kind = $2 ORDER BY idx ASC`,
+    [runId, kind],
   );
   return rows.map(parseStep);
 }
@@ -476,4 +552,173 @@ export async function pickupNextRun(): Promise<AgentRun | null> {
   } finally {
     client.release();
   }
+}
+
+// ============================================================
+// M7：topic slot 查询 + 合并/排队事务原语
+//
+// 设计约束（ADR-M7-14 + R13）：本节所有可能与 acquireTopicSlot 写入冲突的函数
+// 都接受 `client?: PoolClient`，调用方（withTopicCoordination）持有 advisory lock
+// 的事务客户端会原样透传；不传 client 时退回独立连接（旧路径 / 非协调场景）。
+// ============================================================
+
+const BLOCKING_STATUSES_SQL = `('draft','planning','running','replanning','awaiting_approval','awaiting_user_input')`;
+
+function exec(client: PoolClient | undefined) {
+  return client ?? getPool();
+}
+
+/**
+ * M7：找 topic 上正在跑（不含 queued）的最新 run。
+ * acquireTopicSlot 判定 merge / queue 时用。
+ */
+export async function findBlockingActiveOnTopic(
+  topicId: string,
+  client?: PoolClient,
+): Promise<AgentRun | null> {
+  const { rows } = await exec(client).query(
+    `SELECT ${RUN_COLUMNS} FROM agent_runs
+     WHERE topic_id = $1
+       AND status IN ${BLOCKING_STATUSES_SQL}
+       AND parent_run_id IS NULL
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [topicId],
+  );
+  return rows[0] ? parseRun(rows[0]) : null;
+}
+
+/**
+ * M7：拿 topic 上 status='queued' 的队首（FIFO）。
+ * dequeueNextOnTopic 用。
+ */
+export async function findQueuedHeadOnTopic(
+  topicId: string,
+  client?: PoolClient,
+): Promise<AgentRun | null> {
+  const { rows } = await exec(client).query(
+    `SELECT ${RUN_COLUMNS} FROM agent_runs
+     WHERE topic_id = $1 AND status = 'queued'
+     ORDER BY created_at ASC
+     LIMIT 1`,
+    [topicId],
+  );
+  return rows[0] ? parseRun(rows[0]) : null;
+}
+
+/**
+ * M7：blocking + queued 总数。queue 分支算 precedingCount 用。
+ */
+export async function countBlockingPlusQueuedOnTopic(
+  topicId: string,
+  client?: PoolClient,
+): Promise<number> {
+  const { rows } = await exec(client).query(
+    `SELECT COUNT(*)::int AS c FROM agent_runs
+     WHERE topic_id = $1
+       AND parent_run_id IS NULL
+       AND (status IN ${BLOCKING_STATUSES_SQL} OR status = 'queued')`,
+    [topicId],
+  );
+  return (rows[0]?.c as number | null) ?? 0;
+}
+
+const TERMINAL_STATUSES = new Set<string>([
+  'completed',
+  'failed',
+  'cancelled',
+  'budget_exhausted',
+]);
+
+/**
+ * M7：merge target 已经 terminal 时抛此错；上层 retry-once 重判。
+ */
+export class MergeTargetTerminalError extends Error {
+  constructor(public readonly targetRunId: string) {
+    super(`merge target run ${targetRunId} is already terminal`);
+    this.name = 'MergeTargetTerminalError';
+  }
+}
+
+/**
+ * M7：在事务内合并写 user_message_appended step + agent_runs.merged_inputs JSONB。
+ *
+ * - 传入 `client` 时：复用调用方事务（withTopicCoordination 持锁场景），不自己 BEGIN/COMMIT。
+ * - 不传 `client` 时：自管理短事务（向后兼容）。
+ *
+ * 防并发（为何 MAX(idx)+1 在这里是安全的）：先 `SELECT ... FOR UPDATE` 锁目标 run 行。
+ * 往 agent_steps 插一行会对父表 agent_runs 的该行取 FOR KEY SHARE 锁（FK 约束），
+ * 而 FOR KEY SHARE 与 FOR UPDATE 冲突 —— 所以 merge 持锁期间，worker 的 recordStep
+ * 插 step 会被阻塞，反之亦然。两侧因此串行，MAX(idx)+1 不会撞 UNIQUE(run_id, idx)。
+ * （已用双连接经验验证：FOR UPDATE 确实阻塞并发 agent_steps INSERT。）
+ */
+export async function applyMergeInTx(
+  targetRunId: string,
+  entry: MergedInput,
+  client?: PoolClient,
+): Promise<void> {
+  const ownClient = !client;
+  const c = client ?? (await getPool().connect());
+  try {
+    if (ownClient) await c.query('BEGIN');
+    const lockRes = await c.query(
+      `SELECT status FROM agent_runs WHERE id = $1 FOR UPDATE`,
+      [targetRunId],
+    );
+    if (lockRes.rowCount === 0) {
+      if (ownClient) await c.query('ROLLBACK');
+      throw new MergeTargetTerminalError(targetRunId);
+    }
+    const status = lockRes.rows[0].status as string;
+    if (TERMINAL_STATUSES.has(status)) {
+      if (ownClient) await c.query('ROLLBACK');
+      throw new MergeTargetTerminalError(targetRunId);
+    }
+
+    const { rows: idxRows } = await c.query(
+      `SELECT COALESCE(MAX(idx), -1) AS m FROM agent_steps WHERE run_id = $1`,
+      [targetRunId],
+    );
+    const nextIdx = ((idxRows[0]?.m as number | null) ?? -1) + 1;
+    await c.query(
+      `INSERT INTO agent_steps (id, run_id, idx, kind, input, output, tokens, duration_ms)
+         VALUES ($1, $2, $3, 'user_message_appended', $4::jsonb, NULL, 0, 0)`,
+      [randomUUID(), targetRunId, nextIdx, JSON.stringify(entry)],
+    );
+    // 注：agent_runs 无 updated_at 列（live schema 核实），故只更新 merged_inputs + status。
+    await c.query(
+      `UPDATE agent_runs
+         SET merged_inputs = COALESCE(merged_inputs, '[]'::jsonb) || $1::jsonb,
+             status = CASE
+                        WHEN status IN ('planning','running','awaiting_approval','awaiting_user_input')
+                          THEN 'replanning'
+                        ELSE status
+                      END
+       WHERE id = $2`,
+      [JSON.stringify([entry]), targetRunId],
+    );
+    if (ownClient) await c.query('COMMIT');
+  } catch (e) {
+    if (ownClient) await c.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    if (ownClient) c.release();
+  }
+}
+
+/**
+ * M7：仅查 merged_inputs 长度 + consumed_count，避免 runExecute 每步全表 SELECT（R12）。
+ */
+export async function getMergedInputCounts(
+  runId: string,
+  client?: PoolClient,
+): Promise<{ total: number; consumed: number } | null> {
+  const { rows } = await exec(client).query(
+    `SELECT jsonb_array_length(COALESCE(merged_inputs, '[]'::jsonb))::int AS total,
+            COALESCE(merged_inputs_consumed_count, 0)::int AS consumed
+       FROM agent_runs WHERE id = $1`,
+    [runId],
+  );
+  if (!rows[0]) return null;
+  return { total: Number(rows[0].total), consumed: Number(rows[0].consumed) };
 }

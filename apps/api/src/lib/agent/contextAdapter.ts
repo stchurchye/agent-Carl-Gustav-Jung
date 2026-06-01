@@ -7,6 +7,7 @@ import {
   listForAgent as listTopicSkillsForAgent,
   type TopicSkill as DbTopicSkill,
 } from './topicSkills.js';
+import { sanitizeMergedUsername } from './types.js';
 
 /**
  * snapshotForAgent 仅消费 skill 的展示字段。这是 db TopicSkill 的子集——
@@ -144,6 +145,19 @@ export async function snapshotForAgent(
         : m.authorDisplayName ?? '成员';
     return { role, content: `[${speaker}] ${m.content}` };
   });
+  // M7 P4：把本 run 的 user_message_appended steps（合并进来的追问）拼到 history 末尾，
+  // 让 planner / reply 的上下文里能看到追问原文。定向查询（仅该 kind），不全表扫。
+  if (params.runId) {
+    const { listStepsByKind } = await import('./store.js');
+    const apSteps = await listStepsByKind(params.runId, 'user_message_appended');
+    for (const s of apSteps) {
+      const input = s.input as { text?: string; byUsername?: string } | null;
+      if (!input?.text) continue;
+      // byUsername 来自用户可改的 displayName；剥换行避免伪造段落标题注入。
+      const speaker = sanitizeMergedUsername(input.byUsername);
+      history.push({ role: 'user', content: `[${speaker}] ${input.text}` });
+    }
+  }
   const last6 = selected
     .slice(-6)
     .map((m) => `${m.authorDisplayName ?? '成员'}: ${m.content.slice(0, 80)}`)
