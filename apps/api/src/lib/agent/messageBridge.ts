@@ -246,3 +246,69 @@ export async function writeAskUserPrompt(params: {
   );
   return msg.id;
 }
+
+/**
+ * M7 T7：deep_research 群聊子 run 占位。
+ *
+ * 与 writeGroupPlaceholder 的区别：不写 human invoker message。
+ * 父 run 已经在群里有 invoker（owner 自己），子 run 是 agent 派出的，
+ * 写一条 human 消息会"伪造 owner 发了'研究 xxx'"（ADR-M7-6）。
+ *
+ * 返回字段对齐 GroupPlaceholderResult，但 invokeMessageId = '' 标识"无 invoker"。
+ */
+export async function writeGroupChildPlaceholder(params: {
+  parentRunId: string;
+  parentOwnerId: string;
+  childRunId: string;
+  groupId: string;
+  topicId: string;
+  childInputText: string;
+}): Promise<GroupPlaceholderResult> {
+  const job = await intel.createLlmJob({
+    ownerId: params.parentOwnerId,
+    invokerUserId: params.parentOwnerId,
+    groupId: params.groupId,
+    topicId: params.topicId,
+    payload: {
+      agentRunId: params.childRunId,
+      parentRunId: params.parentRunId,
+      kind: 'agent_child',
+    },
+  });
+
+  const placeholderContent = `[子任务研究中：${params.childInputText.slice(0, 40)}…]`;
+  const placeholder = await social.addGroupMessage(
+    params.parentOwnerId,
+    params.groupId,
+    params.topicId,
+    {
+      kind: 'ai',
+      content: placeholderContent,
+      jobId: job.id,
+      invokerUserId: params.parentOwnerId,
+    },
+  );
+  if (!placeholder) throw new Error('failed to write group child placeholder');
+
+  await getPool().query(
+    `UPDATE group_messages
+     SET payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object(
+       'agentRun',
+       jsonb_build_object(
+         'agentRunId', $2::text,
+         'parentRunId', $3::text,
+         'status', 'draft',
+         'llmJobId', $4::text,
+         'isChildPlaceholder', true
+       )
+     )
+     WHERE id = $1`,
+    [placeholder.id, params.childRunId, params.parentRunId, job.id],
+  );
+
+  return {
+    invokeMessageId: '', // 无 invoker
+    placeholderAiMessageId: placeholder.id,
+    llmJobId: job.id,
+  };
+}
