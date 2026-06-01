@@ -203,3 +203,46 @@ export async function finalizeGroupPlaceholder(params: {
     resultMessageId: params.placeholderAiMessageId,
   });
 }
+
+/**
+ * M7 T6：群聊 ask_user prompt 群消息。
+ *
+ * payload.kind = 'agent_ask_user'，mobile GroupChatScreen 据此分支到 AskUserPromptCard。
+ * payload.askUser.openedForAll 由 worker checker 在 30s 后切 true，同事务 UPDATE 本消息。
+ */
+export async function writeAskUserPrompt(params: {
+  runId: string;
+  groupId: string;
+  topicId: string;
+  target: string;
+  question: string;
+}): Promise<string> {
+  // 写一条 ai 类型群消息（agent 自己发问）；invokerUserId = target，方便消息归属。
+  const msg = await social.addGroupMessage(
+    params.target,
+    params.groupId,
+    params.topicId,
+    {
+      kind: 'ai',
+      content: params.question,
+      invokerUserId: params.target,
+    },
+  );
+  if (!msg) throw new Error('failed to write ask_user prompt');
+
+  await getPool().query(
+    `UPDATE group_messages
+       SET payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object(
+         'kind', 'agent_ask_user',
+         'askUser', jsonb_build_object(
+           'runId', $2::text,
+           'target', $3::text,
+           'question', $4::text,
+           'openedForAll', false
+         )
+       )
+     WHERE id = $1`,
+    [msg.id, params.runId, params.target, params.question],
+  );
+  return msg.id;
+}
