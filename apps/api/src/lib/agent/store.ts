@@ -15,6 +15,7 @@ import {
   type AgentRole,
   type RunSummary,
   type RunArtifact,
+  type MergedInput,
 } from './types.js';
 
 type Row = Record<string, unknown>;
@@ -63,6 +64,14 @@ function parseRun(row: Row): AgentRun {
       (row.pending_approval_tool_name as string | null) ?? null,
     cancelledByUserId: (row.cancelled_by_user_id as string | null) ?? null,
     cancelReason: (row.cancel_reason as CancelReason | null) ?? null,
+    mergedInputs: (row.merged_inputs as MergedInput[] | null) ?? [],
+    mergedInputsConsumedCount:
+      (row.merged_inputs_consumed_count as number | null) ?? 0,
+    queuePosition: (row.queue_position as number | null) ?? null,
+    askUserTargetUserId: (row.ask_user_target_user_id as string | null) ?? null,
+    askUserStartedAt: (row.ask_user_started_at as Date | null) ?? null,
+    askUserOpenedForAllAt:
+      (row.ask_user_opened_for_all_at as Date | null) ?? null,
     createdAt: row.created_at as Date,
     startedAt: (row.started_at as Date | null) ?? null,
     endedAt: (row.ended_at as Date | null) ?? null,
@@ -109,7 +118,9 @@ const RUN_COLUMNS = `id, owner_id, channel, session_id, group_id, topic_id,
   result_message_id, invoke_message_id,
   last_heartbeat_at, awaiting_approval_until, awaiting_approval_step_idx,
   pending_approval_tool_name, cancelled_by_user_id, cancel_reason,
-  created_at, started_at, ended_at`;
+  created_at, started_at, ended_at,
+  merged_inputs, merged_inputs_consumed_count, queue_position,
+  ask_user_target_user_id, ask_user_started_at, ask_user_opened_for_all_at`;
 
 const STEP_COLUMNS = `id, run_id, idx, kind, tool_name, tool_call_key,
   input, output, tokens, duration_ms, error, by_user_id, created_at`;
@@ -299,7 +310,17 @@ export type UpdateAgentRunInput = Partial<{
   cancelReason: CancelReason | null;
   startedAt: Date | null;
   endedAt: Date | null;
+  /** M7 P1 推进 consumed_count；与 status 一起 update 时 jsonb 走 jsonbOrNull。 */
+  mergedInputs: MergedInput[] | null;
+  mergedInputsConsumedCount: number;
+  queuePosition: number | null;
+  askUserTargetUserId: string | null;
+  askUserStartedAt: Date | null;
+  askUserOpenedForAllAt: Date | null;
 }>;
+
+/** M7：spec 引用类型别名，方便调用方写具名类型而非 Parameters<typeof updateAgentRun>[1]。 */
+export type UpdateAgentRunPatch = UpdateAgentRunInput;
 
 export async function updateAgentRun(
   id: string,
@@ -327,6 +348,18 @@ export async function updateAgentRun(
     cancelReason: ['cancel_reason', patch.cancelReason],
     startedAt: ['started_at', patch.startedAt],
     endedAt: ['ended_at', patch.endedAt],
+    mergedInputs: ['merged_inputs', jsonbOrNull(patch.mergedInputs)],
+    mergedInputsConsumedCount: [
+      'merged_inputs_consumed_count',
+      patch.mergedInputsConsumedCount,
+    ],
+    queuePosition: ['queue_position', patch.queuePosition],
+    askUserTargetUserId: ['ask_user_target_user_id', patch.askUserTargetUserId],
+    askUserStartedAt: ['ask_user_started_at', patch.askUserStartedAt],
+    askUserOpenedForAllAt: [
+      'ask_user_opened_for_all_at',
+      patch.askUserOpenedForAllAt,
+    ],
   };
 
   const sets: string[] = [];
