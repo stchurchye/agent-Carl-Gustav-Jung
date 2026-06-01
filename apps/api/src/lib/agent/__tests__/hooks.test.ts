@@ -33,3 +33,41 @@ describe('agentHookBus', () => {
     expect(a[0]).toEqual(b[0]);
   });
 });
+
+describe('M7 hook events', () => {
+  it('emits and receives run.status_changed', async () => {
+    const received: AgentHookEvent[] = [];
+    const off = agentHookBus.onEvent((e) => received.push(e));
+    const fakeRun = { id: 'r1', status: 'replanning' } as unknown as AgentRun;
+    agentHookBus.emitEvent({
+      type: 'run.status_changed',
+      run: fakeRun,
+      from: 'running',
+      to: 'replanning',
+    });
+    off();
+    const evt = received.find((e) => e.type === 'run.status_changed');
+    expect(evt).toBeDefined();
+    if (evt && evt.type === 'run.status_changed') {
+      expect(evt.from).toBe('running');
+      expect(evt.to).toBe('replanning');
+    }
+  });
+
+  it('emits run.dequeued / ask_user.opened_for_all / run.merged_input_appended', () => {
+    const received: AgentHookEvent[] = [];
+    const off = agentHookBus.onEvent((e) => received.push(e));
+    const fakeRun = { id: 'r2' } as unknown as AgentRun;
+    agentHookBus.emitEvent({ type: 'run.dequeued', run: fakeRun });
+    agentHookBus.emitEvent({ type: 'ask_user.opened_for_all', runId: 'r2', run: fakeRun });
+    agentHookBus.emitEvent({ type: 'run.merged_input_appended', runId: 'r2', mergedInputsCount: 3 });
+    off();
+    expect(received.map((e) => e.type)).toEqual(
+      expect.arrayContaining([
+        'run.dequeued',
+        'ask_user.opened_for_all',
+        'run.merged_input_appended',
+      ]),
+    );
+  });
+});

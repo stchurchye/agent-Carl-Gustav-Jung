@@ -72,6 +72,13 @@ function serializeEvent(e: AgentHookEvent): {
         userId: e.run.ownerId,
         payload: { status: e.run.status, resource: e.resource },
       };
+    // M7：唯一不带 `run` 的事件 —— 只有 runId + 计数。
+    case 'run.merged_input_appended':
+      return {
+        runId: e.runId,
+        userId: null,
+        payload: { mergedInputsCount: e.mergedInputsCount },
+      };
     default:
       return {
         runId: e.run.id,
