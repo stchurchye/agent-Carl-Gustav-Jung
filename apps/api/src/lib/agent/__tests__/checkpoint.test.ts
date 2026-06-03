@@ -1,7 +1,32 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildCheckpoint, readLatestCheckpoint, type AgentCheckpoint } from '../checkpoint.js';
+import {
+  buildCheckpoint,
+  compactCheckpointViaLlm,
+  readLatestCheckpoint,
+  type AgentCheckpoint,
+} from '../checkpoint.js';
 import type { AgentStep, TodoItem } from '../types.js';
 import type { ToolDef } from '../toolRegistry.js';
+import type { LlmChatClient, LlmChatResult } from '../../llm/types.js';
+
+function mockLlm(reply: string): LlmChatClient {
+  return {
+    providerId: 'deepseek' as const,
+    modelId: 'm',
+    async chat(): Promise<LlmChatResult> {
+      return { content: reply, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }, providerId: 'deepseek', modelId: 'm' };
+    },
+  };
+}
+function throwingLlm(): LlmChatClient {
+  return {
+    providerId: 'deepseek' as const,
+    modelId: 'm',
+    async chat(): Promise<LlmChatResult> {
+      throw new Error('llm down');
+    },
+  };
+}
 import { runMigrations } from '../../../db/migrate.js';
 import * as store from '../store.js';
 import { DEFAULT_BUDGET } from '../types.js';
@@ -206,6 +231,86 @@ describe('buildCheckpoint (mechanical)', () => {
       { goal: 'g', intent: 'i', successCount: 0, toolMap },
     );
     expect(cp.completed).toHaveLength(0);
+  });
+});
+
+describe('compactCheckpointViaLlm (S4)', () => {
+  const big: AgentCheckpoint = {
+    version: 1, goal: '研究 X', intent: 'i',
+    completed: Array.from({ length: 10 }, (_, i) => ({ text: `t${i}`, finding: `f${i}`, refs: [] })),
+    remainingPlan: ['汇总'], openQuestions: [], nextStep: '汇总', successCount: 10, producedAtIdx: 20,
+    digestTail: 'tail',
+  };
+
+  it('replaces completed with the LLM-compressed list, preserving goal/producedAtIdx/successCount/digestTail', async () => {
+    const reply = JSON.stringify({
+      completed: [
+        { text: '搜索', finding: '合并后的关键发现', refs: [{ kind: 'url', id: 'https://x', label: 'p' }] },
+      ],
+      remainingPlan: ['汇总'],
+      openQuestions: ['还需确认时间线'],
+      nextStep: '汇总三要素',
+    });
+    const out = await compactCheckpointViaLlm({ checkpoint: big, llm: mockLlm(reply), signal: new AbortController().signal });
+    expect(out.completed).toHaveLength(1);
+    expect(out.completed[0].refs[0]?.id).toBe('https://x');
+    expect(out.openQuestions).toEqual(['还需确认时间线']);
+    expect(out.nextStep).toBe('汇总三要素');
+    // 不变量保留
+    expect(out.goal).toBe('研究 X');
+    expect(out.producedAtIdx).toBe(20);
+    expect(out.successCount).toBe(10);
+    expect(out.digestTail).toBe('tail');
+  });
+
+  it('fail-open: LLM throws or returns garbage → returns the original checkpoint unchanged', async () => {
+    const a = await compactCheckpointViaLlm({ checkpoint: big, llm: throwingLlm(), signal: new AbortController().signal });
+    expect(a).toEqual(big);
+    const b = await compactCheckpointViaLlm({ checkpoint: big, llm: mockLlm('not json at all'), signal: new AbortController().signal });
+    expect(b).toEqual(big);
+  });
+
+  it('fail-open: LLM returns empty completed (would wipe all findings) → keeps original', async () => {
+    const reply = JSON.stringify({ completed: [], remainingPlan: [], openQuestions: [], nextStep: 'FINALIZE' });
+    const out = await compactCheckpointViaLlm({ checkpoint: big, llm: mockLlm(reply), signal: new AbortController().signal });
+    expect(out).toEqual(big);
+  });
+
+  it('filters malformed refs from the LLM output (no undefined:undefined citations)', async () => {
+    const reply = JSON.stringify({
+      completed: [{ text: 't', finding: 'f', refs: [{ foo: 1 }, 'bogus', { kind: 'url', id: 'https://ok', label: 'p' }] }],
+      remainingPlan: [], openQuestions: [], nextStep: 'x',
+    });
+    const out = await compactCheckpointViaLlm({ checkpoint: big, llm: mockLlm(reply), signal: new AbortController().signal });
+    expect(out.completed[0].refs).toEqual([{ kind: 'url', id: 'https://ok', label: 'p' }]); // 仅合法 ref
+  });
+
+  it('fail-open when LLM output did not shrink (>= original count)', async () => {
+    const more = JSON.stringify({
+      completed: Array.from({ length: 12 }, (_, i) => ({ text: `t${i}`, finding: `f${i}`, refs: [] })),
+      remainingPlan: [], openQuestions: [], nextStep: 'x',
+    });
+    const out = await compactCheckpointViaLlm({ checkpoint: big, llm: mockLlm(more), signal: new AbortController().signal });
+    expect(out).toEqual(big); // 没变小 → 保原
+  });
+
+  it('re-attaches a ref-bearing finding the LLM dropped (sources are never lost)', async () => {
+    const withRef: AgentCheckpoint = {
+      ...big,
+      completed: [
+        { text: 'a', finding: 'fa', refs: [{ kind: 'url', id: 'https://keep', label: 'k' }] },
+        { text: 'b', finding: 'fb', refs: [] },
+        { text: 'c', finding: 'fc', refs: [] },
+      ],
+    };
+    // LLM 压成 1 条、丢掉了带 ref 的来源
+    const reply = JSON.stringify({
+      completed: [{ text: 'merged', finding: '合并 b+c', refs: [] }],
+      remainingPlan: [], openQuestions: [], nextStep: 'x',
+    });
+    const out = await compactCheckpointViaLlm({ checkpoint: withRef, llm: mockLlm(reply), signal: new AbortController().signal });
+    const allRefIds = out.completed.flatMap((c) => c.refs.map((r) => r.id));
+    expect(allRefIds).toContain('https://keep'); // 来源被补回
   });
 });
 

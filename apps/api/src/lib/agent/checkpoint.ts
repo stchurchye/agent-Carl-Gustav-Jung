@@ -1,8 +1,10 @@
-import type { AgentCheckpoint, AgentRun, AgentStep, CheckpointFinding, TodoItem } from './types.js';
+import type { AgentCheckpoint, AgentRun, AgentStep, CheckpointFinding, ReplyRef, TodoItem } from './types.js';
 import type { ToolDef } from './toolRegistry.js';
+import type { LlmChatClient } from '../llm/types.js';
 import { collectReplyRefs, summarizeStepOutput } from './replyGen.js';
 import { isToolFailure } from './critique.js';
 import { redactSecrets } from './redact.js';
+import { extractJsonCandidate } from './planner.js';
 
 /**
  * S1：累积式结构化 checkpoint。机械版（无 LLM）—— 每步把成功工具调用的发现 +ref
@@ -142,4 +144,99 @@ function buildDigestTail(steps: AgentStep[]): string {
       return `- ${s.toolName ?? '<tool>'}: ${out}`;
     })
     .join('\n');
+}
+
+/**
+ * S4：当累积 checkpoint 过大时，用 LLM 压缩 completed 列表（合并/丢弃条目、保留 refs），
+ * 并更新 nextStep/openQuestions。**不重写每条 finding 措辞**（避免摘要的摘要漂移）。
+ * 用 resolveLlmClient 包好的 client（计入 run.usage、可被 cancel 中断）。
+ * fail-open：解析失败/LLM 出错 → 返回原 checkpoint，绝不阻塞循环；abort 透传。
+ */
+const AGENT_CHECKPOINT_SYSTEM = `你是 agent 任务状态的压缩器。读取当前任务状态(JSON)，把它压缩得更短，但绝不丢关键信息。
+严格输出单个 JSON（无代码块、无解释）：
+{"completed":[{"text":"做了什么","finding":"关键结论","refs":[{"kind":"url","id":"…","label":"…"}]}],"remainingPlan":["…"],"openQuestions":["…"],"nextStep":"下一步最具体动作；目标已达成写 FINALIZE"}
+规则：
+- 压缩方式 = 合并相似/重复的 completed 条目、丢弃最不重要的旧条目；不要逐条重写已有 finding 的措辞（避免摘要的摘要漂移）。
+- completed 压到最多 10 条以内。
+- 必须保留每条 finding 的来源 refs（url/document/magi_card/diagram），refs 不得丢（合并条目时把各自的 refs 并上）。
+- nextStep 必须可执行；目标已达成写 "FINALIZE"。
+- 不编造状态里没有的内容。`;
+
+const REF_KINDS = new Set(['document', 'url', 'magi_card', 'diagram']);
+function validRefs(v: unknown): ReplyRef[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter(
+    (r): r is ReplyRef =>
+      r != null &&
+      typeof r === 'object' &&
+      typeof (r as ReplyRef).id === 'string' &&
+      REF_KINDS.has((r as ReplyRef).kind),
+  );
+}
+
+export async function compactCheckpointViaLlm(params: {
+  checkpoint: AgentCheckpoint;
+  llm: LlmChatClient;
+  signal: AbortSignal;
+}): Promise<AgentCheckpoint> {
+  const { checkpoint, llm, signal } = params;
+  const userPrompt =
+    `# 当前任务状态（JSON）\n` +
+    JSON.stringify({
+      goal: checkpoint.goal,
+      completed: checkpoint.completed,
+      remainingPlan: checkpoint.remainingPlan,
+      openQuestions: checkpoint.openQuestions,
+      nextStep: checkpoint.nextStep,
+    }) +
+    `\n\n请压缩 completed 列表并输出新状态 JSON。`;
+  try {
+    const result = await llm.chat(
+      [
+        { role: 'system', content: AGENT_CHECKPOINT_SYSTEM },
+        { role: 'user', content: userPrompt },
+      ],
+      { temperature: 0.2, maxTokens: 1500, signal },
+    );
+    const candidate = extractJsonCandidate(result.content);
+    if (!candidate) return checkpoint;
+    const parsed = JSON.parse(candidate) as {
+      completed?: unknown;
+      remainingPlan?: unknown;
+      openQuestions?: unknown;
+      nextStep?: unknown;
+    };
+    if (!Array.isArray(parsed.completed)) return checkpoint; // 校验失败 → fail-open
+    const compressed: CheckpointFinding[] = parsed.completed
+      .filter((c): c is Record<string, unknown> => c != null && typeof c === 'object')
+      .map((c) => ({
+        text: typeof c.text === 'string' ? c.text : '',
+        finding: typeof c.finding === 'string' ? c.finding : '',
+        refs: validRefs(c.refs), // 只保留合法 {kind,id} ref，挡 undefined:undefined 引用
+      }));
+    // 压缩不该把发现清空、也不该变大：坏输出 → fail-open 保原。
+    if (compressed.length === 0 && checkpoint.completed.length > 0) return checkpoint;
+    if (compressed.length >= checkpoint.completed.length) return checkpoint; // 没变小
+
+    // 来源神圣：把"refs 被压缩全丢掉的原始 ref-bearing 发现"补回，绝不丢来源。
+    const keptRefIds = new Set(
+      compressed.flatMap((c) => c.refs.map((r) => `${r.kind}:${r.id}`)),
+    );
+    const lost = checkpoint.completed.filter(
+      (c) => c.refs.length > 0 && c.refs.every((r) => !keptRefIds.has(`${r.kind}:${r.id}`)),
+    );
+    const completed = [...compressed, ...lost];
+    const strArr = (v: unknown, fallback: string[]) =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : fallback;
+    return {
+      ...checkpoint, // 保留 version/goal/intent/successCount/producedAtIdx/digestTail
+      completed,
+      remainingPlan: strArr(parsed.remainingPlan, checkpoint.remainingPlan),
+      openQuestions: strArr(parsed.openQuestions, checkpoint.openQuestions),
+      nextStep: typeof parsed.nextStep === 'string' ? parsed.nextStep : checkpoint.nextStep,
+    };
+  } catch (e) {
+    if (signal.aborted) throw e; // 取消 → 透传，别误当压缩失败
+    return checkpoint; // fail-open
+  }
 }
