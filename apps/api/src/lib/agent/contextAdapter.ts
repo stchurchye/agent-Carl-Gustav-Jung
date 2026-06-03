@@ -2,7 +2,7 @@ import type { ContextUsage, ReplyDialect } from '@xzz/shared';
 import type { ChatMessageInput } from '../deepseek.js';
 import { prepareChatContext } from '../contextPipeline.js';
 import { listGroupMessages } from '../../store/pg-social.js';
-import { buildGroupLlmSystem, resolveGroupHistoryMessages } from '../groupLlm.js';
+import { buildGroupLlmSystem } from '../groupLlm.js';
 import {
   listForAgent as listTopicSkillsForAgent,
   type TopicSkill as DbTopicSkill,
@@ -43,24 +43,6 @@ function formatTopicSkillsAsSystemBlock(skills: TopicSkill[]): string {
   if (enabled.length === 0) return '';
   const items = enabled.map((s) => `### ${s.title}\n${s.content}`).join('\n\n');
   return `\n\n<topic_skills source="user_provided">\n${items}\n</topic_skills>`;
-}
-
-function emptyContextUsage(): ContextUsage {
-  return {
-    usedTokens: 0,
-    limitTokens: 0,
-    ratio: 0,
-    breakdown: {
-      system: 0,
-      summary: 0,
-      history: 0,
-      document: 0,
-      pendingUser: 0,
-      outputReserve: 0,
-    },
-    compacted: false,
-    droppedVerbatimTurns: 0,
-  };
 }
 
 export type SnapshotForAgentParams = {
@@ -130,21 +112,37 @@ export async function snapshotForAgent(
     (await listGroupMessages(params.userId, params.groupId, params.topicId, {
       limit: 50,
     })) ?? [];
-  const selected = resolveGroupHistoryMessages(messages, null, undefined).slice(-12);
+  // S6：超出近窗(KEPT)的更早 turns 不再硬丢 —— 摘要后保留语义，并给出真 usage。
+  // resolveGroupHistoryMessages 在无选择时内部 slice(-12)，会吃掉"更早"的部分；agent 路径
+  // 永远传 null selection，故这里直接复制它的过滤（非 system / 非 llmExclude）但不 cap，
+  // 自己切近窗/更早。
+  const KEPT_GROUP_TURNS = 12;
+  const eligible = messages.filter(
+    (m) => m.kind !== 'system' && !m.llmExclude?.active,
+  );
+  const selected = eligible.slice(-KEPT_GROUP_TURNS);
+  const older = eligible.slice(0, -KEPT_GROUP_TURNS);
   const systemBase = await buildGroupLlmSystem(params.userId, params.dialect, {
     groupId: params.groupId,
     topicId: params.topicId,
     query: params.pendingUser,
   });
   const systemPrompt = systemBase + formatTopicSkillsAsSystemBlock(skills);
+  const speakerOf = (m: (typeof eligible)[number]) =>
+    m.kind === 'ai' && m.invokerAssistantName
+      ? `${m.authorDisplayName ?? '成员'} 的 ${m.invokerAssistantName}`
+      : m.authorDisplayName ?? '成员';
   const history: ChatMessageInput[] = selected.map((m) => {
     const role: 'assistant' | 'user' = m.kind === 'ai' ? 'assistant' : 'user';
-    const speaker =
-      m.kind === 'ai' && m.invokerAssistantName
-        ? `${m.authorDisplayName ?? '成员'} 的 ${m.invokerAssistantName}`
-        : m.authorDisplayName ?? '成员';
-    return { role, content: `[${speaker}] ${m.content}` };
+    return { role, content: `[${speakerOf(m)}] ${m.content}` };
   });
+  // 更早 turns：**机械凝练**（每条取前 80 字、保留内容要点），不再硬丢成裸计数。
+  // 不在此用 LLM 压缩 —— 快照每次 planner 调用都重建，无话题级持久化时会对同一批
+  // older turns 反复调 LLM（净成本）。LLM + 话题级摘要持久化作为后续优化（需新列）。
+  const olderSummary =
+    older.length > 0
+      ? older.map((m) => `[${speakerOf(m)}] ${m.content.slice(0, 80)}`).join('\n')
+      : '';
   // M7 P4：把本 run 的 user_message_appended steps（合并进来的追问）拼到 history 末尾，
   // 让 planner / reply 的上下文里能看到追问原文。定向查询（仅该 kind），不全表扫。
   if (params.runId) {
@@ -162,11 +160,36 @@ export async function snapshotForAgent(
     .slice(-6)
     .map((m) => `${m.authorDisplayName ?? '成员'}: ${m.content.slice(0, 80)}`)
     .join('\n');
+  const shortSummary =
+    (olderSummary ? `此前对话摘要：\n${olderSummary}\n\n` : '') +
+    `群聊最近 ${selected.length} 条：\n${last6}`;
+  // S6：真 usage —— 反映是否压缩了更早 turns（不再硬编码 compacted:false）。
+  const usedChars =
+    systemPrompt.length +
+    history.reduce((n, h) => n + h.content.length, 0) +
+    olderSummary.length +
+    params.pendingUser.length;
+  const usedTokens = Math.ceil(usedChars / 1.6);
+  const limitTokens = 32_000; // agent planner 上下文目标窗口
   return {
     systemPrompt,
     history,
-    shortSummary: `群聊最近 6 条：\n${last6}`,
-    usage: emptyContextUsage(),
+    shortSummary,
+    usage: {
+      usedTokens,
+      limitTokens,
+      ratio: usedTokens / limitTokens,
+      breakdown: {
+        system: Math.ceil(systemPrompt.length / 1.6),
+        summary: Math.ceil(olderSummary.length / 1.6),
+        history: Math.ceil(history.reduce((n, h) => n + h.content.length, 0) / 1.6),
+        document: 0,
+        pendingUser: Math.ceil(params.pendingUser.length / 1.6),
+        outputReserve: 0,
+      },
+      compacted: older.length > 0,
+      droppedVerbatimTurns: older.length,
+    },
     source: {
       channel: 'group',
       groupId: params.groupId,

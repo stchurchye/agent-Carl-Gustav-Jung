@@ -115,6 +115,32 @@ describe('snapshotForAgent group (T7)', () => {
     expect(hasBobPrefix).toBe(true);
   });
 
+  it('S6: long group history → real usage.compacted + droppedVerbatimTurns, recent turns kept verbatim', async () => {
+    const u = await ensureUser('S6long');
+    const { groupId, topicId } = await ensureGroup(u.id);
+    for (let i = 0; i < 16; i++) {
+      await addGroupMessage(u.id, groupId, topicId, { kind: 'human', content: `消息第 ${i} 条 marker-${i}` });
+    }
+    const snap = await snapshotForAgent({
+      runId: randomUUID(),
+      userId: u.id,
+      channel: 'group',
+      groupId,
+      topicId,
+      pendingUser: '继续',
+      apiKey: 'fake',
+      topicSkills: [],
+    });
+    // 真 usage：超出保留窗口的更早 turns 被压（不再硬编码 compacted:false）
+    expect(snap.usage.compacted).toBe(true);
+    expect(snap.usage.droppedVerbatimTurns).toBeGreaterThan(0);
+    expect(snap.usage.usedTokens).toBeGreaterThan(0);
+    // 近窗 turns 仍逐字保留在 history
+    expect(snap.history.some((m) => String(m.content).includes('marker-15'))).toBe(true);
+    // 更早 turns 内容被机械凝练进 shortSummary（不再硬丢成裸计数）
+    expect(snap.shortSummary).toContain('marker-0');
+  });
+
   it('falls back to DB topic_skills when no override is provided', async () => {
     const u = await ensureUser('db-skill');
     const { groupId, topicId } = await ensureGroup(u.id);
