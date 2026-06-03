@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   buildCheckpoint,
+  checkpointNeedsCompaction,
   compactCheckpointViaLlm,
   readLatestCheckpoint,
   type AgentCheckpoint,
@@ -231,6 +232,20 @@ describe('buildCheckpoint (mechanical)', () => {
       { goal: 'g', intent: 'i', successCount: 0, toolMap },
     );
     expect(cp.completed).toHaveLength(0);
+  });
+});
+
+describe('checkpointNeedsCompaction (S5)', () => {
+  const base = {
+    version: 1 as const, goal: 'g', intent: 'i', remainingPlan: [], openQuestions: [],
+    nextStep: '', successCount: 0, producedAtIdx: 0, digestTail: '',
+  };
+  it('false for a small checkpoint', () => {
+    expect(checkpointNeedsCompaction({ ...base, completed: [{ text: 't', finding: 'f', refs: [] }] })).toBe(false);
+  });
+  it('true when accumulated completed + digestTail is large', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ text: `tool${i}`, finding: 'x'.repeat(120), refs: [] }));
+    expect(checkpointNeedsCompaction({ ...base, completed: many })).toBe(true);
   });
 });
 

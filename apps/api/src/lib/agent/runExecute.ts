@@ -31,7 +31,11 @@ import { runControllers } from './runtimeRegistry.js';
 import { TOOL_TIMEOUT_MS, HIGH_COST_TOOL_TIMEOUT_MS, withTimeout } from './runtimeShared.js';
 import { softComplete } from './runLifecycle.js';
 import { buildInitialPlan, buildProgressSummary } from './runPlanGlue.js';
-import { buildCheckpoint } from './checkpoint.js';
+import {
+  buildCheckpoint,
+  checkpointNeedsCompaction,
+  compactCheckpointViaLlm,
+} from './checkpoint.js';
 import { resolveLlmClient } from './runLlmClient.js';
 import { reflectGoalCompletion } from './reflection.js';
 import { pickFallbackFinalContent } from './runReply.js';
@@ -86,14 +90,39 @@ async function computeCheckpoint(
   finalSteps: AgentStep[],
   liveTodos: TodoItem[],
   successCount: number,
+  signal: AbortSignal,
+  /** S5：仅续跑点压缩（压缩成果喂下一轮 planner）；收尾点是末轮、压缩纯属浪费延迟 → false。 */
+  allowCompaction: boolean,
 ): Promise<AgentCheckpoint> {
   const latest = (await store.getAgentRun(runId)) ?? fallbackRun;
-  return buildCheckpoint(latest.contextCheckpoint, finalSteps, liveTodos, {
+  const mechanical = buildCheckpoint(latest.contextCheckpoint, finalSteps, liveTodos, {
     goal: fallbackRun.inputText,
     intent: plan.intentSummary,
     successCount,
     toolMap: new Map(toolRegistry.list().map((t) => [t.name, t])),
   });
+  // S5：仅在续跑、completed 过大、非测试 env、且未超预算时才 LLM 压缩列表。
+  const isTestEnv =
+    process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+  const overBudget = latest.usage.tokens >= latest.budget.maxTokens;
+  if (
+    !allowCompaction ||
+    isTestEnv ||
+    overBudget ||
+    !checkpointNeedsCompaction(mechanical)
+  ) {
+    return mechanical;
+  }
+  const llm = await resolveLlmClient(latest);
+  if (!llm) return mechanical;
+  try {
+    // compactCheckpointViaLlm 内部 fail-open；坏输出/出错 → 返回机械版。
+    return await compactCheckpointViaLlm({ checkpoint: mechanical, llm, signal });
+  } catch (e) {
+    // abort 透传：包成 AgentCancelled，让收尾正确标 cancelled（而非 system_error/failed）。
+    if (signal.aborted) throw new AgentCancelled('user');
+    throw e;
+  }
 }
 
 export async function executeRun(runId: string): Promise<void> {
@@ -590,6 +619,8 @@ export async function executeRun(runId: string): Promise<void> {
         finalSteps,
         liveTodos,
         successCount,
+        abortController.signal,
+        true, // 续跑点：允许压缩（喂下一轮 planner）
       );
       await store.updateAgentRun(runId, {
         status: 'replanning',
@@ -607,6 +638,8 @@ export async function executeRun(runId: string): Promise<void> {
       finalSteps,
       liveTodos,
       successCount,
+      abortController.signal,
+      false, // 收尾点：末轮，不压缩（压缩成果无后续 planner 消费，只会徒增延迟）
     );
     await store.updateAgentRun(runId, { contextCheckpoint: finalCheckpoint });
     // 同步本地 run，让下游 softComplete→buildFinalContent→buildReplyMessages 读到最新 checkpoint。
