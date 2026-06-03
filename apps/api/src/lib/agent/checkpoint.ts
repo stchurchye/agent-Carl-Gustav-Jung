@@ -97,14 +97,19 @@ export function buildCheckpoint(
 
   const maxIdx = steps.reduce((m, s) => Math.max(m, s.idx), sinceIdx);
 
+  const remainingPlan = todos
+    .filter((t) => t.status !== 'completed')
+    .map((t) => t.text);
+
   return {
     version: 1,
     goal: opts.goal,
     intent: opts.intent,
     completed,
-    remainingPlan: todos.filter((t) => t.status !== 'completed').map((t) => t.text),
+    remainingPlan,
     openQuestions: prior?.openQuestions ?? [],
-    nextStep: prior?.nextStep ?? '',
+    // 机械版：下一步 = 第一个未完成的 todo（S4 的 LLM 版会写更准的 nextStep / FINALIZE）。
+    nextStep: remainingPlan[0] ?? prior?.nextStep ?? '',
     successCount: opts.successCount,
     producedAtIdx: maxIdx,
     digestTail: buildDigestTail(steps),

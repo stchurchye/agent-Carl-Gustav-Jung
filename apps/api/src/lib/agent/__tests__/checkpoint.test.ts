@@ -78,6 +78,7 @@ describe('buildCheckpoint (mechanical)', () => {
     ]);
     expect(cp.remainingPlan).toEqual(['汇总']); // 未完成的 todo
     expect(typeof cp.digestTail).toBe('string');
+    expect(cp.nextStep).toBe('汇总'); // 机械 nextStep = 第一个未完成 todo
   });
 
   it('digestTail keeps recent output richer than the 200-char finding summary', () => {

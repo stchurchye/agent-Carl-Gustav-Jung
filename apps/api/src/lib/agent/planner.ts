@@ -1,4 +1,4 @@
-import type { Plan, PlanStep, TodoItem } from './types.js';
+import type { AgentCheckpoint, Plan, PlanStep, TodoItem } from './types.js';
 import { sanitizeMergedUsername } from './types.js';
 import { toolRegistry, type ToolDef } from './toolRegistry.js';
 import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
@@ -121,6 +121,12 @@ export type LlmPlannerInput = {
    * 接着未完成的干、不重做已完成的，并基于已学到的结果规划。
    */
   progress?: string;
+  /**
+   * S3：累积式结构化 checkpoint。非空时 buildPlannerUserPrompt 渲染「# 任务状态（续跑中）」
+   * 并附 sd0x 式重注入（"下一步 = …，不要问是否继续"），优先于扁平的 progress 字符串。
+   * 注：nextStep 只是给 planner 的建议；是否收尾仍由 loop-end 的 reflection 单点裁决。
+   */
+  checkpoint?: AgentCheckpoint | null;
 };
 
 /**
@@ -247,10 +253,13 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   const failure = input.previousFailure
     ? `\n\n# 上一步失败原因\n${input.previousFailure}\n请基于这个失败重新规划剩余步骤，避免重复同样错误。`
     : '';
-  // issue 0001 B2+B3：续跑进展摘要——已完成 todo + 成功观察。
-  const progress = input.progress
-    ? `\n\n# 已完成进展\n${input.progress}\n请接着还没完成的部分继续，不要重做上面已完成的 todo；可基于已得到的结果规划下一步。`
-    : '';
+  // S3：有 checkpoint 时渲染结构化「任务状态」（含 sd0x 重注入），优先于扁平 progress。
+  // issue 0001 B2+B3：无 checkpoint 时退回续跑进展摘要——已完成 todo + 成功观察。
+  const progress = input.checkpoint
+    ? renderCheckpointState(input.checkpoint)
+    : input.progress
+      ? `\n\n# 已完成进展\n${input.progress}\n请接着还没完成的部分继续，不要重做上面已完成的 todo；可基于已得到的结果规划下一步。`
+      : '';
   // M7 P1a：合并的追问段（不污染 DB，每次 planner 调用按当前 merged_inputs 全量拼）。
   const merged = input.mergedInputs ?? [];
   const mergedSection =
@@ -259,6 +268,38 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
         merged.map((m, i) => `${i + 1}. @${sanitizeMergedUsername(m.byUsername)} (${m.at}): ${m.text}`).join('\n')
       : '';
   return `# 用户请求\n${input.inputText}${mergedSection}${summary}${failure}${progress}`;
+}
+
+/**
+ * S3：把累积 checkpoint 渲染成 planner 的「任务状态」段 + sd0x 式重注入。
+ * 让续跑接着已完成的干、基于已确认发现规划，并明确"别问是否继续、直接规划剩余步骤"。
+ */
+/** planner prompt 里最多渲染多少条累积发现（防长 run 撑爆；S4 会进一步压缩列表）。 */
+const CHECKPOINT_RENDER_MAX_FINDINGS = 20;
+
+function renderCheckpointState(cp: AgentCheckpoint): string {
+  // 全空（无发现、无待办）→ 不渲染"自动续跑中"框架，避免给裸目标 + "别问是否继续"的误导。
+  if (cp.completed.length === 0 && cp.remainingPlan.length === 0) return '';
+
+  const shown = cp.completed.slice(-CHECKPOINT_RENDER_MAX_FINDINGS);
+  const overflow = cp.completed.length - shown.length;
+  const done =
+    cp.completed.length > 0
+      ? '\n已确认的发现（不要重做）：\n' +
+        (overflow > 0 ? `（更早 ${overflow} 条已略）\n` : '') +
+        shown
+          .map((c) => (c.finding ? `- ${c.text}: ${c.finding}` : `- ${c.text}`))
+          .join('\n')
+      : '';
+  const remaining =
+    cp.remainingPlan.length > 0
+      ? '\n待完成：\n' + cp.remainingPlan.map((t) => `- ${t}`).join('\n')
+      : '';
+  const next = cp.nextStep ? `\n下一步 = ${cp.nextStep}` : '';
+  return (
+    `\n\n# 任务状态（自动续跑中）\n目标：${cp.goal}${done}${remaining}${next}` +
+    `\n（自动续跑仍在进行；请直接规划剩余步骤，不要问"是否继续"。）`
+  );
 }
 
 type LooseStep = {

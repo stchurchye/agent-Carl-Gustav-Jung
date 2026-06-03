@@ -85,6 +85,20 @@ export function buildProgressSummary(
  * recordStep 进 `{reason:'continuation', progress}`；本函数取最近一条这样的 step。
  * 只认 continuation replan → critique/merge/steer replan 不会带进展。
  */
+/**
+ * S3：最近一条 replan 是否是 continuation（续跑）。用于只在续跑时给 planner 注入
+ * checkpoint 的「自动续跑中」框架 —— steer / merge_trigger / approval_deny 等用户/系统
+ * 驱动的 replan 不该被注入"不要问是否继续"的陈旧续跑框架。
+ */
+export function latestReplanIsContinuation(steps: AgentStep[]): boolean {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps[i].kind !== 'replan') continue;
+    const out = steps[i].output as { reason?: unknown } | null;
+    return out?.reason === 'continuation';
+  }
+  return false;
+}
+
 export function readStashedContinuationProgress(
   steps: AgentStep[],
 ): string | undefined {
@@ -161,6 +175,11 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       signal,
       previousFailure,
       progress,
+      // S3：只在续跑(continuation)时注入 checkpoint 的「自动续跑中」框架；steer/merge/
+      // approval_deny 等 replan 不注入，避免给用户新指令套上陈旧"不要问是否继续"框架。
+      checkpoint: latestReplanIsContinuation(stepsForPrompt)
+        ? run.contextCheckpoint
+        : null,
       isSubagent: !!run.parentRunId,
       mergedInputs: run.mergedInputs ?? [], // M7 P1a
     });
