@@ -66,7 +66,9 @@ describe('buildStepDigest with checkpoint (S2)', () => {
     expect(digest).toContain('早期已确认信托三要素');
   });
 
-  it('caps prepended findings to the most recent 20 (long run does not blow up the reflection prompt)', async () => {
+  it('does NOT drop the earliest findings — the completion judge must see early-met goals (S2, round3)', async () => {
+    // 累积发现较多时仍不截早期项：收尾裁判靠它判断"目标是否早已达成"。
+    // （completed 在 reflection 读到时恒 ≤3500 字节——续跑期 S4 压缩门控住，无需封顶。）
     const { buildStepDigest } = await import('../reflection.js');
     const many = Array.from({ length: 35 }, (_, i) => ({
       text: `tool${i}`,
@@ -77,8 +79,8 @@ describe('buildStepDigest with checkpoint (S2)', () => {
       version: 1, goal: 'g', intent: 'i', completed: many,
       remainingPlan: [], openQuestions: [], nextStep: '', successCount: 35, producedAtIdx: 40, digestTail: '',
     });
-    expect(digest).not.toContain('finding-0'); // 最早的被略掉（与 planner slice(-20) 对齐）
-    expect(digest).toContain('finding-34'); // 最近的保留
+    expect(digest).toContain('finding-0'); // 最早的完成证据不丢
+    expect(digest).toContain('finding-34'); // 最近的也在
   });
 });
 
