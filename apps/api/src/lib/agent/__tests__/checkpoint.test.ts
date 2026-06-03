@@ -190,6 +190,30 @@ describe('buildCheckpoint (mechanical)', () => {
     expect(cp.completed).toHaveLength(1); // B 已被合并条目表示，不重折
   });
 
+  it('keeps a distinct finding that shares ONE ref but carries a unique source (review #4 .every, not .some)', () => {
+    // prior 里两条**不同结论**的发现，恰好共享来源 B：[A,B] 与 [B,C]。
+    // （S4 LLM 压缩并不保证把 refs 在条目间无重叠地切分。）
+    // 旧 `.some`：第二条因含已见的 B 被整条丢弃 → 唯一来源 C 永久丢失。
+    const prior: AgentCheckpoint = {
+      version: 1, goal: 'g', intent: 'i',
+      completed: [
+        { text: 'f1', finding: 'A+B 结论', refs: [
+          { kind: 'url', id: 'https://a.com', label: 'A' },
+          { kind: 'url', id: 'https://b.com', label: 'B' },
+        ] },
+        { text: 'f2', finding: 'B+C 另一结论', refs: [
+          { kind: 'url', id: 'https://b.com', label: 'B' },
+          { kind: 'url', id: 'https://c.com', label: 'C' },
+        ] },
+      ],
+      remainingPlan: [], openQuestions: [], nextStep: '', successCount: 2, producedAtIdx: 5, digestTail: '',
+    };
+    const cp = buildCheckpoint(prior, [], todos, { goal: 'g', intent: 'i', successCount: 2, toolMap });
+    expect(cp.completed).toHaveLength(2); // 两条都保留
+    const allIds = cp.completed.flatMap((c) => c.refs.map((r) => r.id));
+    expect(allIds).toContain('https://c.com'); // 仅在第二条出现的来源 C 不丢
+  });
+
   it('does NOT dedup ref-less findings (distinct steps are distinct findings even if summary identical)', () => {
     // 无 extractRef 的工具：两次成功调用、输出相同 → 应是 2 条 finding（每步独立）
     const plainTool = { name: 'run_python', replyMeta: { summaryKind: 'text' } } as unknown as ToolDef;
@@ -350,6 +374,22 @@ describe('compactCheckpointViaLlm (S4)', () => {
     });
     const out = await compactCheckpointViaLlm({ checkpoint: big, llm: mockLlm(reply), signal: new AbortController().signal });
     expect(out.completed[0].refs).toEqual([{ kind: 'url', id: 'https://ok', label: 'p' }]); // 仅合法 ref
+  });
+
+  it('accepts a same-count compaction that shrinks bytes (review #3 byte-metric, not count)', async () => {
+    // 同条数但每条 finding 大幅变短 → 字节确实缩小、needsCompaction 会转假。
+    // 旧"按条数"判据：6>=6 → 误判没缩小 → fail-open → 每轮重压、永不收敛。
+    const longCp: AgentCheckpoint = {
+      ...big,
+      completed: Array.from({ length: 6 }, (_, i) => ({ text: `t${i}`, finding: '长'.repeat(300), refs: [] })),
+    };
+    const reply = JSON.stringify({
+      completed: Array.from({ length: 6 }, (_, i) => ({ text: `t${i}`, finding: '短', refs: [] })),
+      remainingPlan: [], openQuestions: [], nextStep: 'x',
+    });
+    const out = await compactCheckpointViaLlm({ checkpoint: longCp, llm: mockLlm(reply), signal: new AbortController().signal });
+    expect(out.completed).toHaveLength(6);
+    expect(out.completed[0].finding).toBe('短'); // 接受压缩，不再 fail-open
   });
 
   it('fail-open when LLM output did not shrink (>= original count)', async () => {

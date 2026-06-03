@@ -149,3 +149,12 @@ describe('recordStep redaction', () => {
     expect(step.toolCallKey).toBe('stable-key-123');
   });
 });
+
+describe('redactSecrets robustness', () => {
+  it('does not stack-overflow on pathologically deep nesting (adversarial tool output)', () => {
+    // 外部工具输出是任意 JSON；超深嵌套不该让落库路径崩。
+    let deep: unknown = { v: 'x' };
+    for (let i = 0; i < 20000; i++) deep = { nested: deep };
+    expect(() => redactSecrets(deep)).not.toThrow();
+  });
+});

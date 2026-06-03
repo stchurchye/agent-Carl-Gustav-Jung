@@ -52,15 +52,20 @@ function isPlainObject(value: object): boolean {
   return proto === Object.prototype || proto === null;
 }
 
-export function redactSecrets(value: unknown): unknown {
+// 外部工具输出是任意 JSON；超深嵌套不该让落库路径栈溢出。超过上限即原样返回
+// （远超真实 tool 输出深度，又稳在 V8 调用栈上限内）。
+const MAX_REDACT_DEPTH = 200;
+
+export function redactSecrets(value: unknown, depth = 0): unknown {
   if (typeof value === 'string') return redactString(value);
-  if (Array.isArray(value)) return value.map((v) => redactSecrets(v));
+  if (depth >= MAX_REDACT_DEPTH) return value; // 超深 → 不再下钻，原样返回
+  if (Array.isArray(value)) return value.map((v) => redactSecrets(v, depth + 1));
   if (value && typeof value === 'object') {
     // 只深walk 纯对象；Date/Buffer/Map 等原样返回，避免被改写成残缺的普通对象。
     if (!isPlainObject(value)) return value;
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      out[k] = redactSecrets(v);
+      out[k] = redactSecrets(v, depth + 1);
     }
     return out;
   }

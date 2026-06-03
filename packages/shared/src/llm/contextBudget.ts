@@ -388,6 +388,8 @@ export function trimTextToTokenBudget(text: string, maxTokens: number): string {
   ) {
     maxChars = Math.floor(maxChars * 0.9);
   }
+  // 预算连后缀(≈14 token)都放不下 → 全裁返回空串，绝不返回仅后缀的超预算串。
+  if (maxChars <= 0) return '';
   return `${text.slice(0, maxChars)}${TRIM_SUFFIX}`;
 }
 

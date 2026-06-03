@@ -83,12 +83,15 @@ export function buildCheckpoint(
 
   // 累积 + 去重：按**全部** ref id 去重（不止 refs[0]）—— S4 压缩会把多条合并成一条带
   // [A,B,C] 的 finding，若只认首 ref，重抓 B/C 会被当新发现重折（整体 review #4）。
+  // 但只在**所有** ref 都已见过（=该条无任何新来源）时才跳：用 every 而非 some。
+  // 否则一条"含已见 ref + 新 ref"的发现（如 LLM 压缩把 refs 跨条目重叠成 [A,B] 与
+  // [B,C]）会因共享 B 被整条丢弃，连带丢掉只在该条出现的来源 C（round2 #4）。
   // ref-less finding 全留（每步独立；缓存重放已在 dedupedCalls 按 idempotency key 去过）。
   const seenRefIds = new Set<string>();
   const completed: CheckpointFinding[] = [];
   for (const f of [...(prior?.completed ?? []), ...newFindings]) {
     const ids = f.refs.map((r) => `${r.kind}:${r.id}`);
-    if (ids.length > 0 && ids.some((id) => seenRefIds.has(id))) continue;
+    if (ids.length > 0 && ids.every((id) => seenRefIds.has(id))) continue;
     for (const id of ids) seenRefIds.add(id);
     completed.push(f);
   }
@@ -233,7 +236,12 @@ export async function compactCheckpointViaLlm(params: {
     const completed = [...compressed, ...lost];
     // 整体 review #3：缩小校验放在**补回之后** —— 否则补回后可能 >= 原始，但 needsCompaction
     // 仍真 → 每轮重压、永不收敛。补回后没变小 → 判这次压缩无效，fail-open 保原。
-    if (completed.length >= checkpoint.completed.length) return checkpoint;
+    // round2 #3：按**字节**量缩小（与 checkpointNeedsCompaction 一致），不按条数 ——
+    // 同条数但每条 finding 大幅变短也是有效压缩，按条数会误判没缩、再次 fail-open 不收敛。
+    if (
+      JSON.stringify(completed).length >= JSON.stringify(checkpoint.completed).length
+    )
+      return checkpoint;
     const strArr = (v: unknown, fallback: string[]) =>
       Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : fallback;
     return {

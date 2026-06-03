@@ -48,4 +48,10 @@ describe('trimTextToTokenBudget consistency with estimateTokens', () => {
     expect(estimateTokens(trimmed)).toBeLessThanOrEqual(100);
     expect(trimmed.length).toBeGreaterThan(100); // ASCII 不被裁到只剩 100 字
   });
+  it('returns empty (not a suffix-only over-budget string) when budget cannot fit the trim suffix', () => {
+    // TRIM_SUFFIX 本身 ≈14 tokens；预算比它还小时旧版会返回仅后缀 → 仍超预算。
+    const cjk = '压'.repeat(500);
+    const trimmed = trimTextToTokenBudget(cjk, 5);
+    expect(estimateTokens(trimmed)).toBeLessThanOrEqual(5);
+  });
 });
