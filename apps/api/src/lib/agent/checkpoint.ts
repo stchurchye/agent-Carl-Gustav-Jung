@@ -35,16 +35,6 @@ function isOkFalseOutput(output: unknown): boolean {
 }
 
 /**
- * 去重键：只对**有 ref** 的 finding 去重（按首个 ref.kind:id —— 同一来源重复抓取应合一）。
- * 无 ref 的 finding 返回 null = 不去重：producedAtIdx 闸门已保证每步只折一次，
- * 不同步本就是不同发现（两次 run_python/导出不能因摘要相同被合掉）。
- */
-function findingKey(f: CheckpointFinding): string | null {
-  const first = f.refs[0];
-  return first ? `${first.kind}:${first.id}` : null;
-}
-
-/**
  * 机械累积：把 prior 之后的新成功工具步折叠成 findings，并进 prior.completed。
  * - 只取 idx > prior.producedAtIdx 的新步（不重复折叠）。
  * - 滤掉 soft-fail/失败步（isToolFailure）。
@@ -66,13 +56,19 @@ export function buildCheckpoint(
       !isToolFailure(s) &&
       !isOkFalseOutput(s.output),
   );
-  // 同一 toolCallKey 的原始执行 + 缓存命中重放（observe）是同一逻辑结果 —— 只折一次。
-  // （ref-bearing 后面还会按 ref 去重；这里专治 ref-less 工具的缓存重放双计。）
+  // 同一 idempotency key 的原始执行 + 缓存命中重放（observe）是同一逻辑结果 —— 只折一次。
+  // 注意：生产里缓存命中 observe 的 toolCallKey 列是 null，key 落在 input.idempotencyKey；
+  // 原始 tool_call 的 key 在 toolCallKey 列。两处都取出来才能真正配上对（整体 review #2）。
+  const idemKeyOf = (s: AgentStep): string | null =>
+    s.toolCallKey ??
+    ((s.input as { idempotencyKey?: unknown } | null)?.idempotencyKey as string | undefined) ??
+    null;
   const seenKeys = new Set<string>();
   const dedupedCalls = successfulCalls.filter((s) => {
-    if (!s.toolCallKey) return true;
-    if (seenKeys.has(s.toolCallKey)) return false;
-    seenKeys.add(s.toolCallKey);
+    const k = idemKeyOf(s);
+    if (!k) return true;
+    if (seenKeys.has(k)) return false;
+    seenKeys.add(k);
     return true;
   });
 
@@ -85,15 +81,15 @@ export function buildCheckpoint(
     };
   });
 
-  // 累积 + 去重（仅 ref-bearing 去重；ref-less 全留）。
-  const seen = new Set<string>();
+  // 累积 + 去重：按**全部** ref id 去重（不止 refs[0]）—— S4 压缩会把多条合并成一条带
+  // [A,B,C] 的 finding，若只认首 ref，重抓 B/C 会被当新发现重折（整体 review #4）。
+  // ref-less finding 全留（每步独立；缓存重放已在 dedupedCalls 按 idempotency key 去过）。
+  const seenRefIds = new Set<string>();
   const completed: CheckpointFinding[] = [];
   for (const f of [...(prior?.completed ?? []), ...newFindings]) {
-    const key = findingKey(f);
-    if (key !== null) {
-      if (seen.has(key)) continue;
-      seen.add(key);
-    }
+    const ids = f.refs.map((r) => `${r.kind}:${r.id}`);
+    if (ids.length > 0 && ids.some((id) => seenRefIds.has(id))) continue;
+    for (const id of ids) seenRefIds.add(id);
     completed.push(f);
   }
 
@@ -224,9 +220,8 @@ export async function compactCheckpointViaLlm(params: {
         finding: typeof c.finding === 'string' ? c.finding : '',
         refs: validRefs(c.refs), // 只保留合法 {kind,id} ref，挡 undefined:undefined 引用
       }));
-    // 压缩不该把发现清空、也不该变大：坏输出 → fail-open 保原。
+    // 压缩不该把发现清空：坏输出 → fail-open 保原。
     if (compressed.length === 0 && checkpoint.completed.length > 0) return checkpoint;
-    if (compressed.length >= checkpoint.completed.length) return checkpoint; // 没变小
 
     // 来源神圣：把"refs 被压缩全丢掉的原始 ref-bearing 发现"补回，绝不丢来源。
     const keptRefIds = new Set(
@@ -236,6 +231,9 @@ export async function compactCheckpointViaLlm(params: {
       (c) => c.refs.length > 0 && c.refs.every((r) => !keptRefIds.has(`${r.kind}:${r.id}`)),
     );
     const completed = [...compressed, ...lost];
+    // 整体 review #3：缩小校验放在**补回之后** —— 否则补回后可能 >= 原始，但 needsCompaction
+    // 仍真 → 每轮重压、永不收敛。补回后没变小 → 判这次压缩无效，fail-open 保原。
+    if (completed.length >= checkpoint.completed.length) return checkpoint;
     const strArr = (v: unknown, fallback: string[]) =>
       Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : fallback;
     return {

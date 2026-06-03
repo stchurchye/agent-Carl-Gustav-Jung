@@ -254,12 +254,15 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
     ? `\n\n# 上一步失败原因\n${input.previousFailure}\n请基于这个失败重新规划剩余步骤，避免重复同样错误。`
     : '';
   // S3：有 checkpoint 时渲染结构化「任务状态」（含 sd0x 重注入），优先于扁平 progress。
-  // issue 0001 B2+B3：无 checkpoint 时退回续跑进展摘要——已完成 todo + 成功观察。
-  const progress = input.checkpoint
-    ? renderCheckpointState(input.checkpoint)
-    : input.progress
+  // issue 0001 B2+B3：无 checkpoint（或 checkpoint 渲染为空——全 soft-fail 等边角）时退回
+  // 续跑进展摘要。整体 review #5：checkpoint 渲染空串也要落到 progress 兜底，别让续跑
+  // re-planner 拿不到任何先前上下文。
+  const cpRender = input.checkpoint ? renderCheckpointState(input.checkpoint) : '';
+  const progress =
+    cpRender ||
+    (input.progress
       ? `\n\n# 已完成进展\n${input.progress}\n请接着还没完成的部分继续，不要重做上面已完成的 todo；可基于已得到的结果规划下一步。`
-      : '';
+      : '');
   // M7 P1a：合并的追问段（不污染 DB，每次 planner 调用按当前 merged_inputs 全量拼）。
   const merged = input.mergedInputs ?? [];
   const mergedSection =

@@ -170,6 +170,26 @@ describe('buildCheckpoint (mechanical)', () => {
     expect(second.completed).toHaveLength(1); // 同 ref 不重复
   });
 
+  it('does not re-fold a ref already in a prior MERGED multi-ref finding (review #4)', () => {
+    // prior 里有一条 S4 压缩合并出的多-ref 发现 [A,B]
+    const prior: AgentCheckpoint = {
+      version: 1, goal: 'g', intent: 'i',
+      completed: [{ text: 'merged', finding: 'A+B 合并', refs: [
+        { kind: 'url', id: 'https://a.com', label: 'A' },
+        { kind: 'url', id: 'https://b.com', label: 'B' },
+      ] }],
+      remainingPlan: [], openQuestions: [], nextStep: '', successCount: 2, producedAtIdx: 5, digestTail: '',
+    };
+    // 续跑里重抓了 B（非首 ref）
+    const cp = buildCheckpoint(
+      prior,
+      [step({ idx: 6, kind: 'tool_call', toolName: 'fetch_url', output: { result: { ok: true, url: 'https://b.com' } } })],
+      todos,
+      { goal: 'g', intent: 'i', successCount: 3, toolMap },
+    );
+    expect(cp.completed).toHaveLength(1); // B 已被合并条目表示，不重折
+  });
+
   it('does NOT dedup ref-less findings (distinct steps are distinct findings even if summary identical)', () => {
     // 无 extractRef 的工具：两次成功调用、输出相同 → 应是 2 条 finding（每步独立）
     const plainTool = { name: 'run_python', replyMeta: { summaryKind: 'text' } } as unknown as ToolDef;
@@ -192,15 +212,31 @@ describe('buildCheckpoint (mechanical)', () => {
     const cp = buildCheckpoint(
       null,
       [
-        // 原始执行
+        // 原始执行：key 在 toolCallKey 列
         step({ idx: 1, kind: 'tool_call', toolName: 'run_python', toolCallKey: 'k1', output: { result: { ok: true, stdout: 'x' } } }),
-        // 同 key 的缓存命中重放（observe）—— 同一逻辑结果，不该再计一条
-        step({ idx: 2, kind: 'observe', toolName: 'run_python', toolCallKey: 'k1', output: { result: { ok: true, stdout: 'x' } } }),
+        // 缓存命中重放（observe）—— 生产形态：toolCallKey 列为 null，key 在 input.idempotencyKey
+        step({ idx: 2, kind: 'observe', toolName: 'run_python', input: { cached: true, idempotencyKey: 'k1' }, output: { result: { ok: true, stdout: 'x' } } }),
       ],
       todos,
       { goal: 'g', intent: 'i', successCount: 2, toolMap: map },
     );
     expect(cp.completed).toHaveLength(1); // 按 toolCallKey 去重
+  });
+
+  it('redacts secrets in a ref id/label (URL carrying a credential) — review #1', () => {
+    const cp = buildCheckpoint(
+      null,
+      [step({
+        idx: 1, kind: 'tool_call', toolName: 'fetch_url',
+        output: { result: { ok: true, url: 'https://host/data?api_key=sk-ant-abcdefghijklmnopqrstuvwxyz01' } },
+      })],
+      todos,
+      { goal: 'g', intent: 'i', successCount: 1, toolMap },
+    );
+    const refId = cp.completed[0].refs[0]?.id ?? '';
+    expect(refId).not.toContain('sk-ant-abcdefghijklmnopqrstuvwxyz01');
+    expect(refId).toContain('[REDACTED');
+    expect(refId).toContain('https://host/data'); // URL 结构保留、只刮密钥
   });
 
   it('folds successful observe (idempotency cache-hit) steps as findings', () => {
@@ -283,6 +319,22 @@ describe('compactCheckpointViaLlm (S4)', () => {
     expect(a).toEqual(big);
     const b = await compactCheckpointViaLlm({ checkpoint: big, llm: mockLlm('not json at all'), signal: new AbortController().signal });
     expect(b).toEqual(big);
+  });
+
+  it('fail-open when re-attaching lost refs makes the result not smaller (review #3, convergence)', async () => {
+    // 全 ref-bearing；LLM 返回更少条但丢了多数来源 → 补回后 >= 原始 → 该 fail-open 保原，
+    // 否则 needsCompaction 恒真、每轮重压不收敛。
+    const refful: AgentCheckpoint = {
+      ...big,
+      completed: Array.from({ length: 6 }, (_, i) => ({ text: `t${i}`, finding: `f${i}`, refs: [{ kind: 'url' as const, id: `https://s${i}.com`, label: `s${i}` }] })),
+    };
+    // LLM 返回 5 条但全丢 refs（首条留一个无关 ref）
+    const reply = JSON.stringify({
+      completed: Array.from({ length: 5 }, (_, i) => ({ text: `m${i}`, finding: `merged${i}`, refs: [] })),
+      remainingPlan: [], openQuestions: [], nextStep: 'x',
+    });
+    const out = await compactCheckpointViaLlm({ checkpoint: refful, llm: mockLlm(reply), signal: new AbortController().signal });
+    expect(out).toEqual(refful); // 补回 6 条丢失来源 → 5+6=11 >= 6 → fail-open
   });
 
   it('fail-open: LLM returns empty completed (would wipe all findings) → keeps original', async () => {

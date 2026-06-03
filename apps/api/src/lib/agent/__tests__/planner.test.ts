@@ -133,6 +133,20 @@ describe('M1f planner prompt 升级 (#1)', () => {
     expect(usr).toContain('finding-34'); // 最近的保留
   });
 
+  it('checkpoint 渲染为空时退回 progress 兜底（review #5）', () => {
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      // 全空 checkpoint（渲染成 ''）但有 progress 兜底字符串
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i', completed: [],
+        remainingPlan: [], openQuestions: [], nextStep: '', successCount: 0, producedAtIdx: 0, digestTail: '',
+      },
+      progress: 'PROGRESS-FALLBACK-MARKER',
+    });
+    expect(usr).toContain('PROGRESS-FALLBACK-MARKER'); // 不再被 checkpoint 空串短路掉
+  });
+
   it('全空 checkpoint（无发现无待办）不渲染"自动续跑中"框架', () => {
     const usr = _buildPlannerUserPromptForTest({
       inputText: 'x',

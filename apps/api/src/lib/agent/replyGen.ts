@@ -44,8 +44,15 @@ export function collectReplyRefs(
       continue;
     }
     try {
-      const ref = extractRef(raw);
-      if (!ref) continue;
+      const rawRef = extractRef(raw);
+      if (!rawRef) continue;
+      // S0 followup（整体 review #1）：ref 从原始 output 抽取（未脱敏）—— url id/label
+      // 可能带密钥（如 ?api_key=… 的链接）。脱敏 id/label，避免泄进 checkpoint 列与终稿。
+      const ref = {
+        ...rawRef,
+        id: redactSecrets(rawRef.id) as string,
+        ...(rawRef.label ? { label: redactSecrets(rawRef.label) as string } : {}),
+      };
       const key = `${ref.kind}:${ref.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -117,7 +124,9 @@ export function buildReplyMessages(params: {
   const cp = run.contextCheckpoint;
   let stepDigest: string;
   let refs: ReplyRef[];
-  if (cp && cp.completed.length > 0) {
+  // 整体 review #6：completed 空但 digestTail 有内容（成功步全是 ref-less/silent）也走
+  // checkpoint 分支，否则会退回 last-6 把 digestTail 的近窗结论丢掉。
+  if (cp && (cp.completed.length > 0 || cp.digestTail)) {
     // 跳过空 finding（silent 工具如 render_diagram，其价值在 refs 里、非摘要文本），
     // 与 last-6 分支的 `if(!summary)` 过滤对齐，避免终稿出现 "N. tool: " 噪声行。
     const lines = cp.completed

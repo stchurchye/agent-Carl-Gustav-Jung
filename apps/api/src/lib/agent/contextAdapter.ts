@@ -1,4 +1,5 @@
 import type { ContextUsage, ReplyDialect } from '@xzz/shared';
+import { estimateTokens } from '@xzz/shared';
 import type { ChatMessageInput } from '../deepseek.js';
 import { prepareChatContext } from '../contextPipeline.js';
 import { listGroupMessages } from '../../store/pg-social.js';
@@ -164,12 +165,13 @@ export async function snapshotForAgent(
     (olderSummary ? `此前对话摘要：\n${olderSummary}\n\n` : '') +
     `群聊最近 ${selected.length} 条：\n${last6}`;
   // S6：真 usage —— 反映是否压缩了更早 turns（不再硬编码 compacted:false）。
-  const usedChars =
-    systemPrompt.length +
-    history.reduce((n, h) => n + h.content.length, 0) +
-    olderSummary.length +
-    params.pendingUser.length;
-  const usedTokens = Math.ceil(usedChars / 1.6);
+  // 整体 review #7：用 S7 的 CJK 感知 estimateTokens（而非旧 chars/1.6），与全应用一致。
+  const historyText = history.map((h) => h.content).join('');
+  const sysTokens = estimateTokens(systemPrompt);
+  const summaryTokens = estimateTokens(olderSummary);
+  const historyTokens = estimateTokens(historyText);
+  const pendingTokens = estimateTokens(params.pendingUser);
+  const usedTokens = sysTokens + summaryTokens + historyTokens + pendingTokens;
   const limitTokens = 32_000; // agent planner 上下文目标窗口
   return {
     systemPrompt,
@@ -180,11 +182,11 @@ export async function snapshotForAgent(
       limitTokens,
       ratio: usedTokens / limitTokens,
       breakdown: {
-        system: Math.ceil(systemPrompt.length / 1.6),
-        summary: Math.ceil(olderSummary.length / 1.6),
-        history: Math.ceil(history.reduce((n, h) => n + h.content.length, 0) / 1.6),
+        system: sysTokens,
+        summary: summaryTokens,
+        history: historyTokens,
         document: 0,
-        pendingUser: Math.ceil(params.pendingUser.length / 1.6),
+        pendingUser: pendingTokens,
         outputReserve: 0,
       },
       compacted: older.length > 0,
