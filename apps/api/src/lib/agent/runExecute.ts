@@ -16,6 +16,10 @@ import * as store from './store.js';
 import {
   AgentBudgetExhausted,
   AgentCancelled,
+  type AgentCheckpoint,
+  type AgentRun,
+  type AgentStep,
+  type Plan,
   type TodoItem,
 } from './types.js';
 import { runCritique, isToolFailure } from './critique.js';
@@ -27,6 +31,7 @@ import { runControllers } from './runtimeRegistry.js';
 import { TOOL_TIMEOUT_MS, HIGH_COST_TOOL_TIMEOUT_MS, withTimeout } from './runtimeShared.js';
 import { softComplete } from './runLifecycle.js';
 import { buildInitialPlan, buildProgressSummary } from './runPlanGlue.js';
+import { buildCheckpoint } from './checkpoint.js';
 import { resolveLlmClient } from './runLlmClient.js';
 import { reflectGoalCompletion } from './reflection.js';
 import { pickFallbackFinalContent } from './runReply.js';
@@ -67,6 +72,28 @@ function coerceErrorToString(raw: unknown, fallback: string): string {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * S1：reload-before-update 地重算累积 checkpoint。续跑点与收尾点共用，避免重复。
+ * 拿最新 contextCheckpoint 作 prior（防 reclaim 重拾竞态），从全量 finalSteps 折叠
+ * idx>producedAtIdx 的新步。返回 checkpoint，由调用方连同 status 一起 updateAgentRun。
+ */
+async function computeCheckpoint(
+  runId: string,
+  fallbackRun: AgentRun,
+  plan: Plan,
+  finalSteps: AgentStep[],
+  liveTodos: TodoItem[],
+  successCount: number,
+): Promise<AgentCheckpoint> {
+  const latest = (await store.getAgentRun(runId)) ?? fallbackRun;
+  return buildCheckpoint(latest.contextCheckpoint, finalSteps, liveTodos, {
+    goal: fallbackRun.inputText,
+    intent: plan.intentSummary,
+    successCount,
+    toolMap: new Map(toolRegistry.list().map((t) => [t.name, t])),
+  });
 }
 
 export async function executeRun(runId: string): Promise<void> {
@@ -553,9 +580,33 @@ export async function executeRun(runId: string): Promise<void> {
           successCount,
         },
       });
-      await store.updateAgentRun(runId, { status: 'replanning' });
+      // S1：把累积式结构化 checkpoint 写进 run 列（单一真相源）。
+      const checkpoint = await computeCheckpoint(
+        runId,
+        run,
+        plan,
+        finalSteps,
+        liveTodos,
+        successCount,
+      );
+      await store.updateAgentRun(runId, {
+        status: 'replanning',
+        contextCheckpoint: checkpoint,
+      });
       return;
     }
+
+    // S1：收尾前也写一次 checkpoint —— 否则续跑一轮后在末轮完成的 run，其最后
+    // （决定性的）发现永远不会进 checkpoint。供 S2 终稿 / 后续读取拿到最新状态。
+    const finalCheckpoint = await computeCheckpoint(
+      runId,
+      run,
+      plan,
+      finalSteps,
+      liveTodos,
+      successCount,
+    );
+    await store.updateAgentRun(runId, { contextCheckpoint: finalCheckpoint });
 
     // M1c：终稿在 softComplete 里走 buildFinalContent（含 LLM 终稿）；
     // 这里仍记一条 reply step，但内容直接用 fallback 概要——

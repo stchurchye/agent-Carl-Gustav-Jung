@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { PoolClient } from 'pg';
 import { getPool } from '../../db/client.js';
 import {
+  type AgentCheckpoint,
   type AgentRun,
   type AgentRunStatus,
   type AgentStep,
@@ -73,6 +74,8 @@ function parseRun(row: Row): AgentRun {
     askUserStartedAt: (row.ask_user_started_at as Date | null) ?? null,
     askUserOpenedForAllAt:
       (row.ask_user_opened_for_all_at as Date | null) ?? null,
+    contextCheckpoint:
+      (row.context_checkpoint as AgentCheckpoint | null) ?? null,
     createdAt: row.created_at as Date,
     startedAt: (row.started_at as Date | null) ?? null,
     endedAt: (row.ended_at as Date | null) ?? null,
@@ -121,7 +124,8 @@ const RUN_COLUMNS = `id, owner_id, channel, session_id, group_id, topic_id,
   pending_approval_tool_name, cancelled_by_user_id, cancel_reason,
   created_at, started_at, ended_at,
   merged_inputs, merged_inputs_consumed_count, queue_position,
-  ask_user_target_user_id, ask_user_started_at, ask_user_opened_for_all_at`;
+  ask_user_target_user_id, ask_user_started_at, ask_user_opened_for_all_at,
+  context_checkpoint`;
 
 const STEP_COLUMNS = `id, run_id, idx, kind, tool_name, tool_call_key,
   input, output, tokens, duration_ms, error, by_user_id, created_at`;
@@ -344,6 +348,7 @@ export type UpdateAgentRunInput = Partial<{
   askUserTargetUserId: string | null;
   askUserStartedAt: Date | null;
   askUserOpenedForAllAt: Date | null;
+  contextCheckpoint: AgentCheckpoint | null;
 }>;
 
 /** M7：spec 引用类型别名，方便调用方写具名类型而非 Parameters<typeof updateAgentRun>[1]。 */
@@ -387,6 +392,7 @@ export async function updateAgentRun(
       'ask_user_opened_for_all_at',
       patch.askUserOpenedForAllAt,
     ],
+    contextCheckpoint: ['context_checkpoint', jsonbOrNull(patch.contextCheckpoint)],
   };
 
   const sets: string[] = [];

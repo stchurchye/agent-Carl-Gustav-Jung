@@ -143,6 +143,8 @@ export type AgentRun = {
   mergedInputs: MergedInput[];
   /** M7：runExecute 已注入 planner / replan 的追问数。每步前比较推进。 */
   mergedInputsConsumedCount: number;
+  /** S1：累积式结构化 checkpoint（context compaction）。null = 还没产生。 */
+  contextCheckpoint: AgentCheckpoint | null;
   /** M7：queued 状态下记录的初始位次（UI hint，非真源）。 */
   queuePosition: number | null;
   /** M7：ask_user 群聊期待谁答（默认 = ownerId）。 */
@@ -241,6 +243,27 @@ export type ReplyRef = {
   kind: 'document' | 'url' | 'magi_card' | 'diagram';
   id: string;
   label?: string;
+};
+
+/**
+ * S1（context compaction）：累积式结构化 checkpoint —— 跨步累积的任务状态，
+ * 存在 agent_runs.context_checkpoint 列。类型放 types.ts 避免 store ↔ checkpoint 循环依赖。
+ */
+export type CheckpointFinding = {
+  text: string;
+  finding: string;
+  refs: ReplyRef[];
+};
+export type AgentCheckpoint = {
+  version: 1;
+  goal: string;
+  intent: string;
+  completed: CheckpointFinding[];
+  remainingPlan: string[];
+  openQuestions: string[];
+  nextStep: string;
+  successCount: number;
+  producedAtIdx: number;
 };
 
 /**
