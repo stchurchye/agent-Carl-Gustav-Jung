@@ -157,10 +157,6 @@ export function ChatScreen({ route, navigation }: Props) {
   const [contextSelection, setContextSelection] = useState<ContextSelection | null>(null);
   const listHostRef = useRef<View>(null);
   const composeRef = useRef<View>(null);
-  const pendingScrollMessageIdRef = useRef<string | undefined>(scrollToMessageId);
-  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(
-    scrollToMessageId ?? null,
-  );
   const [messageAction, setMessageAction] = useState<MessageActionTarget<ChatUiMessage> | null>(
     null,
   );
@@ -179,12 +175,15 @@ export function ChatScreen({ route, navigation }: Props) {
   const {
     listRef,
     listOpacityStyle,
-    onContentSizeChange: onListContentSizeChange,
+    highlightMessageId,
     scrollToEnd,
-    revealList,
+    followIfStuck,
+    viewportListProps,
   } = useChatListViewport({
     resetKey: session?.id,
-    messageCount: messagesUi.length,
+    messages: messagesUi,
+    scrollToMessageId,
+    onScrollBeginDrag: bubbleTextSelectionClearActive,
   });
   const { viewport: messageActionViewport, composeRect: messageActionComposeRect } =
     useMessageActionViewport(listHostRef, composeRef, messageAction !== null);
@@ -276,24 +275,6 @@ export function ChatScreen({ route, navigation }: Props) {
     },
     [],
   );
-
-  useEffect(() => {
-    const targetId = pendingScrollMessageIdRef.current;
-    if (!targetId || messagesUi.length === 0) return;
-    const idx = messagesUi.findIndex((m) => m.id === targetId);
-    if (idx < 0) return;
-    pendingScrollMessageIdRef.current = undefined;
-    setHighlightMessageId(targetId);
-    const t = setTimeout(() => {
-      listRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.45 });
-      revealList();
-    }, 16);
-    const clear = setTimeout(() => setHighlightMessageId(null), 2500);
-    return () => {
-      clearTimeout(t);
-      clearTimeout(clear);
-    };
-  }, [messagesUi, revealList, listRef]);
 
   useEffect(() => {
     let cancelled = false;
@@ -393,7 +374,9 @@ export function ChatScreen({ route, navigation }: Props) {
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantId ? { ...m, displayContent: visible } : m)),
           );
-          scrollToEnd();
+          // 流式跟随：仅当用户仍粘底才跟到底，不强制粘底 —— 用户流式中上滑看
+          // 历史不会被每 tick 拽回。（兜底 onContentSizeChange 可能漏触发的情形。）
+          followIfStuck();
         },
         { signal: ac.signal },
       );
@@ -403,7 +386,7 @@ export function ChatScreen({ route, navigation }: Props) {
         ),
       );
     },
-    [scrollToEnd],
+    [followIfStuck],
   );
 
   const runIntentExecute = useCallback(
@@ -1010,7 +993,6 @@ export function ChatScreen({ route, navigation }: Props) {
             }
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
-            onScrollBeginDrag={bubbleTextSelectionClearActive}
             onTouchEndCapture={bubbleTextSelectionTryDismissOnTouchEnd}
             removeClippedSubviews={Platform.OS !== 'android'}
             initialNumToRender={20}
@@ -1018,20 +1000,7 @@ export function ChatScreen({ route, navigation }: Props) {
             windowSize={9}
             updateCellsBatchingPeriod={50}
             renderItem={renderMessage}
-            onScrollToIndexFailed={(info) => {
-              setTimeout(() => {
-                listRef.current?.scrollToIndex({
-                  index: info.index,
-                  animated: false,
-                  viewPosition: 0.45,
-                });
-              }, 100);
-            }}
-            onContentSizeChange={() => {
-              if (!pendingScrollMessageIdRef.current) {
-                onListContentSizeChange();
-              }
-            }}
+            {...viewportListProps}
             ListEmptyComponent={
               <Text style={[styles.empty, isTablet && styles.emptyTablet]}>
                 {zh.chat.emptyHint}

@@ -156,10 +156,6 @@ export function GroupChatScreen({ route, navigation }: Props) {
   const lastIdRef = useRef<string | null>(null);
   const listHostRef = useRef<View>(null);
   const composeRef = useRef<View>(null);
-  const pendingScrollMessageIdRef = useRef<string | undefined>(scrollToMessageId);
-  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(
-    scrollToMessageId ?? null,
-  );
   const [messageAction, setMessageAction] = useState<MessageActionTarget<GroupMessage> | null>(
     null,
   );
@@ -211,16 +207,13 @@ export function GroupChatScreen({ route, navigation }: Props) {
       })),
     [messages],
   );
-  const {
-    listRef,
-    listOpacityStyle,
-    onContentSizeChange: onListContentSizeChange,
-    scrollToEnd,
-    revealList,
-  } = useChatListViewport({
-    resetKey: `${groupId}:${topicId}`,
-    messageCount: messagesUi.length,
-  });
+  const { listRef, listOpacityStyle, highlightMessageId, scrollToEnd, viewportListProps } =
+    useChatListViewport({
+      resetKey: `${groupId}:${topicId}`,
+      messages: messagesUi,
+      scrollToMessageId,
+      onScrollBeginDrag: bubbleTextSelectionClearActive,
+    });
   const { viewport: messageActionViewport, composeRect: messageActionComposeRect } =
     useMessageActionViewport(listHostRef, composeRef, messageAction !== null);
 
@@ -234,6 +227,8 @@ export function GroupChatScreen({ route, navigation }: Props) {
       const res = await api.listGroupMessages(groupId, topicId, after ? { after } : undefined);
       if (opts?.poll && after && res.data.length === 0) return;
       if (opts?.poll && after) {
+        // 新消息 append 后，列表内容撑高 → onContentSizeChange 会按「是否粘底」
+        // 决定自动跟随到底（修复「新消息来了纹丝不动」），翻历史时不打扰。
         setMessages((prev) => [...prev, ...res.data]);
       } else {
         setMessages(res.data);
@@ -262,24 +257,6 @@ export function GroupChatScreen({ route, navigation }: Props) {
       .catch(() => setContextUsage(null));
   }, [groupId, topicId, input]);
 
-  useEffect(() => {
-    const targetId = pendingScrollMessageIdRef.current;
-    if (!targetId || messagesUi.length === 0) return;
-    const idx = messagesUi.findIndex((m) => m.id === targetId);
-    if (idx < 0) return;
-    pendingScrollMessageIdRef.current = undefined;
-    setHighlightMessageId(targetId);
-    const t = setTimeout(() => {
-      listRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.45 });
-      revealList();
-    }, 16);
-    const clear = setTimeout(() => setHighlightMessageId(null), 2500);
-    return () => {
-      clearTimeout(t);
-      clearTimeout(clear);
-    };
-  }, [messagesUi, revealList, listRef]);
-
   async function sendHuman() {
     const text = prepareChatMessageForSend(input);
     if (!text) return;
@@ -288,6 +265,7 @@ export function GroupChatScreen({ route, navigation }: Props) {
     try {
       await api.sendGroupMessage(groupId, topicId, text);
       await loadMessages();
+      scrollToEnd();
     } catch (e) {
       appAlert('发送失败', apiErrorText(e).message);
     } finally {
@@ -661,27 +639,13 @@ export function GroupChatScreen({ route, navigation }: Props) {
             renderItem={renderItem}
             contentContainerStyle={wechatChatStyles.listContent}
             keyboardShouldPersistTaps="handled"
-            onScrollBeginDrag={bubbleTextSelectionClearActive}
             onTouchEndCapture={bubbleTextSelectionTryDismissOnTouchEnd}
             removeClippedSubviews={Platform.OS !== 'android'}
             initialNumToRender={20}
             maxToRenderPerBatch={12}
             windowSize={9}
             updateCellsBatchingPeriod={50}
-            onScrollToIndexFailed={(info) => {
-              setTimeout(() => {
-                listRef.current?.scrollToIndex({
-                  index: info.index,
-                  animated: false,
-                  viewPosition: 0.45,
-                });
-              }, 100);
-            }}
-            onContentSizeChange={() => {
-              if (!pendingScrollMessageIdRef.current) {
-                onListContentSizeChange();
-              }
-            }}
+            {...viewportListProps}
           />
           <DraggableAskAiFab
             active={askAiMode}
