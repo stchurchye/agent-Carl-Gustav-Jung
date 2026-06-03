@@ -54,9 +54,21 @@ export function getContextWindowTokens(): number {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_CONTEXT_WINDOW_TOKENS;
 }
 
+/**
+ * S7：CJK/ASCII 分别估 token，比裸 `len/1.6` 准。
+ * - CJK（含日文假名/韩文/全角）≈ 1 token/char（保守，DeepSeek 实测多在 ~1/char）。
+ * - 其余（ASCII/拉丁/数字/空白）≈ 1 token / ASCII_CHARS_PER_TOKEN（旧 1.6 对英文高估 ~3.5x）。
+ * 偏保守 = 估高一点 → 早压更安全。留 seam：日后可用 provider 返回的真实 prompt_tokens 校准。
+ */
+export const ASCII_CHARS_PER_TOKEN = 3.5;
+// U+2E80–U+9FFF 一段覆盖 部首/注音/CJK 符号/假名/汉字；另加 Hangul(AC00–D7AF) + 全角(FF00–FFEF)。
+const CJK_RE = /[⺀-鿿가-힯＀-￯]/g;
+
 export function estimateTokens(text: string): number {
   if (!text) return 0;
-  return Math.ceil(text.length / ESTIMATE_CHARS_PER_TOKEN);
+  const cjkCount = (text.match(CJK_RE) ?? []).length;
+  const nonCjk = text.length - cjkCount;
+  return cjkCount + Math.ceil(nonCjk / ASCII_CHARS_PER_TOKEN);
 }
 
 export function formatTokenCount(n: number): string {
@@ -360,11 +372,23 @@ export function assembleWritingExecuteContext(params: {
   };
 }
 
+const TRIM_SUFFIX = '\n…（下文已按上下文预算压缩）';
+
 export function trimTextToTokenBudget(text: string, maxTokens: number): string {
   if (maxTokens <= 0) return '';
-  const maxChars = Math.floor(maxTokens * ESTIMATE_CHARS_PER_TOKEN);
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}\n…（下文已按上下文预算压缩）`;
+  if (estimateTokens(text) <= maxTokens) return text;
+  // S7：用文本自身的 char/token 密度换算初始字符数（CJK≈1、ASCII≈3.5），再校验收紧到
+  // 「裁后正文 + 后缀」整体真 <= maxTokens —— 旧版固定按 1.6 chars/token，CJK 文本会超填
+  // ~60%、撑爆真实窗口；且要把后缀本身的 token 也算进预算。
+  const density = text.length / Math.max(1, estimateTokens(text));
+  let maxChars = Math.floor(maxTokens * density);
+  while (
+    maxChars > 0 &&
+    estimateTokens(text.slice(0, maxChars) + TRIM_SUFFIX) > maxTokens
+  ) {
+    maxChars = Math.floor(maxChars * 0.9);
+  }
+  return `${text.slice(0, maxChars)}${TRIM_SUFFIX}`;
 }
 
 export function shouldCompact(usage: ContextUsage): boolean {
