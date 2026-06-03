@@ -264,6 +264,11 @@ export type AgentCheckpoint = {
   nextStep: string;
   successCount: number;
   producedAtIdx: number;
+  /**
+   * S2：近窗高保真 —— 最近 K 步成功工具输出的较全摘要（比 completed[].finding 的
+   * 200 字更全，每条 ≤~1.5KB）。弥补本 agent「无逐字近窗」的架构短板。
+   */
+  digestTail: string;
 };
 
 /**

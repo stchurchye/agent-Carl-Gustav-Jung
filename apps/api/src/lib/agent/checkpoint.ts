@@ -2,6 +2,7 @@ import type { AgentCheckpoint, AgentRun, AgentStep, CheckpointFinding, TodoItem 
 import type { ToolDef } from './toolRegistry.js';
 import { collectReplyRefs, summarizeStepOutput } from './replyGen.js';
 import { isToolFailure } from './critique.js';
+import { redactSecrets } from './redact.js';
 
 /**
  * S1：累积式结构化 checkpoint。机械版（无 LLM）—— 每步把成功工具调用的发现 +ref
@@ -106,5 +107,34 @@ export function buildCheckpoint(
     nextStep: prior?.nextStep ?? '',
     successCount: opts.successCount,
     producedAtIdx: maxIdx,
+    digestTail: buildDigestTail(steps),
   };
+}
+
+/** 每条近窗输出的较全上限（比 finding 摘要的 200 字富，但不致灌爆 planner）。 */
+const DIGEST_TAIL_STEPS = 4;
+const DIGEST_TAIL_PER_STEP = 1500;
+
+/** 近窗高保真：取最近 K 步成功工具输出，各保留较全（≤1.5KB）摘要。 */
+function buildDigestTail(steps: AgentStep[]): string {
+  const recent = steps
+    .filter(
+      (s) =>
+        (s.kind === 'tool_call' || s.kind === 'observe') &&
+        !isToolFailure(s) &&
+        !isOkFalseOutput(s.output),
+    )
+    .slice(-DIGEST_TAIL_STEPS);
+  return recent
+    .map((s) => {
+      let out = '';
+      try {
+        // S2d：digestTail 是送 LLM 的投影 → 脱敏（持久化 step.output 保持原始）。
+        out = JSON.stringify(redactSecrets(s.output) ?? {}).slice(0, DIGEST_TAIL_PER_STEP);
+      } catch {
+        out = '[unserializable]';
+      }
+      return `- ${s.toolName ?? '<tool>'}: ${out}`;
+    })
+    .join('\n');
 }

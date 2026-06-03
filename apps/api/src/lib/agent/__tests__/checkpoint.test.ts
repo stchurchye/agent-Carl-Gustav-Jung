@@ -77,6 +77,22 @@ describe('buildCheckpoint (mechanical)', () => {
       { kind: 'url', id: 'https://nsf.gov/sutton', label: 'page' },
     ]);
     expect(cp.remainingPlan).toEqual(['汇总']); // 未完成的 todo
+    expect(typeof cp.digestTail).toBe('string');
+  });
+
+  it('digestTail keeps recent output richer than the 200-char finding summary', () => {
+    const longStdout = 'L'.repeat(800);
+    const plainTool = { name: 'run_python', replyMeta: { summaryKind: 'text' } } as unknown as ToolDef;
+    const map = new Map<string, ToolDef>([['run_python', plainTool]]);
+    const cp = buildCheckpoint(
+      null,
+      [step({ idx: 1, kind: 'tool_call', toolName: 'run_python', output: { result: { ok: true, stdout: longStdout } } })],
+      todos,
+      { goal: 'g', intent: 'i', successCount: 1, toolMap: map },
+    );
+    // finding 摘要 ≤200 字；digestTail 保留更全（>200 个 L）
+    expect(cp.completed[0].finding.length).toBeLessThanOrEqual(220);
+    expect((cp.digestTail.match(/L/g) ?? []).length).toBeGreaterThan(300);
   });
 
   it('accumulates across builds and only folds steps after producedAtIdx (old findings preserved)', () => {
@@ -229,6 +245,7 @@ describe('context_checkpoint column round-trip', () => {
       nextStep: '读取来源',
       successCount: 1,
       producedAtIdx: 3,
+      digestTail: 'recent output detail',
     };
     await store.updateAgentRun(run.id, { contextCheckpoint: cp });
 

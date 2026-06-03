@@ -526,6 +526,8 @@ export async function executeRun(runId: string): Promise<void> {
               steps: finalSteps,
               llm: reflectLlm,
               signal: abortController.signal,
+              // S2：prior 累积 checkpoint + 本轮 tail = 让评审看到整 run。
+              checkpoint: run.contextCheckpoint,
             });
             shouldContinue = !reflection.goalMet;
             reflectionReason = reflection.reason;
@@ -607,6 +609,8 @@ export async function executeRun(runId: string): Promise<void> {
       successCount,
     );
     await store.updateAgentRun(runId, { contextCheckpoint: finalCheckpoint });
+    // 同步本地 run，让下游 softComplete→buildFinalContent→buildReplyMessages 读到最新 checkpoint。
+    run.contextCheckpoint = finalCheckpoint;
 
     // M1c：终稿在 softComplete 里走 buildFinalContent（含 LLM 终稿）；
     // 这里仍记一条 reply step，但内容直接用 fallback 概要——

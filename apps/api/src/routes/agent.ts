@@ -23,6 +23,18 @@ export const agentRouter = new Hono<{ Variables: AppVariables }>();
 agentRouter.use('*', requireAuth);
 
 /**
+ * S2：给客户端的 run 序列化 —— 剥掉 `contextCheckpoint`（内部 compaction 状态，
+ * 随 run 累积增大，客户端不消费；避免每次轮询下发数 KB 冗余 + 不泄漏内部状态）。
+ */
+export function runForClient(
+  run: AgentRun | null,
+): Omit<AgentRun, 'contextCheckpoint'> | null {
+  if (!run) return null;
+  const { contextCheckpoint: _omit, ...rest } = run;
+  return rest;
+}
+
+/**
  * 私聊：仅 owner 可访问。群聊：owner 或群成员可访问（任意成员可看/取消，对齐 spec §8.5 + AC2）。
  * Exported for unit tests (T12).
  */
@@ -79,7 +91,7 @@ agentRouter.get('/runs', async (c) => {
   const hasMore = runs.length === limit;
   return c.json({
     ok: true,
-    data: { runs, hasMore },
+    data: { runs: runs.map(runForClient), hasMore },
     requestId: c.get('requestId'),
   });
 });
@@ -96,7 +108,7 @@ agentRouter.get('/runs/:id', async (c) => {
   const notices = await listNoticesForRun(id, { limit: 20 });
   return c.json({
     ok: true,
-    data: { run, steps, notices },
+    data: { run: runForClient(run), steps, notices },
     requestId: c.get('requestId'),
   });
 });
@@ -233,7 +245,7 @@ agentRouter.get('/runs/:id/long-poll', async (c) => {
     const steps = await store.listSteps(id);
     const newSteps = steps.filter((s) => s.idx > after);
     const notices = await listNoticesForRun(id, { limit: 20 });
-    return { type: 'batch', run: latest, steps: newSteps, notices, hasMore: false };
+    return { type: 'batch', run: runForClient(latest), steps: newSteps, notices, hasMore: false };
   }
 
   // Terminal → immediate batch
@@ -299,7 +311,7 @@ agentRouter.get('/runs/:id/long-poll', async (c) => {
 
   if (reason === 'idle') {
     const latest = await store.getAgentRun(id);
-    holdLines.push({ type: 'idle', lastIdx: after, run: latest });
+    holdLines.push({ type: 'idle', lastIdx: after, run: runForClient(latest) });
   } else {
     holdLines.push(await buildBatchLine());
   }
@@ -344,7 +356,7 @@ agentRouter.post('/runs/:id/resume', async (c) => {
 
   try {
     const result = await resumeAgentRun({ runId: id, userInput });
-    return c.json({ ok: true, data: { run: result.run }, requestId: c.get('requestId') });
+    return c.json({ ok: true, data: { run: runForClient(result.run) }, requestId: c.get('requestId') });
   } catch {
     return jsonError(c, ErrorCodes.VALIDATION, 409);
   }

@@ -46,6 +46,27 @@ function installReflectCaptureFetch(goalMet: boolean, reason: string): {
   return { getLast: () => last };
 }
 
+describe('buildStepDigest with checkpoint (S2)', () => {
+  it('prepends accumulated findings from the checkpoint so the judge sees the whole run', async () => {
+    const { buildStepDigest } = await import('../reflection.js');
+    const digest = buildStepDigest([], {
+      version: 1,
+      goal: 'g',
+      intent: 'i',
+      completed: [
+        { text: 'fetch_url', finding: '早期已确认信托三要素', refs: [{ kind: 'url', id: 'https://e.example', label: 'x' }] },
+      ],
+      remainingPlan: [],
+      openQuestions: [],
+      nextStep: '',
+      successCount: 1,
+      producedAtIdx: 2,
+      digestTail: '',
+    });
+    expect(digest).toContain('早期已确认信托三要素');
+  });
+});
+
 describe('reflectGoalCompletion (issue 0003)', () => {
   const ORIGINAL_VITEST = process.env.VITEST;
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
