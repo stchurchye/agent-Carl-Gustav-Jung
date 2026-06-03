@@ -78,11 +78,27 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
   // 关键：只看「最后一条 step」是否就是 merge_trigger replan —— 若其后又跑了步骤
   // 再因 critique 进 replanning，最后一条不再是它，critique 的审计 replan 不被误抑制。
   const lastStep = steps[steps.length - 1];
-  const mergeTriggered =
-    lastStep?.kind === 'replan' &&
-    (lastStep.output as { reason?: string } | null)?.reason === 'merge_trigger';
+  // M7 P1 的 merge_trigger 与 issue 0001 的 continuation 都在进入 replanning 前
+  // 已经自己写过一条 replan step；这里别再补记一条「critique_or_unspecified」幻影 replan
+  // （否则审计日志把续跑/合并误算成 critique replan，污染信号）。
+  const lastReplanReason =
+    lastStep?.kind === 'replan'
+      ? (lastStep.output as { reason?: string } | null)?.reason
+      : undefined;
+  const alreadyReplanRecorded =
+    lastReplanReason === 'merge_trigger' || lastReplanReason === 'continuation';
 
-  if (denyIsNewest) {
+  if (alreadyReplanRecorded) {
+    // continuation(issue 0001) / merge_trigger(M7 P1)：最新一步就是它们自己写的 replan，
+    // 直接清 plan 让 executeRun 走 buildInitialPlan 重生成（progress / merged_inputs 已就绪）。
+    // 必须优先于 deny/steer 检测 —— 否则历史里残留的 approval_deny / steer step 会被
+    // denyIsNewest/steerIsNewest 误判成"最新"，把续跑/合并错误路由到 deny 重规划或 steer no-op，
+    // 丢掉 stashed progress / 重放同一 plan。(review round-3 finding)
+    next = (await store.updateAgentRun(run.id, {
+      plan: null,
+      todos: [],
+    }))!;
+  } else if (denyIsNewest) {
     const newPlan = generatePlanForApprovalDeny(
       run.plan!,
       lastDeny!.toolName ?? 'unknown',
@@ -97,17 +113,15 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
     // critique 触发（或其他非 steer / 非 deny 的 replan 源）→ 清 plan，
     // 让 executeRun 走 buildInitialPlan 重生成；previousFailure 由
     // buildPreviousFailureSummary 从 DB 取最近 failed step 拼出。
-    if (!mergeTriggered) {
-      await recordStep({
-        runId: run.id,
-        kind: 'replan',
-        output: {
-          reason: 'critique_or_unspecified',
-          clearedPlan: true,
-          prevPlanVersion: run.plan?.version ?? null,
-        },
-      });
-    }
+    await recordStep({
+      runId: run.id,
+      kind: 'replan',
+      output: {
+        reason: 'critique_or_unspecified',
+        clearedPlan: true,
+        prevPlanVersion: run.plan?.version ?? null,
+      },
+    });
     next = (await store.updateAgentRun(run.id, {
       plan: null,
       todos: [],

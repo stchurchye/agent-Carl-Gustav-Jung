@@ -92,8 +92,9 @@ describe('M1f runtime soft-fail recognition (#5)', () => {
     // run 不应被标 failed —— soft-fail 只是 observation 标记，让 planner 决定
     const finalRun = await getAgentRun(run.id);
     expect(finalRun?.status).not.toBe('failed');
-    // 单步 plan 跑完后 run 应该 completed
-    expect(finalRun?.status).toBe('completed');
+    // issue 0001 continuation-replan：单步 soft-fail 留下没干成的 todo →
+    // 不直接收尾，而是续跑一轮让 planner 据失败重规划（正是本测试注释说的"让 planner 决定"）。
+    expect(finalRun?.status).toBe('replanning');
   });
 
   // M1f Task 3 followup (review blocker 1)：连续 2 次 soft-fail 必须触发 critique

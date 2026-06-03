@@ -115,6 +115,12 @@ export type LlmPlannerInput = {
   isSubagent?: boolean;
   /** M7 P1a：合并的追问；非空时 buildPlannerUserPrompt 拼入 "# 后续追问" 段。 */
   mergedInputs?: Array<{ text: string; byUserId: string; byUsername: string; at: string }>;
+  /**
+   * issue 0001 B2+B3：续跑(continuation-replan)重建时的「进展摘要」——已完成 todo +
+   * 成功步骤观察。非空时 buildPlannerUserPrompt 拼入 "# 已完成进展" 段，让新 plan
+   * 接着未完成的干、不重做已完成的，并基于已学到的结果规划。
+   */
+  progress?: string;
 };
 
 /**
@@ -241,6 +247,10 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   const failure = input.previousFailure
     ? `\n\n# 上一步失败原因\n${input.previousFailure}\n请基于这个失败重新规划剩余步骤，避免重复同样错误。`
     : '';
+  // issue 0001 B2+B3：续跑进展摘要——已完成 todo + 成功观察。
+  const progress = input.progress
+    ? `\n\n# 已完成进展\n${input.progress}\n请接着还没完成的部分继续，不要重做上面已完成的 todo；可基于已得到的结果规划下一步。`
+    : '';
   // M7 P1a：合并的追问段（不污染 DB，每次 planner 调用按当前 merged_inputs 全量拼）。
   const merged = input.mergedInputs ?? [];
   const mergedSection =
@@ -248,7 +258,7 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
       ? `\n\n# 后续追问（合并自其他成员，需在新 plan 中一并回应）\n` +
         merged.map((m, i) => `${i + 1}. @${sanitizeMergedUsername(m.byUsername)} (${m.at}): ${m.text}`).join('\n')
       : '';
-  return `# 用户请求\n${input.inputText}${mergedSection}${summary}${failure}`;
+  return `# 用户请求\n${input.inputText}${mergedSection}${summary}${failure}${progress}`;
 }
 
 type LooseStep = {
