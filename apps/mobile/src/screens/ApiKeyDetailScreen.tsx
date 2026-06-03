@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -24,7 +24,9 @@ type Props = NativeStackScreenProps<BrainStackParamList, 'ApiKeyDetail'>;
 
 export function ApiKeyDetailScreen({ route, navigation }: Props) {
   const { kind } = route.params;
-  const cfg = apiKeyKindConfig(kind);
+  // 必须 memo：apiKeyKindConfig 每次返回新对象，否则 reload(useCallback) 每帧变身份，
+  // useFocusEffect 无限重跑 → 永久 loading、输入框不渲染。
+  const cfg = useMemo(() => apiKeyKindConfig(kind), [kind]);
   const D = zh.brain.homeKeysDetail;
 
   const [input, setInput] = useState('');

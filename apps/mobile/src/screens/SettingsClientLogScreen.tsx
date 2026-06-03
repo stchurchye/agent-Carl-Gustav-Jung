@@ -46,9 +46,13 @@ export function SettingsClientLogScreen(_props: Props) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    await ensureClientLogsLoaded();
-    setEntries([...getClientLogEntries(500)].reverse());
-    setLoading(false);
+    try {
+      await ensureClientLogsLoaded();
+      setEntries([...getClientLogEntries(500)].reverse());
+    } finally {
+      // 防 hydrate 抛错时永久卡 loading。
+      setLoading(false);
+    }
   }, []);
 
   useFocusEffect(
