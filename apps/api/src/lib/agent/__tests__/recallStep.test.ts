@@ -131,6 +131,20 @@ describe('recall_step tool', () => {
     expect(out.found).toBe(false);
   });
 
+  it('offset 越界 → content 空但带 note 提示（不是无声空内容）', async () => {
+    const { run, userId } = await freshRun('recalloob');
+    const s = await recordStep({
+      runId: run.id, kind: 'tool_call', toolName: 'fetch_url',
+      output: { result: { ok: true, x: 'short' }, retried: false },
+    });
+    const out = (await recallStepTool.handler({ stepIdx: s.idx, offset: 99999 }, ctxFor(run.id, userId))) as {
+      found: boolean; content: string; note?: string; totalChars: number;
+    };
+    expect(out.found).toBe(true);
+    expect(out.content).toBe(''); // 越界没内容
+    expect(out.note).toBeTruthy(); // 但有 note 说明越界了（模型不会误判"这步没数据"）
+  });
+
   it('闭环：recall_step 输出 → digestTail → 真进下一轮 planner prompt（能用上）', async () => {
     const { run, userId } = await freshRun('recallloop');
     // 旧步（idx 0）含一段关键细节

@@ -59,6 +59,23 @@ function installPlannerCaptureFetch(intent: string): {
   return { getLast: () => last };
 }
 
+describe('buildProgressSummary 脱敏（送 planner 投影必须刮密钥）', () => {
+  it('成功观察里的密钥不进 progress 摘要（与 digestTail/findings 脱敏纪律一致）', async () => {
+    const { buildProgressSummary } = await import('../runPlanGlue.js');
+    const SECRET = 'sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ';
+    const step = {
+      id: 's1', runId: 'r', idx: 1, kind: 'tool_call' as const,
+      toolName: 'fetch_url', toolCallKey: null, input: null,
+      output: { result: { ok: true, leaked: SECRET } },
+      tokens: 0, durationMs: 0, error: null, byUserId: null, createdAt: new Date(),
+    };
+    const todos = [{ id: 't1', text: '抓取', status: 'completed' as const, stepRefs: [] }];
+    const summary = buildProgressSummary([step], todos) ?? '';
+    expect(summary).not.toContain(SECRET); // 密钥不泄漏给 planner
+    expect(summary).toContain('[REDACTED');
+  });
+});
+
 describe('buildInitialPlan: 续跑重建带「进展摘要」(issue 0001 B2+B3)', () => {
   const ORIGINAL_VITEST = process.env.VITEST;
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;

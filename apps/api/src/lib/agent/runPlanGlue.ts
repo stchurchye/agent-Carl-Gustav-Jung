@@ -13,6 +13,7 @@ import { runControllers } from './runtimeRegistry.js';
 import { recordStep } from './stepRecorder.js';
 import { emitNotice } from './notices.js';
 import { listSteps } from './store.js';
+import { redactSecrets } from './redact.js';
 
 /**
  * M1f polish #1：把最近的 step 失败摘要给 planner 看，避免 replan 复现同样错。
@@ -69,7 +70,9 @@ export function buildProgressSummary(
     for (const s of okObservations) {
       let out = '';
       try {
-        out = JSON.stringify(s.output ?? {}).slice(0, 200);
+        // 送 planner 的投影 → 脱敏（与 digestTail/findings/summarizeStepOutput 一致；
+        // 持久化的 step.output 保持原始）。此前漏脱敏，密钥会经 progress 摘要泄给 planner。
+        out = JSON.stringify(redactSecrets(s.output) ?? {}).slice(0, 200);
       } catch {
         out = '[unserializable]';
       }

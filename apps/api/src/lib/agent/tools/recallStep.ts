@@ -1,5 +1,5 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
-import { listSteps } from '../store.js';
+import { getStepByIdx } from '../store.js';
 import { redactSecrets } from '../redact.js';
 
 /**
@@ -28,6 +28,7 @@ type RecallStepOutput =
       offset: number;
       hasMore: boolean;
       totalChars: number;
+      note?: string;
     };
 
 const RECALL_PAGE_CHARS = 3000;
@@ -54,9 +55,9 @@ export const recallStepTool: ToolDef<RecallStepInput, RecallStepOutput> = {
   computeIdempotencyKey: (input) => `recall_step:${input.stepIdx}:${input.offset ?? 0}`,
   replyMeta: { summaryKind: 'text', failureHint: '（内置只读工具，不应失败）' },
   async handler(input, ctx): Promise<RecallStepOutput> {
-    // listSteps 按 runId 限定 → 只读当前 run，绝不串其它 run/用户。
-    const steps = await listSteps(ctx.runId);
-    const s = steps.find((st) => st.idx === input.stepIdx);
+    // getStepByIdx 按 (runId, idx) 定向单查 → 只读当前 run（绝不串其它 run/用户），
+    // 且不把整 run 的所有 step（可能含多个数十 KB output）全量载入只为取一行。
+    const s = await getStepByIdx(ctx.runId, input.stepIdx);
     if (!s) {
       return { ok: true, found: false, stepIdx: input.stepIdx, note: `本任务无步骤 ${input.stepIdx}` };
     }
@@ -71,6 +72,11 @@ export const recallStepTool: ToolDef<RecallStepInput, RecallStepOutput> = {
     }
     const offset = Math.max(0, Math.floor(input.offset ?? 0));
     const content = text.slice(offset, offset + RECALL_PAGE_CHARS);
+    // offset 越过内容末尾 → 显式 note，避免模型把空 content 误判成"该步没数据"。
+    const note =
+      offset >= text.length && text.length > 0
+        ? `offset ${offset} 已越过内容末尾（共 ${text.length} 字），用更小的 offset 重读`
+        : undefined;
     return {
       ok: true,
       found: true,
@@ -81,6 +87,7 @@ export const recallStepTool: ToolDef<RecallStepInput, RecallStepOutput> = {
       offset,
       hasMore: offset + RECALL_PAGE_CHARS < text.length,
       totalChars: text.length,
+      ...(note ? { note } : {}),
     };
   },
 };

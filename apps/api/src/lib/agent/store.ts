@@ -466,6 +466,22 @@ export async function listSteps(runId: string): Promise<AgentStep[]> {
 }
 
 /**
+ * 定向取单步（按 run + idx）—— recall_step 用。避免 listSteps 把整 run（可能含多个
+ * 数十 KB output）全量载入只为取一行。idx 在 run 内唯一（maxStepIdx+1，不重排）。
+ */
+export async function getStepByIdx(
+  runId: string,
+  idx: number,
+): Promise<AgentStep | null> {
+  const { rows } = await getPool().query(
+    `SELECT ${STEP_COLUMNS}
+     FROM agent_steps WHERE run_id = $1 AND idx = $2 LIMIT 1`,
+    [runId, idx],
+  );
+  return rows[0] ? parseStep(rows[0]) : null;
+}
+
+/**
  * M7：只取某一 kind 的 step（定向过滤推到 DB，避免热路径全表扫）。
  * contextAdapter 每次群聊快照取 user_message_appended 用。
  */
