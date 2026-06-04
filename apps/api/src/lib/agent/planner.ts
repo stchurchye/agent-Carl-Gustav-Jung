@@ -230,6 +230,7 @@ JSON 结构必须是：
 - **本系统知识库** → magi_system_read（用户的私人笔记/记忆）
 - **问题模糊 / 缺关键前提**（"画个图" "做个分析" 没说数据源 / 时间范围） → 先 ask_user 反问，不要硬猜
 - **需要多步深挖一个子问题**（如 "近 5 年关于禀赋效应的实证支持" / "X 理论的当前争议"） → deep_research 派子 agent，比串多个 search_papers + fetch_url 更整洁
+- **需要某个旧步骤的完整细节**（"最近步骤"近窗里已滚出、或只剩摘要的那步） → recall_step({stepIdx}) 按步骤号重读完整原文（stepIdx 取自 [步骤 N] 标注或"更早 N 条已略"提示）
 - **绝对禁止**：在 deep_research 子任务里嵌套 deep_research / ask_user（运行时会拦截）
 `;
 
