@@ -15,9 +15,9 @@ import { getPool } from '../../../db/client.js';
 const realFetch = global.fetch;
 
 function installReflectCaptureFetch(goalMet: boolean, reason: string): {
-  getLast: () => { messages: Array<{ role: string; content: string }> } | null;
+  getLast: () => { messages: Array<{ role: string; content: string }>; maxTokens?: number } | null;
 } {
-  let last: { messages: Array<{ role: string; content: string }> } | null = null;
+  let last: { messages: Array<{ role: string; content: string }>; maxTokens?: number } | null = null;
   global.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
     const urlStr =
       typeof input === 'string'
@@ -29,8 +29,9 @@ function installReflectCaptureFetch(goalMet: boolean, reason: string): {
       try {
         const parsed = JSON.parse(init.body as string) as {
           messages?: Array<{ role: string; content: string }>;
+          max_tokens?: number;
         };
-        last = { messages: parsed.messages ?? [] };
+        last = { messages: parsed.messages ?? [], maxTokens: parsed.max_tokens };
       } catch {
         /* ignore */
       }
@@ -155,6 +156,9 @@ describe('reflectGoalCompletion (issue 0003)', () => {
     const userMsg = last!.messages.find((m) => m.role === 'user')?.content ?? '';
     // prompt 带上了用户目标
     expect(userMsg).toMatch(/GOALMARK/);
+    // reflection 输出只需 JSON 一行；必须有 maxTokens 上限（防止模型大量输出）
+    expect(last!.maxTokens).toBeDefined();
+    expect(last!.maxTokens).toBeLessThanOrEqual(300);
   });
 
   it('收尾时 Reflection 判目标未达成 → 续跑，即使机械信号没响（解 #7）', async () => {

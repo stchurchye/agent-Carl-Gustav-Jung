@@ -119,14 +119,23 @@ export function buildCheckpoint(
 
 /**
  * v4：finding 存储格式升级。
- * - silent / export_ref 工具走原有 summarizeStepOutput（短固定标记，无压缩价值的原始 output）。
- * - text / list / 未知 → 保留 2000 字原始 output，让 LLM 压缩器从更丰富的原材料提炼，
+ * - silent / export_ref / list 工具走原有 summarizeStepOutput：
+ *   silent → ''；export_ref → 固定标记；list → top-5 title 提取（结构化、不截断）。
+ *   list 之所以不走 raw-JSON 路径：search 结果 JSON 通常 >2000 字，
+ *   字符截断会断在 snippet 中间产生残缺 JSON，LLM 压缩器读到的是语法错误的碎片。
+ * - text / 未知 → 保留 2000 字原始 output，让 LLM 压缩器从更丰富的原材料提炼，
  *   避免旧版 200 字截断导致的"摘要的摘要"信息损失。
  */
 function buildRichFinding(s: AgentStep, tool?: ToolDef): string {
   const kind = tool?.replyMeta?.summaryKind ?? 'text';
   if (kind === 'silent' || kind === 'export_ref') {
     return summarizeStepOutput(s.output, kind);
+  }
+  if (kind === 'list') {
+    // tool output 被包在 { result: ... } 里（runExecute.ts:382 `output: { result: output }`）；
+    // summarizeStepOutput 直接读 out.results/out.items，需先解包 result wrapper 才能提取 title。
+    const inner = (s.output as { result?: unknown } | null)?.result ?? s.output;
+    return summarizeStepOutput(inner, kind);
   }
   const redacted = redactSecrets(s.output);
   try {
@@ -259,10 +268,9 @@ export async function compactCheckpointViaLlm(params: {
     // 仍真 → 每轮重压、永不收敛。补回后没变小 → 判这次压缩无效，fail-open 保原。
     // round2 #3：按**字节**量缩小（与 checkpointNeedsCompaction 一致），不按条数 ——
     // 同条数但每条 finding 大幅变短也是有效压缩，按条数会误判没缩、再次 fail-open 不收敛。
-    if (
-      JSON.stringify(completed).length >= JSON.stringify(checkpoint.completed).length
-    )
-      return checkpoint;
+    // review#5 efficiency：只 stringify 一次 original（completed 侧在比较后即丢弃）。
+    const originalBytes = JSON.stringify(checkpoint.completed).length;
+    if (JSON.stringify(completed).length >= originalBytes) return checkpoint;
     const strArr = (v: unknown, fallback: string[]) =>
       Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : fallback;
     return {

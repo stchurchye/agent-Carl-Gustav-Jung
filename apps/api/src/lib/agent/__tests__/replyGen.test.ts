@@ -139,6 +139,29 @@ describe('buildReplyMessages with checkpoint (S2)', () => {
     expect(user).toContain('读到了关键结论');
     expect(user).toContain('架构图'); // silent 工具的 ref 仍在资源清单
   });
+
+  it('digestTail injected into reply prompt is trimmed to ≤8000 chars (reply writer does not need 32K verbatim output)', () => {
+    // v4 digestTail 可达 8 步 × 4000 字 = 32K；reply writer 只需知道"做了什么"，
+    // 32K 原始 output 对终稿质量无额外价值，且浪费 token。
+    const bigDigestTail = 'X'.repeat(40000);
+    const runWithCp: AgentRun = {
+      ...baseRun,
+      contextCheckpoint: {
+        version: 1, goal: 'g', intent: 'i',
+        completed: [{ text: 'fetch_url', finding: '关键结论', refs: [] }],
+        remainingPlan: [], openQuestions: [], nextStep: '', successCount: 1, producedAtIdx: 1,
+        digestTail: bigDigestTail,
+      },
+    };
+    const user = buildReplyMessages({ run: runWithCp, plan, steps: [] })[1].content;
+    expect(user.length).toBeLessThan(bigDigestTail.length); // 不是原封不动插入
+    // digestTail 在 prompt 里占用的字节 ≤ 8000
+    const dtStart = user.indexOf('最近步骤详情');
+    if (dtStart >= 0) {
+      const dtSection = user.slice(dtStart);
+      expect(dtSection.length).toBeLessThanOrEqual(8100);
+    }
+  });
 });
 
 describe('buildReplyMessages', () => {

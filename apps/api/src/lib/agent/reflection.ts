@@ -75,7 +75,9 @@ export async function reflectGoalCompletion(params: {
       { role: 'system', content: REFLECT_SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ],
-    { signal },
+    // reflection 只需输出一行 JSON {"goalMet":bool,"reason":"..."}, 约 50 token；
+    // 加上限防止模型大量输出（无 maxTokens 时模型可能逐句展开分析）。
+    { signal, maxTokens: 200 },
   );
 
   const candidate = extractJsonCandidate(result.content);

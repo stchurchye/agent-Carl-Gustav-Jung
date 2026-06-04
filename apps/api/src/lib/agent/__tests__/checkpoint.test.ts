@@ -344,6 +344,35 @@ describe('buildRichFinding per summaryKind (v4)', () => {
     );
     expect(cp.completed[0].finding).toBe('[已写入资源，详见下方资源清单]');
   });
+
+  it('list 工具：finding 使用 summarizeStepOutput 提取 title（不截半原始 JSON）', () => {
+    // search_web 输出通常 >2000 字；原始 JSON.stringify().slice(2000) 会断在 snippet 中间。
+    // list-kind 应走 summarizeStepOutput 的 title 提取，结构干净、不产生残缺 JSON。
+    const searchTool = {
+      name: 'search_web',
+      replyMeta: { summaryKind: 'list' },
+    } as unknown as ToolDef;
+    const map = new Map<string, ToolDef>([['search_web', searchTool]]);
+    const manyResults = Array.from({ length: 5 }, (_, i) => ({
+      url: `https://site${i}.com/very/long/path`,
+      title: `研究结论 ${i}：维生素C的长期影响与临床证据`,
+      snippet: 'S'.repeat(400), // 每条长 snippet
+    }));
+    const cp = buildCheckpoint(
+      null,
+      [step({ idx: 1, kind: 'tool_call', toolName: 'search_web',
+        output: { result: { ok: true, results: manyResults } } })],
+      todos,
+      { goal: 'g', intent: 'i', successCount: 1, toolMap: map },
+    );
+    const finding = cp.completed[0].finding;
+    // 应包含 title（summarizeStepOutput list-path 提取 top-5 标题）
+    expect(finding).toContain('研究结论');
+    // 不应是以 '{"result"' 开头的原始 JSON wrapper（说明 result 解包生效）
+    expect(finding.startsWith('{"result"')).toBe(false);
+    // 应是以 '、' 或 title 文本连接的短字符串（不是几千字的 raw JSON）
+    expect(finding.length).toBeLessThan(600);
+  });
 });
 
 describe('buildDigestTail 扩容 (v4)', () => {

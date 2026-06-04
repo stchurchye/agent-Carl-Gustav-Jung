@@ -132,9 +132,12 @@ export function buildReplyMessages(params: {
     const lines = cp.completed
       .filter((c) => c.finding)
       .map((c, i) => `${i + 1}. ${c.text}: ${c.finding}`);
+    // digestTail v4 扩容到 32K 字；reply writer 只需"做了什么"的线索，不需要读全量原始 output。
+    // 截到 8000 字（约 2K token），保留近窗细节但不浪费 reply LLM 的上下文预算。
+    const tailForReply = cp.digestTail ? cp.digestTail.slice(0, 8000) : '';
     stepDigest =
       lines.join('\n') +
-      (cp.digestTail ? `\n\n最近步骤详情：\n${cp.digestTail}` : '');
+      (tailForReply ? `\n\n最近步骤详情：\n${tailForReply}` : '');
     const seen = new Set<string>();
     refs = [];
     for (const r of [
