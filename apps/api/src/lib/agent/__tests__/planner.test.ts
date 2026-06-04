@@ -133,6 +133,26 @@ describe('M1f planner prompt 升级 (#1)', () => {
     expect(usr).toContain('finding-34'); // 最近的保留
   });
 
+  it('checkpoint 渲染受字节预算约束（富 finding 长 run 不撑爆 planner prompt）', () => {
+    // 20 条 × 每条 2000 字 = ~40K 字；即便条数 ≤20，也必须按字节收口
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      text: `tool${i}`,
+      finding: `MARK${i}-` + 'y'.repeat(2000),
+      refs: [],
+    }));
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i', completed: many,
+        remainingPlan: [], openQuestions: [], nextStep: '', successCount: 20, producedAtIdx: 25, digestTail: '',
+      },
+    });
+    expect(usr.length).toBeLessThan(14000); // 受字节预算约束，不是 40K
+    expect(usr).toContain('MARK19-'); // 最近的保留（planner 偏好近期）
+    expect(usr).toMatch(/更早 \d+ 条已略/); // 早期被略
+  });
+
   it('checkpoint 渲染为空时退回 progress 兜底（review #5）', () => {
     const usr = _buildPlannerUserPromptForTest({
       inputText: 'x',

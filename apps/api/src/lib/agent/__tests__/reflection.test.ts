@@ -83,6 +83,24 @@ describe('buildStepDigest with checkpoint (S2)', () => {
     expect(digest).toContain('finding-0'); // 最早的完成证据不丢
     expect(digest).toContain('finding-34'); // 最近的也在
   });
+
+  it('累积发现超字节预算时保留最早+最近（中间略），不喂超大 prompt（over-size 防护）', async () => {
+    const { buildStepDigest } = await import('../reflection.js');
+    // 20 条 × 每条 2000 字 = ~40K 字，远超预算
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      text: `tool${i}`,
+      finding: `MARK${i}-` + 'x'.repeat(2000),
+      refs: [],
+    }));
+    const digest = buildStepDigest([], {
+      version: 1, goal: 'g', intent: 'i', completed: many,
+      remainingPlan: [], openQuestions: [], nextStep: '', successCount: 20, producedAtIdx: 25, digestTail: '',
+    });
+    expect(digest.length).toBeLessThan(12000); // 受字节预算约束，不是 40K
+    expect(digest).toContain('MARK0-'); // 最早的完成证据仍保留（收尾裁判需要）
+    expect(digest).toContain('MARK19-'); // 最近进展也保留
+    expect(digest).toMatch(/中间 \d+ 条已略/); // 中间被省略
+  });
 });
 
 describe('reflectGoalCompletion (issue 0003)', () => {

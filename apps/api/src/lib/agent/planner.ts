@@ -279,20 +279,29 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
  */
 /** planner prompt 里最多渲染多少条累积发现（防长 run 撑爆；S4 会进一步压缩列表）。 */
 const CHECKPOINT_RENDER_MAX_FINDINGS = 20;
+/** 累积发现渲染字节上限。v4 后单条 finding 可达 2000 字 → 仅限条数不够，须再按字节收口。 */
+const CHECKPOINT_RENDER_MAX_CHARS = 10000;
 
 function renderCheckpointState(cp: AgentCheckpoint): string {
   // 全空（无发现、无待办）→ 不渲染"自动续跑中"框架，避免给裸目标 + "别问是否继续"的误导。
   if (cp.completed.length === 0 && cp.remainingPlan.length === 0) return '';
 
-  const shown = cp.completed.slice(-CHECKPOINT_RENDER_MAX_FINDINGS);
-  const overflow = cp.completed.length - shown.length;
+  // 先按条数取最近 20，再按字节预算从最近往前收（planner 偏好近期进展；富 finding 不撑爆）。
+  const recent = cp.completed.slice(-CHECKPOINT_RENDER_MAX_FINDINGS);
+  const lines = recent.map((c) => (c.finding ? `- ${c.text}: ${c.finding}` : `- ${c.text}`));
+  const keptLines: string[] = [];
+  let usedChars = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (keptLines.length > 0 && usedChars + lines[i].length + 1 > CHECKPOINT_RENDER_MAX_CHARS) break;
+    keptLines.unshift(lines[i]);
+    usedChars += lines[i].length + 1;
+  }
+  const overflow = cp.completed.length - keptLines.length;
   const done =
     cp.completed.length > 0
       ? '\n已确认的发现（不要重做）：\n' +
         (overflow > 0 ? `（更早 ${overflow} 条已略）\n` : '') +
-        shown
-          .map((c) => (c.finding ? `- ${c.text}: ${c.finding}` : `- ${c.text}`))
-          .join('\n')
+        keptLines.join('\n')
       : '';
   const remaining =
     cp.remainingPlan.length > 0
