@@ -107,8 +107,11 @@ describe('buildCheckpoint (mechanical)', () => {
     expect(cp.nextStep).toBe('汇总'); // 机械 nextStep = 第一个未完成 todo
   });
 
-  it('digestTail keeps recent output richer than the 200-char finding summary', () => {
-    const longStdout = 'L'.repeat(800);
+  it('finding 和 digestTail 都能充分保留大输出（v4 rich finding）', () => {
+    // v4：text 工具的 finding 现在保留最多 2000 字（不再 200 字截断）
+    // digestTail 保留最多 4000 字/步（8 步近窗）
+    // 两者都比旧版 200 字上限更富，LLM 压缩器和 planner 都能看到更完整的内容。
+    const longStdout = 'L'.repeat(3000);
     const plainTool = { name: 'run_python', replyMeta: { summaryKind: 'text' } } as unknown as ToolDef;
     const map = new Map<string, ToolDef>([['run_python', plainTool]]);
     const cp = buildCheckpoint(
@@ -117,9 +120,11 @@ describe('buildCheckpoint (mechanical)', () => {
       todos,
       { goal: 'g', intent: 'i', successCount: 1, toolMap: map },
     );
-    // finding 摘要 ≤200 字；digestTail 保留更全（>200 个 L）
-    expect(cp.completed[0].finding.length).toBeLessThanOrEqual(220);
-    expect((cp.digestTail.match(/L/g) ?? []).length).toBeGreaterThan(300);
+    // finding 最多保留 2000 字（v4 rich finding）
+    expect(cp.completed[0].finding.length).toBeLessThanOrEqual(2000);
+    expect(cp.completed[0].finding.length).toBeGreaterThan(500); // 远超旧版 200
+    // digestTail 最多保留 4000 字/步
+    expect((cp.digestTail.match(/L/g) ?? []).length).toBeGreaterThan(500);
   });
 
   it('accumulates across builds and only folds steps after producedAtIdx (old findings preserved)', () => {
@@ -295,6 +300,78 @@ describe('buildCheckpoint (mechanical)', () => {
   });
 });
 
+describe('buildRichFinding per summaryKind (v4)', () => {
+  it('text 工具：finding 保留最多 2000 字（远超旧版 200 字）', () => {
+    const cp = buildCheckpoint(
+      null,
+      [step({ idx: 1, kind: 'tool_call', toolName: 'fetch_url',
+        output: { result: { ok: true, url: 'https://x.com', content: 'A'.repeat(5000) } } })],
+      todos,
+      { goal: 'g', intent: 'i', successCount: 1, toolMap },
+    );
+    expect(cp.completed[0].finding.length).toBeGreaterThan(500); // 远超 200
+    expect(cp.completed[0].finding.length).toBeLessThanOrEqual(2000);
+  });
+
+  it('silent 工具：finding 仍为空串', () => {
+    const silentTool = {
+      name: 'echo_after_sleep',
+      replyMeta: { summaryKind: 'silent' },
+    } as unknown as ToolDef;
+    const map = new Map<string, ToolDef>([['echo_after_sleep', silentTool]]);
+    const cp = buildCheckpoint(
+      null,
+      [step({ idx: 1, kind: 'tool_call', toolName: 'echo_after_sleep',
+        output: { result: { ok: true, text: 'B'.repeat(5000) } } })],
+      todos,
+      { goal: 'g', intent: 'i', successCount: 1, toolMap: map },
+    );
+    expect(cp.completed[0].finding).toBe('');
+  });
+
+  it('export_ref 工具：finding 仍为固定标记（不因大输出变长）', () => {
+    const exportTool = {
+      name: 'doc_export_markdown',
+      replyMeta: { summaryKind: 'export_ref' },
+    } as unknown as ToolDef;
+    const map = new Map<string, ToolDef>([['doc_export_markdown', exportTool]]);
+    const cp = buildCheckpoint(
+      null,
+      [step({ idx: 1, kind: 'tool_call', toolName: 'doc_export_markdown',
+        output: { result: { ok: true, docId: 'uuid-1234', content: 'C'.repeat(5000) } } })],
+      todos,
+      { goal: 'g', intent: 'i', successCount: 1, toolMap: map },
+    );
+    expect(cp.completed[0].finding).toBe('[已写入资源，详见下方资源清单]');
+  });
+});
+
+describe('buildDigestTail 扩容 (v4)', () => {
+  const opts = { goal: 'g', intent: 'i', successCount: 0, toolMap };
+
+  it('保留最近 8 步而不是 4 步', () => {
+    // 10 步成功 tool_call → digest 应包含后 8 步（第 2-9 步），第 0-1 步被裁掉
+    const steps = Array.from({ length: 10 }, (_, i) =>
+      step({ idx: i, kind: 'tool_call', toolName: 'fetch_url',
+        output: { result: { ok: true, url: `https://s${i}.com`, content: 'x' } } })
+    );
+    const cp = buildCheckpoint(null, steps, todos, opts);
+    // 每步一行 "- fetch_url: ..."；至少 8 行
+    const lines = cp.digestTail.split('\n').filter(l => l.startsWith('- fetch_url'));
+    expect(lines.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it('每步截断到 4000 字（不是 1500）', () => {
+    const bigOutput = { result: { ok: true, content: 'A'.repeat(10000) } };
+    const steps = [step({ idx: 1, kind: 'tool_call', toolName: 'fetch_url', output: bigOutput })];
+    const cp = buildCheckpoint(null, steps, todos, opts);
+    // 行内容（去掉 "- fetch_url: " 前缀）应 ≤ 4100 字（4000 + 少量 JSON 结构开销）
+    const payload = cp.digestTail.replace('- fetch_url: ', '');
+    expect(payload.length).toBeLessThanOrEqual(4100);
+    expect(payload.length).toBeGreaterThan(1500); // 比旧上限更大
+  });
+});
+
 describe('checkpointNeedsCompaction (S5)', () => {
   const base = {
     version: 1 as const, goal: 'g', intent: 'i', remainingPlan: [], openQuestions: [],
@@ -303,9 +380,14 @@ describe('checkpointNeedsCompaction (S5)', () => {
   it('false for a small checkpoint', () => {
     expect(checkpointNeedsCompaction({ ...base, completed: [{ text: 't', finding: 'f', refs: [] }] })).toBe(false);
   });
-  it('true when accumulated completed + digestTail is large', () => {
-    const many = Array.from({ length: 40 }, (_, i) => ({ text: `tool${i}`, finding: 'x'.repeat(120), refs: [] }));
+  it('true when completed has ≥8 rich 2000-char findings (v4 threshold 15000)', () => {
+    // v4：finding 现在最多 2000 字；阈值升至 15000（~7-8 条触发）
+    const many = Array.from({ length: 8 }, (_, i) => ({ text: `tool${i}`, finding: 'A'.repeat(2000), refs: [] }));
     expect(checkpointNeedsCompaction({ ...base, completed: many })).toBe(true);
+  });
+  it('false when only 6 rich findings (12000 bytes < 15000 threshold)', () => {
+    const few = Array.from({ length: 6 }, (_, i) => ({ text: `tool${i}`, finding: 'A'.repeat(2000), refs: [] }));
+    expect(checkpointNeedsCompaction({ ...base, completed: few })).toBe(false);
   });
 });
 
