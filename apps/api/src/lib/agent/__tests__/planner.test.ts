@@ -153,6 +153,37 @@ describe('M1f planner prompt 升级 (#1)', () => {
     expect(usr).toMatch(/更早 \d+ 条已略/); // 早期被略
   });
 
+  it('planner prompt 含 digestTail 近窗逐字（修 digestTail→planner 断链）', () => {
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i',
+        completed: [{ text: 'fetch_url', finding: '只是摘要版', refs: [] }],
+        remainingPlan: [], openQuestions: [], nextStep: '',
+        successCount: 1, producedAtIdx: 5,
+        digestTail: '- [步骤 5] fetch_url: {"result":{"ok":true,"NEARWINDOW_MARKER":"逐字原文细节"}}',
+      },
+    });
+    expect(usr).toContain('NEARWINDOW_MARKER'); // 近窗逐字真进了 planner（之前只进 reply）
+    expect(usr).toContain('[步骤 5]'); // idx 标注可见 → 模型可据此 recall_step
+  });
+
+  it('planner 渲染 digestTail 限字节（巨型近窗不撑爆 planner prompt）', () => {
+    const huge = '- [步骤 1] fetch_url: ' + 'Z'.repeat(40000);
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i',
+        completed: [{ text: 't', finding: 'f', refs: [] }],
+        remainingPlan: [], openQuestions: [], nextStep: '',
+        successCount: 1, producedAtIdx: 1, digestTail: huge,
+      },
+    });
+    expect(usr.length).toBeLessThan(20000); // digestTail 段被收口，不是 40K
+  });
+
   it('checkpoint 渲染为空时退回 progress 兜底（review #5）', () => {
     const usr = _buildPlannerUserPromptForTest({
       inputText: 'x',

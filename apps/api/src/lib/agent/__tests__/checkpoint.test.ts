@@ -385,8 +385,8 @@ describe('buildDigestTail 扩容 (v4)', () => {
         output: { result: { ok: true, url: `https://s${i}.com`, content: 'x' } } })
     );
     const cp = buildCheckpoint(null, steps, todos, opts);
-    // 每步一行 "- fetch_url: ..."；至少 8 行
-    const lines = cp.digestTail.split('\n').filter(l => l.startsWith('- fetch_url'));
+    // 每步一行含 "fetch_url"；至少 8 行
+    const lines = cp.digestTail.split('\n').filter(l => l.includes('fetch_url'));
     expect(lines.length).toBeGreaterThanOrEqual(8);
   });
 
@@ -394,10 +394,20 @@ describe('buildDigestTail 扩容 (v4)', () => {
     const bigOutput = { result: { ok: true, content: 'A'.repeat(10000) } };
     const steps = [step({ idx: 1, kind: 'tool_call', toolName: 'fetch_url', output: bigOutput })];
     const cp = buildCheckpoint(null, steps, todos, opts);
-    // 行内容（去掉 "- fetch_url: " 前缀）应 ≤ 4100 字（4000 + 少量 JSON 结构开销）
-    const payload = cp.digestTail.replace('- fetch_url: ', '');
+    // 行内容（"fetch_url: " 之后的 JSON）应 ≤ 4100 字（4000 + 少量 JSON 结构开销）
+    const payload = cp.digestTail.split('fetch_url: ')[1] ?? '';
     expect(payload.length).toBeLessThanOrEqual(4100);
     expect(payload.length).toBeGreaterThan(1500); // 比旧上限更大
+  });
+
+  it('每行带 [步骤 N] idx 标注（供 recall_step 定位）', () => {
+    const steps = [
+      step({ idx: 3, kind: 'tool_call', toolName: 'fetch_url', output: { result: { ok: true, url: 'https://x.com' } } }),
+      step({ idx: 7, kind: 'tool_call', toolName: 'fetch_url', output: { result: { ok: true, url: 'https://y.com' } } }),
+    ];
+    const cp = buildCheckpoint(null, steps, todos, opts);
+    expect(cp.digestTail).toContain('[步骤 3]');
+    expect(cp.digestTail).toContain('[步骤 7]');
   });
 });
 

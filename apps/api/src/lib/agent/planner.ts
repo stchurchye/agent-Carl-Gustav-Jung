@@ -281,6 +281,8 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
 const CHECKPOINT_RENDER_MAX_FINDINGS = 20;
 /** 累积发现渲染字节上限。v4 后单条 finding 可达 2000 字 → 仅限条数不够，须再按字节收口。 */
 const CHECKPOINT_RENDER_MAX_CHARS = 10000;
+/** 近窗 digestTail 在 planner prompt 里的字节上限（digestTail 整体可达 32K）。 */
+const CHECKPOINT_RENDER_DIGEST_MAX_CHARS = 6000;
 
 function renderCheckpointState(cp: AgentCheckpoint): string {
   // 全空（无发现、无待办）→ 不渲染"自动续跑中"框架，避免给裸目标 + "别问是否继续"的误导。
@@ -308,8 +310,14 @@ function renderCheckpointState(cp: AgentCheckpoint): string {
       ? '\n待完成：\n' + cp.remainingPlan.map((t) => `- ${t}`).join('\n')
       : '';
   const next = cp.nextStep ? `\n下一步 = ${cp.nextStep}` : '';
+  // v5：把近窗逐字 digestTail 接进 planner（此前只进 reply 终稿 → planner 续跑只能看
+  // ≤2000 字摘要、看不到最近几步逐字细节）。限 6000 字防撑爆；带 [步骤 N] 标注，
+  // 模型可据此 recall_step({idx}) 重读已滚出近窗的旧步完整原文。
+  const tail = cp.digestTail
+    ? `\n\n最近步骤（逐字近窗，需更早细节可 recall_step(步骤号)）：\n${cp.digestTail.slice(0, CHECKPOINT_RENDER_DIGEST_MAX_CHARS)}`
+    : '';
   return (
-    `\n\n# 任务状态（自动续跑中）\n目标：${cp.goal}${done}${remaining}${next}` +
+    `\n\n# 任务状态（自动续跑中）\n目标：${cp.goal}${done}${remaining}${next}${tail}` +
     `\n（自动续跑仍在进行；请直接规划剩余步骤，不要问"是否继续"。）`
   );
 }

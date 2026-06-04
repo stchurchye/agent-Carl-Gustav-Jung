@@ -145,12 +145,15 @@ function buildRichFinding(s: AgentStep, tool?: ToolDef): string {
   }
 }
 
-// v4：近窗扩容到 8 步 × 4000 字/步（≈ 32K 字，对齐 Claude Code 级近窗覆盖）。
-// planner 每次调用多 8-16K token，bounded，不随 run 变长增长。
+// v4：近窗扩容到 8 步 × 4000 字/步。注意：digestTail 既进 reply 终稿，也（v5 后）经
+// renderCheckpointState 限字节进 planner —— 是续跑规划唯一的"逐字近窗"来源。
 const DIGEST_TAIL_STEPS = 8;
 const DIGEST_TAIL_PER_STEP = 4000;
 
-/** 近窗高保真：取最近 K 步成功工具输出，各保留较全（≤1.5KB）摘要。 */
+/**
+ * 近窗高保真：取最近 K 步成功工具输出，各保留较全（≤4KB）。
+ * 每行带 [步骤 N] idx 标注 —— 让 planner（及模型）能据此 recall_step({idx}) 重读完整原文。
+ */
 function buildDigestTail(steps: AgentStep[]): string {
   const recent = steps
     .filter(
@@ -169,7 +172,7 @@ function buildDigestTail(steps: AgentStep[]): string {
       } catch {
         out = '[unserializable]';
       }
-      return `- ${s.toolName ?? '<tool>'}: ${out}`;
+      return `- [步骤 ${s.idx}] ${s.toolName ?? '<tool>'}: ${out}`;
     })
     .join('\n');
 }
