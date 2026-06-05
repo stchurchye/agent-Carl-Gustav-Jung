@@ -51,11 +51,15 @@ CREATE TABLE agent_memory_fragment (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_accessed_at  TIMESTAMPTZ,                   -- 给未来 recency/decay 留位
   reviewed_by_user  BOOLEAN NOT NULL DEFAULT false,
-  user_note         TEXT
+  user_note         TEXT,
+  search_vector     tsvector                       -- 稀疏检索支撑列(洞 C5);to_tsvector('simple', text),仿 MAGI 迁移 023
 );
 CREATE INDEX ON agent_memory_fragment (owner_id);
 CREATE INDEX ON agent_memory_fragment (owner_id, status) WHERE valid_until IS NULL;
+CREATE INDEX ON agent_memory_fragment USING gin (search_vector);   -- 稀疏(洞 C5)
 -- pgvector ANN 索引(ivfflat/hnsw)按 MAGI 现有 Fragment 同款建
+-- search_vector 自动更新触发器:仿 MAGI 023 的 fragments_search_vector_update()
+-- 注:CJK 短 fact 上 'simple' 稀疏价值有限,dense(bge)是主力;若实测 sparse 低收益可退 dense-only。
 ```
 
 **砍掉(证据驱动后置):** 实体图/Concept/Edge、sentiment、importance 打分层、reflection insight category、relationship。两个前瞻可空列(`last_accessed_at`+`source_*`)现在加近乎免费,省未来迁移。
@@ -75,7 +79,9 @@ CREATE INDEX ON agent_memory_fragment (owner_id, status) WHERE valid_until IS NU
 > 3. **别碰** `config.py`(agent_memory 不是 domain)/`retrieval.py`(检索自写)/`reflection.py`——这三个是对方在动或会冲突的;M1 只新增 model+router+迁移 + 1 行 router 注册。DB 用自己的 dev 库或先打招呼(新表对现有 domain 检索不可见,运行时不冲突)。
 - **M1a** 迁移:`agent_memory_fragment` 表(上方 schema)。旧 MAGI 表零改动。
 - **M1b** `POST /api/agent-memory/write`:入参 `{owner_id, text, confidence, source_*, status?}` → `embed_text_sync(text)`(失败则 embedding=NULL)→ INSERT。**无 Celery、无抽取、无 council**(agent 已蒸馏成品 fact)。
-- **M1c** `POST /api/agent-memory/search`:入参 `{owner_id, query, top_k}` → **自写** dense(pgvector)+ sparse(ts_rank)+ RRF,**WHERE `owner_id=:uid AND status='approved' AND valid_until IS NULL AND embedding IS NOT NULL`**。不复用 `hybrid_retrieve`(白名单)。
+- **M1c** `POST /api/agent-memory/search`:入参 `{owner_id, query, top_k}` → **自写** dense(pgvector `embedding`)+ sparse(`search_vector` ts_rank,洞 C5)+ RRF,**WHERE `owner_id=:uid AND status='approved' AND valid_until IS NULL AND embedding IS NOT NULL`**。不复用 `hybrid_retrieve`(白名单)。
+  - **返回必带 `id` + provenance**(`source_run_id`/`source_session_id`/`created_at`/`text`)——**M3 的 `invalidate(by-id)` 与 supersession 判定都要这个 id**;且 agent 可据此向用户说明"这条记忆哪来的"。
+  - **pgvector + owner 过滤召回(候选,低危):** ANN 索引不按 owner 过滤,先 ANN 再 filter 可能少返。MVP 每用户 fact 量小 → 直接 `WHERE owner_id ORDER BY embedding <-> q`(filter-first 精确)即可,规模上来再上 ivfflat probes 调优。
 - **M1d** `POST /api/agent-memory/invalidate`:`{owner_id, id}` → `UPDATE … SET valid_until=now() WHERE id=:id AND owner_id=:uid`。
 - **M1e** backfill sweep:给 `embedding IS NULL` 的行补向量(embed 服务恢复后)。**触发 = 独立脚本 / 管理端点 `POST /api/agent-memory/backfill-embeddings`,不引 Celery**(守 M1 无 Celery);幂等、可重复跑(洞 H)。
 - **M1f** 服务鉴权(洞 A):三端点 + backfill 全部 `Depends(verify_service_token)`,校验 `Bearer MAGI_SYSTEM_TOKEN`,空/错 token → 401。**这是安全 gate 的第一道,不是可选项。**
