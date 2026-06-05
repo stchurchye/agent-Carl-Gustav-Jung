@@ -66,6 +66,11 @@ CREATE INDEX ON agent_memory_fragment (owner_id, status) WHERE valid_until IS NU
 
 ### M1 — MAGI 侧(Python,安全 gate,**先做先合**)
 建表 + 三个**哑端点**,全程 TDD + `/code-review`。
+
+> **⚠️ 跨 repo 协调(MAGI 有活的并行开发)。** `MAGI-System` 是 GitHub PR 工作流(`origin=stchurchye/MAGI-System`,feature 分支 → PR → main),且当前有别的会话在 `experiment/recall-critic-followup` 上改 `config.py`/`reflection.py`。M1 **纯 additive**,与其热文件零重叠,但需守三条:
+> 1. **从 `origin/main` 起分支** `feat/agent-memory`(先 `git fetch`;**别**从 experiment 分支、**别**从本地 `main`(已 behind)）。
+> 2. **迁移 = `055_agent_memory_fragment`**,`down_revision='054_add_global_id_sync'`(当前最新);落地前后各跑 `alembic heads` 验**单 head**(历史有过分叉 stub,别人若先合迁移则 rebase 重接号)。
+> 3. **别碰** `config.py`(agent_memory 不是 domain)/`retrieval.py`(检索自写)/`reflection.py`——这三个是对方在动或会冲突的;M1 只新增 model+router+迁移 + 1 行 router 注册。DB 用自己的 dev 库或先打招呼(新表对现有 domain 检索不可见,运行时不冲突)。
 - **M1a** 迁移:`agent_memory_fragment` 表(上方 schema)。旧 MAGI 表零改动。
 - **M1b** `POST /api/agent-memory/write`:入参 `{owner_id, text, confidence, source_*, status?}` → `embed_text_sync(text)`(失败则 embedding=NULL)→ INSERT。**无 Celery、无抽取、无 council**(agent 已蒸馏成品 fact)。
 - **M1c** `POST /api/agent-memory/search`:入参 `{owner_id, query, top_k}` → **自写** dense(pgvector)+ sparse(ts_rank)+ RRF,**WHERE `owner_id=:uid AND status='approved' AND valid_until IS NULL AND embedding IS NOT NULL`**。不复用 `hybrid_retrieve`(白名单)。
