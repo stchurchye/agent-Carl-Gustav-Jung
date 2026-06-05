@@ -1,42 +1,46 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./deepseek.js', () => ({ chatCompletionRaw: vi.fn() }));
 vi.mock('./integrations/magi.js', () => ({ writeAgentMemory: vi.fn() }));
 
-import { chatCompletionRaw } from './deepseek.js';
 import { writeAgentMemory } from './integrations/magi.js';
+import type { LlmChatClient } from './llm/types.js';
 import {
   distillEpisodicMemories,
   persistEpisodicMemories,
 } from './memoryEpisodicDistill.js';
 
-const raw = vi.mocked(chatCompletionRaw);
 const writeMem = vi.mocked(writeAgentMemory);
+
+/** 最小 LlmChatClient 桩:只关心 .content;cast 满足类型。 */
+function fakeLlm(content: string): LlmChatClient {
+  return {
+    chat: vi.fn().mockResolvedValue({ content }),
+  } as unknown as LlmChatClient;
+}
 
 describe('distillEpisodicMemories', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('parses facts with confidence from LLM output', async () => {
-    raw.mockResolvedValue(
-      '{"facts":[{"text":"用户在调试 X 模块的死锁","confidence":0.7}]}',
+    const facts = await distillEpisodicMemories(
+      fakeLlm('{"facts":[{"text":"用户在调试 X 模块的死锁","confidence":0.7}]}'),
+      '用户: 帮我看死锁\n助手: 好',
     );
-    const facts = await distillEpisodicMemories('key', '用户: 帮我看死锁\n助手: 好');
-    expect(facts).toEqual([
-      { text: '用户在调试 X 模块的死锁', confidence: 0.7 },
-    ]);
+    expect(facts).toEqual([{ text: '用户在调试 X 模块的死锁', confidence: 0.7 }]);
   });
 
   it('filters invalid entries (blank text / out-of-range confidence)', async () => {
-    raw.mockResolvedValue(
-      '{"facts":[{"text":"  ","confidence":0.9},{"text":"有效事实","confidence":1.5},{"text":"好事实","confidence":0.6}]}',
+    const facts = await distillEpisodicMemories(
+      fakeLlm(
+        '{"facts":[{"text":"  ","confidence":0.9},{"text":"有效事实","confidence":1.5},{"text":"好事实","confidence":0.6}]}',
+      ),
+      't',
     );
-    const facts = await distillEpisodicMemories('key', 't');
     expect(facts).toEqual([{ text: '好事实', confidence: 0.6 }]);
   });
 
   it('returns [] on non-JSON / garbage LLM output (fail-safe)', async () => {
-    raw.mockResolvedValue('抱歉我不能输出 JSON');
-    expect(await distillEpisodicMemories('key', 't')).toEqual([]);
+    expect(await distillEpisodicMemories(fakeLlm('抱歉我不能输出 JSON'), 't')).toEqual([]);
   });
 });
 
@@ -81,6 +85,6 @@ describe('persistEpisodicMemories', () => {
       ],
       {},
     );
-    expect(n).toBe(1); // 只算成功写入的
+    expect(n).toBe(1);
   });
 });

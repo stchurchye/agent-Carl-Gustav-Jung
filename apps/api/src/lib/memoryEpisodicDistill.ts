@@ -1,6 +1,6 @@
 import type { LlmRequestLogContext } from '@xzz/shared';
 import { lastNonEmptyLine } from '@xzz/shared';
-import { chatCompletionRaw, type ChatMessageInput } from './deepseek.js';
+import type { LlmChatClient } from './llm/types.js';
 import { writeAgentMemory } from './integrations/magi.js';
 import { statusForConfidence } from './memoryStatus.js';
 
@@ -46,19 +46,23 @@ function parseFacts(rawOut: string): EpisodicFact[] {
 }
 
 export async function distillEpisodicMemories(
-  apiKey: string,
+  llm: LlmChatClient,
   transcript: string,
-  log?: LlmRequestLogContext,
+  opts?: { signal?: AbortSignal; log?: LlmRequestLogContext },
 ): Promise<EpisodicFact[]> {
-  const raw = await chatCompletionRaw(
-    apiKey,
+  const result = await llm.chat(
     [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: transcript },
-    ] as ChatMessageInput[],
-    { maxTokens: 1024, temperature: 0.2, log },
+    ],
+    {
+      temperature: 0.2,
+      maxTokens: 1024,
+      log: opts?.log,
+      signal: opts?.signal ?? new AbortController().signal,
+    },
   );
-  return parseFacts(raw);
+  return parseFacts(result.content);
 }
 
 /**

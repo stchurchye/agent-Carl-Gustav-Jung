@@ -1,6 +1,6 @@
 import type { LlmRequestLogContext } from '@xzz/shared';
 import { lastNonEmptyLine } from '@xzz/shared';
-import { chatCompletionRaw, type ChatMessageInput } from './deepseek.js';
+import type { LlmChatClient } from './llm/types.js';
 import {
   searchAgentMemory,
   writeAgentMemory,
@@ -43,21 +43,21 @@ function parseJudgment(raw: string): Judgment {
 }
 
 async function judgeSupersession(
-  apiKey: string,
+  llm: LlmChatClient,
   newText: string,
   candidates: MemoryHit[],
+  signal: AbortSignal,
   log?: LlmRequestLogContext,
 ): Promise<Judgment> {
   const listing = candidates.map((c) => `[id=${c.id}] ${c.text}`).join('\n');
-  const raw = await chatCompletionRaw(
-    apiKey,
+  const result = await llm.chat(
     [
       { role: 'system', content: JUDGE_PROMPT },
       { role: 'user', content: `新事实:${newText}\n\n已有近似:\n${listing}` },
-    ] as ChatMessageInput[],
-    { maxTokens: 256, temperature: 0, log },
+    ],
+    { maxTokens: 256, temperature: 0, log, signal },
   );
-  return parseJudgment(raw);
+  return parseJudgment(result.content);
 }
 
 /**
@@ -71,7 +71,7 @@ async function judgeSupersession(
  * 加 pending-inclusive 模式后跟进。
  */
 export async function reconcileMemoryWrite(
-  apiKey: string,
+  llm: LlmChatClient,
   ownerId: string,
   newFact: { text: string; confidence: number },
   opts: {
@@ -103,7 +103,13 @@ export async function reconcileMemoryWrite(
     return { action: 'new', writtenId: id, invalidatedIds: [] };
   }
 
-  const judgment = await judgeSupersession(apiKey, newFact.text, near, opts.log);
+  const judgment = await judgeSupersession(
+    llm,
+    newFact.text,
+    near,
+    opts.signal ?? new AbortController().signal,
+    opts.log,
+  );
   if (judgment.duplicate && judgment.supersededIds.length === 0) {
     return { action: 'duplicate', invalidatedIds: [] };
   }
