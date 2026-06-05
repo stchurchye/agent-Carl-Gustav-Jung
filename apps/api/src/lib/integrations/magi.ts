@@ -51,6 +51,8 @@ export async function searchAgentMemory(
   query: string,
   topK = 12,
   signal?: AbortSignal,
+  /** 洞D:reconcile 近邻搜置 true 也返回 pending(失效未审旧 fact);recall 默认 false。 */
+  includePending = false,
 ): Promise<MemoryHit[]> {
   if (!magiSystemEnabled()) return [];
   const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/search`, {
@@ -59,7 +61,12 @@ export async function searchAgentMemory(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
     },
-    body: JSON.stringify({ owner_id: ownerId, query, top_k: topK }),
+    body: JSON.stringify({
+      owner_id: ownerId,
+      query,
+      top_k: topK,
+      include_pending: includePending,
+    }),
     signal,
   });
   if (!res.ok) {

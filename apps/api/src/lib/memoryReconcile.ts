@@ -97,7 +97,8 @@ export async function reconcileMemoryWrite(
       opts.signal,
     );
 
-  const near = await searchAgentMemory(ownerId, newFact.text, NEAR_TOP_K, opts.signal);
+  // 洞D:近邻搜带 include_pending=true,才能失效未审(pending)的旧 fact
+  const near = await searchAgentMemory(ownerId, newFact.text, NEAR_TOP_K, opts.signal, true);
   if (near.length === 0) {
     const { id } = await writeNew();
     return { action: 'new', writtenId: id, invalidatedIds: [] };

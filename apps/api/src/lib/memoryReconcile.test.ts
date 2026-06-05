@@ -63,6 +63,14 @@ describe('reconcileMemoryWrite', () => {
     expect(invalidate).toHaveBeenCalledWith('userA', 1, undefined);
   });
 
+  it('近邻搜带 include_pending=true(洞D:也能失效未审 pending 旧 fact)', async () => {
+    search.mockResolvedValue([]);
+    const { llm } = fakeLlm('{}');
+    await reconcileMemoryWrite(llm, 'userA', { text: '新事实', confidence: 0.9 }, {});
+    // searchAgentMemory(ownerId, query, topK, signal, includePending)
+    expect(search).toHaveBeenCalledWith('userA', '新事实', 5, undefined, true);
+  });
+
   it('duplicate: 近义重述 → 跳过写入(防累积,洞C)', async () => {
     search.mockResolvedValue([hit(1, '用户在做 X 项目')]);
     const { llm } = fakeLlm('{"supersededIds":[],"duplicate":true}');
