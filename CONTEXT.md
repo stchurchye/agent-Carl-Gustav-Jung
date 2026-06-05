@@ -25,6 +25,25 @@
 
 - **stall guard(停滞防呆)** — 防"原地打转无进展"。**两处都用**:Phase 1 限 [[continuation-replan]] 的续跑轮数(如最多续 N 次);Phase 2 限纯 ReAct 反复 Act。统一靠 budget 硬顶(maxSteps=20 / 600s / 100k tokens)+ "无进展"检测(如同 tool+input 重复、或续跑后 todo 完成数没增加)兜底。
 
+## Agent 记忆(memory 子系统 + MAGI 后端)
+
+- **核心个人记忆(core personal memory)** — "用户是谁 + top 偏好"这类**高频、必需、轻量**的记忆。承载体是**原生** `memory_fragments`(已 always-on 注入、按 `owner_id` 天然隔离、零外部依赖)。每轮无条件进 systemPrompt(`contextAdapter` 注入点)。**不迁移、不外包**。
+
+- **情景/语义记忆(episodic/semantic memory)** — "聊过什么 / 学到什么"的**大历史、按需召回**的记忆。承载体是 **MAGI-System**(bge 向量 + hybrid 检索 + 时序失效 + 可视化审核)。**按需**检索,不无条件注入。与「核心个人记忆」是两层、分工不重叠。
+
+- **情景蒸馏(episodic distillation)** — run/会话收尾时,**独立于**原生 autoExtract 的第二条蒸馏路径,专抽原生 extractor 丢弃的[[情景/语义记忆]](讨论过的领域事实、学到的东西)→ 写 MAGI。原生 autoExtract 原样不动(只抽[[核心个人记忆]])。两路各自 prompt、各自阈值,互不串味(纯 additive)。复用 `salvageMemoriesBeforeCompact` 的边界触发时机。
+  - **双写判别线 = 两轴(主体 × 稳定性)**:`关于用户本人` **且** `稳定/长期常驻值得`(身份、持久偏好、习惯)→ 原生 always-on 核心;**其余一切**(世界/工作/领域事实 + **个人日常事件**如"上周面试了 X""今天在调 Y")→ MAGI。**注意**:个人日常记忆**主要进 MAGI**,不是原生——因为原生是**有界 always-on 小核心**(硬 token 预算,仿 Hermes USER.md),装不下累积的日常流水;日常事件时间相关、会累积,塞 always-on 会撑爆注入预算。情景蒸馏 prompt:抽"非稳定核心"的一切值得记的。
+  - **升格通道**:日常事件若反复出现、硬化成稳定偏好("最近在减肥"→"我吃素"),反思阶段(后置增量)再从 MAGI 升格进原生核心。
+  - **不对称安全默认**:拿不准 → 默认 MAGI。MAGI 按需召回、owner 隔离,误分只多一次 recall(低危);误进原生会污染 always-on 注入预算(每轮吃)。错往安全侧错。
+
+- **recall_memory(query)** — meta 工具。让大脑**按需**召回[[情景/语义记忆]](MAGI 的 agent_memory 表,bge 语义 + hybrid,owner 隔离)。与 [[recall]](stepId)、magi_system_read 同类(框架级工具)。**与 magi_system_read 不混**:后者打研究知识库(psychology 等 domain),recall_memory 打 agent 自己的情景记忆表。MAGI 情景层**不 always-on 预取**(原生核心记忆才 always-on);大脑刻意召回时才打,热路径零额外开销。漏调风险靠 planner prompt 显式描述缓解。
+
+- **质量门(quality gate / 防脏)** — 情景蒸馏是 LLM 抽取,可能出错 fact。`agent_memory_fragment` 加 `status`(pending/approved/rejected,同 MAGI Fragment.status / 原生 memory status 模型):高置信(≥0.85)→ 直接 approved;低置信/被 flag → pending 等人工审。`recall_memory` 的 search 端点**只返 approved**(一行 `WHERE status='approved'`)。**不用第二个库**:脏→审→净是生命周期(status 字段),不是位置(搬表)。审核 UI 后续复用 MAGI review_queue + Next 前端(非 MVP)。**MAGI 自己书籍提取的脏 draft 数据污染不到这里**——独立表 + 自己的 search 端点,物理够不到 `fragments` 表。
+
+- **时序失效(temporal invalidation)** — "记住且会更新"的机制。一条[[情景/语义记忆]]存成**自由文本 fact + embedding + valid_until**。写入新 fact 时对**同 owner** 做语义近邻搜 → LLM 判新 fact 是否取代某条旧的 → 旧行 `valid_until=now`(**不删**,保留时序);检索只取 `valid_until IS NULL`。**自建**在 agent_memory 表上(MAGI 现成的 contradiction 检测绑死 fragments/concepts + 为知识库审稿设计,形状不对、否复用)。
+
+- **记忆后端职责切分(B vs C → 定 C)** — 裁决:不把 agent 记忆全搬 MAGI(B),而是**两层分工**(C)。原生承载[[核心个人记忆]],MAGI 承载[[情景/语义记忆]]。理由:原生子系统已比预期成熟(always-on 注入 + autoExtract + consolidate 自动巩固已在跑 + scopeAuth 天然 owner 隔离),硬实力只缺"大历史语义召回"——正好 MAGI 的强项。让 MAGI 只补这一件,避免赌 MAGI 多租户改造、避免废弃已工作的原生逻辑。
+
 ## 不可动的约束(necessarily fixed)
 
 - **topic coordination / merged_inputs**(M7 并发:合并/排队/出队)—— 变成 `next()` 的输入,不丢。
