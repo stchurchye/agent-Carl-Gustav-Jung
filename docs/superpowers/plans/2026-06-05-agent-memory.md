@@ -141,3 +141,10 @@ cd /Users/church/claude/MAGI-System && pytest backend/tests -k agent_memory
 # M2-M3 (agent)
 cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx vitest run
 ```
+
+## 7. 延后 / 未来工作(非阻塞,证据驱动再做)
+
+- **中文 sparse hybrid(独立基建任务)。** 现状检索 **dense-only**(bge,中文语义已够)。plan 原设想 dense+sparse+RRF,但 Postgres `'simple'` 配置**不切中文词**(`to_tsvector('simple','我喜欢猫')` 整串一个 token,搜"猫"不命中)→ 稀疏对中文几乎无效,故 M1 退 dense-only。**要做**:在 MAGI 的 Postgres 装中文分词扩展(`zhparser` 或 `pg_jieba`,改 Dockerfile)→ 建中文 text search config → 把 055 触发器的 `to_tsvector('simple',…)` 换成该 config → 调 RRF 权重 + 测试。**注意会动到 MAGI 整库**(现有 fragments 也用 `'simple'`),需跟 MAGI owner 协调。**何时做**:当 dense 召回被发现"精确词/人名/ID 搜不准"时。M1 已留 `search_vector` 列 + 触发器钩子,届时只换分词 config,不动表结构。
+- **backfill 端点:** moot —— `embed_text_sync` 内部 hash-fallback 从不返 None,embedding 永不 NULL,无可回灌。若将来改 write 为"embed 真失败则存 NULL"才需要。
+- **测试跑迁移(防 model↔迁移漂移):** 现状 M1 测试用 `create_all`(模型),未跑 055 迁移 → 触发器/server_default/约束未被端点测试覆盖。补一个跑 `alembic upgrade head` 的冒烟测试或让集成测试基于迁移建表。
+- **status CHECK 约束(DB 层防御):** 现 status 校验在 API 层(Pydantic Literal);可加 DB CHECK 作纵深防御(非必需,无可观测 bug)。
