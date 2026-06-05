@@ -32,6 +32,61 @@ export async function queryMagiSystem(
   return json.answer ?? json.text ?? '（无回复）';
 }
 
+export type MemoryHit = {
+  id: number;
+  text: string;
+  sourceRunId: string | null;
+  sourceSessionId: string | null;
+  topicId: string | null;
+  createdAt: string | null;
+  score: number;
+};
+
+/**
+ * Agent 长期记忆(情景/语义层)检索 —— 打 MAGI /api/agent-memory/search。
+ * owner-scoped(ownerId 必传);未启用时返空(fail-open 由调用方/工具兜)。
+ */
+export async function searchAgentMemory(
+  ownerId: string,
+  query: string,
+  topK = 12,
+  signal?: AbortSignal,
+): Promise<MemoryHit[]> {
+  if (!magiSystemEnabled()) return [];
+  const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/search`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
+    },
+    body: JSON.stringify({ owner_id: ownerId, query, top_k: topK }),
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`agent-memory search HTTP ${res.status}`);
+  }
+  const json = (await res.json()) as {
+    hits?: Array<{
+      id: number;
+      text: string;
+      source_run_id?: string | null;
+      source_session_id?: string | null;
+      topic_id?: string | null;
+      created_at?: string | null;
+      score?: number;
+    }>;
+  };
+  return (json.hits ?? []).map((h) => ({
+    id: h.id,
+    text: h.text,
+    sourceRunId: h.source_run_id ?? null,
+    sourceSessionId: h.source_session_id ?? null,
+    topicId: h.topic_id ?? null,
+    createdAt: h.created_at ?? null,
+    score: h.score ?? 0,
+  }));
+}
+
 export async function ingestMagiContent(
   url: string,
   signal?: AbortSignal,
