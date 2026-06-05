@@ -87,6 +87,51 @@ export async function searchAgentMemory(
   }));
 }
 
+export type WriteAgentMemoryParams = {
+  ownerId: string;
+  text: string;
+  confidence?: number;
+  status?: 'pending' | 'approved' | 'rejected';
+  sourceRunId?: string | null;
+  sourceSessionId?: string | null;
+  topicId?: string | null;
+};
+
+/**
+ * Agent 长期记忆写入 —— 打 MAGI /api/agent-memory/write。owner-scoped。
+ * 未启用时抛(由调用方 fail-open 兜)。
+ */
+export async function writeAgentMemory(
+  params: WriteAgentMemoryParams,
+  signal?: AbortSignal,
+): Promise<{ id: number }> {
+  if (!magiSystemEnabled()) {
+    throw new Error('magi-system disabled');
+  }
+  const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/write`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
+    },
+    body: JSON.stringify({
+      owner_id: params.ownerId,
+      text: params.text,
+      confidence: params.confidence,
+      status: params.status ?? 'pending',
+      source_run_id: params.sourceRunId ?? null,
+      source_session_id: params.sourceSessionId ?? null,
+      topic_id: params.topicId ?? null,
+    }),
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`agent-memory write HTTP ${res.status}`);
+  }
+  const json = (await res.json()) as { id: number };
+  return { id: json.id };
+}
+
 export async function ingestMagiContent(
   url: string,
   signal?: AbortSignal,
