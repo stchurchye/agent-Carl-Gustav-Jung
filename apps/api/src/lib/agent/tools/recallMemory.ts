@@ -1,17 +1,25 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
-import {
-  searchAgentMemory,
-  magiSystemEnabled,
-  type MemoryHit,
-} from '../../integrations/magi.js';
+import { searchAgentMemory, magiSystemEnabled } from '../../integrations/magi.js';
 
 type RecallMemoryInput = {
   query: string;
 };
 
+/**
+ * 输出 results[] 形状刻意匹配 replyGen 的 'list' 摘要契约(results 数组 + 每项 .title);
+ * title = fact 文本(可读标签)。否则召回结果在终稿里会被 fallback 成 JSON 串。
+ */
+type RecalledMemory = {
+  title: string;
+  id: number;
+  score: number;
+  sourceRunId: string | null;
+  createdAt: string | null;
+};
+
 type RecallMemoryOutput = {
   ok: boolean;
-  hits: MemoryHit[];
+  results: RecalledMemory[];
   enabled: boolean;
   error?: string;
 };
@@ -50,11 +58,18 @@ export const recallMemoryTool: ToolDef<RecallMemoryInput, RecallMemoryOutput> = 
     try {
       // owner 锁定 ctx.ownerId —— 绝不用 input 里的 owner
       const hits = await searchAgentMemory(ctx.ownerId, input.query, 12, ctx.signal);
-      return { ok: true, hits, enabled };
+      const results = hits.map((h) => ({
+        title: h.text, // 'list' 摘要器取 .title 渲染
+        id: h.id,
+        score: h.score,
+        sourceRunId: h.sourceRunId,
+        createdAt: h.createdAt,
+      }));
+      return { ok: true, results, enabled };
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') throw e;
       const error = e instanceof Error ? e.message : String(e);
-      return { ok: false, hits: [], enabled, error };
+      return { ok: false, results: [], enabled, error };
     }
   },
 };
