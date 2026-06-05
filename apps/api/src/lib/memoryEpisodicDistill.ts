@@ -2,15 +2,12 @@ import type { LlmRequestLogContext } from '@xzz/shared';
 import { lastNonEmptyLine } from '@xzz/shared';
 import { chatCompletionRaw, type ChatMessageInput } from './deepseek.js';
 import { writeAgentMemory } from './integrations/magi.js';
+import { statusForConfidence } from './memoryStatus.js';
 
 export type EpisodicFact = {
   text: string;
   confidence: number;
 };
-
-/** 高置信(≥0.85,仿原生 autoExtract 阈值)自动 approved;否则 pending 待人工审。
- *  待校准参数(plan §M2b 洞E):LLM 自评校准差,MVP 起步保守。 */
-const AUTO_APPROVE_THRESHOLD = 0.85;
 
 /**
  * 情景蒸馏(plan §M2b)。**独立于**原生 autoExtract:只抽"非稳定核心"的情景/语义记忆
@@ -80,7 +77,7 @@ export async function persistEpisodicMemories(
 ): Promise<number> {
   let written = 0;
   for (const f of facts) {
-    const status = f.confidence >= AUTO_APPROVE_THRESHOLD ? 'approved' : 'pending';
+    const status = statusForConfidence(f.confidence);
     try {
       await writeAgentMemory(
         {

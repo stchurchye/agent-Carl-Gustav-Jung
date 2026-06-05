@@ -132,6 +132,34 @@ export async function writeAgentMemory(
   return { id: json.id };
 }
 
+/**
+ * Agent 记忆时序失效 —— 打 MAGI /api/agent-memory/invalidate(置 valid_until)。
+ * owner-scoped。返回受影响行数。未启用时抛(调用方 fail-open 兜)。
+ */
+export async function invalidateAgentMemory(
+  ownerId: string,
+  id: number,
+  signal?: AbortSignal,
+): Promise<{ invalidated: number }> {
+  if (!magiSystemEnabled()) {
+    throw new Error('magi-system disabled');
+  }
+  const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/invalidate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
+    },
+    body: JSON.stringify({ owner_id: ownerId, id }),
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`agent-memory invalidate HTTP ${res.status}`);
+  }
+  const json = (await res.json()) as { invalidated: number };
+  return { invalidated: json.invalidated };
+}
+
 export async function ingestMagiContent(
   url: string,
   signal?: AbortSignal,
