@@ -37,6 +37,8 @@ plan v6→v8 的迭代一度倾向"MAGI 当全后端(B),原生退役"。grilling
 ## 后果
 
 - ✅ 防污染、防跨用户均为**结构性**(独立表),M1 安全测试面收窄到 3-4 个新端点 + 一张表。
+- ⚠️ **信任边界(对抗 review 洞 A):** SQL `owner_id` 过滤只在调用方可信时成立;`owner_id` 由 agent 传入、MAGI 无从独立验证。`/api/agent-memory/*` **必须强制** `Bearer MAGI_SYSTEM_TOKEN` 服务鉴权(复用 `integrations/magi.ts:23` 现有 token),安全测试覆盖鉴权层而非仅 SQL WHERE。详见 plan §5.1。
+- ⚠️ **群聊归属(洞 B):** 群 run 里 `recall_memory`/情景蒸馏一律锁 run-owner,绝不跨成员;群共享知识显式留后。详见 plan §5.2。
 - ✅ 原生子系统零改动(满足非破坏约束);MAGI 旧行为零改动(新表 + 新端点)。
 - ✅ M1 可独立 pytest/curl 验收,最高风险点(多租户)前置且隔离验证。
 - ⚠️ `recall_memory` 有"大脑漏调"风险 → 靠 planner prompt 显式描述缓解(同 `magi_system_read`)。

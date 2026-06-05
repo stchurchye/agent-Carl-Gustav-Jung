@@ -40,7 +40,7 @@ CREATE TABLE agent_memory_fragment (
   id                BIGSERIAL PRIMARY KEY,
   owner_id          TEXT NOT NULL,                 -- 租户隔离根;每条查询必带
   text              TEXT NOT NULL,                 -- 自由文本 fact(非结构化三元组)
-  embedding         vector,                        -- bge;NULLABLE = embed 失败优雅降级
+  embedding         vector(768),                   -- bge-base-zh-v1.5 = 768d(钉死,与 MAGI embed_text_sync 一致);NULLABLE = embed 失败优雅降级(洞 G)
   status            TEXT NOT NULL DEFAULT 'pending',-- pending|approved|rejected;search 只返 approved
   confidence        REAL,                          -- LLM 自评,驱动 status 分流
   valid_from        TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -60,6 +60,8 @@ CREATE INDEX ON agent_memory_fragment (owner_id, status) WHERE valid_until IS NU
 
 **砍掉(证据驱动后置):** 实体图/Concept/Edge、sentiment、importance 打分层、reflection insight category、relationship。两个前瞻可空列(`last_accessed_at`+`source_*`)现在加近乎免费,省未来迁移。
 
+**跨 repo 契约(洞 G):** `MemoryProvider`(TS)↔ `/api/agent-memory/*`(Python)的 JSON 请求/响应字段是**手维护、易漂移**。M2a 落地时把契约(字段名/类型)写进两侧注释 + 一个**契约测试**(agent 侧打真实/录制的 MAGI 响应,校验解析)。embed 模型一旦在 MAGI 侧更换 → 存量 768d 向量失配,需重 embed(backfill 复用 M1e)。
+
 ---
 
 ## 3. 执行计划(跨 repo:M1 先独立落地,再 M2/M3)
@@ -75,18 +77,25 @@ CREATE INDEX ON agent_memory_fragment (owner_id, status) WHERE valid_until IS NU
 - **M1b** `POST /api/agent-memory/write`:入参 `{owner_id, text, confidence, source_*, status?}` → `embed_text_sync(text)`(失败则 embedding=NULL)→ INSERT。**无 Celery、无抽取、无 council**(agent 已蒸馏成品 fact)。
 - **M1c** `POST /api/agent-memory/search`:入参 `{owner_id, query, top_k}` → **自写** dense(pgvector)+ sparse(ts_rank)+ RRF,**WHERE `owner_id=:uid AND status='approved' AND valid_until IS NULL AND embedding IS NOT NULL`**。不复用 `hybrid_retrieve`(白名单)。
 - **M1d** `POST /api/agent-memory/invalidate`:`{owner_id, id}` → `UPDATE … SET valid_until=now() WHERE id=:id AND owner_id=:uid`。
-- **M1e** backfill sweep:给 `embedding IS NULL` 的行补向量(embed 服务恢复后)。
-- **验收(pytest,无需 Celery/LLM):** 穷举**多 owner 隔离**(A 写、B search 返空)、status 过滤(pending 不返)、valid_until 过滤、embedding NULL 不进语义检索、`cross_domain` 路径**不**触及本表(研究检索打 `fragments`,物理隔离)。curl 冒烟。
+- **M1e** backfill sweep:给 `embedding IS NULL` 的行补向量(embed 服务恢复后)。**触发 = 独立脚本 / 管理端点 `POST /api/agent-memory/backfill-embeddings`,不引 Celery**(守 M1 无 Celery);幂等、可重复跑(洞 H)。
+- **M1f** 服务鉴权(洞 A):三端点 + backfill 全部 `Depends(verify_service_token)`,校验 `Bearer MAGI_SYSTEM_TOKEN`,空/错 token → 401。**这是安全 gate 的第一道,不是可选项。**
+- **验收(pytest,无需 Celery/LLM):** 穷举**多 owner 隔离**(A 写、B search 返空)、status 过滤(pending 不返)、valid_until 过滤、embedding NULL 不进语义检索、`cross_domain` 路径**不**触及本表(研究检索打 `fragments`,物理隔离);**鉴权:无 token/错 token → 401**(洞 A)。curl 冒烟。
 
 ### M2 — agent 侧(TS,接入)
 - **M2a** `MemoryProvider` 薄接口:`write` / `search` / `invalidate`(+ 未来 `forget`)。`MagiMemoryProvider` 实现,**fail-open**(MAGI 不可达 → search 返空+提示、write best-effort、本轮不报错)。
 - **M2b** **情景蒸馏**路径:复用 `salvageMemoriesBeforeCompact` 的边界触发时机,独立 prompt(**两轴判别线**:抽"非稳定核心"的一切值得记的,排除稳定个人特质)→ 每条打 `confidence` → `provider.write`(高置信 approved / 低置信 pending)。原生 `autoExtract` 不碰。
+  - **⚠️ confidence 校准(洞 E):** LLM 自评置信**校准差、常过度自信**。自动-approve 阈值 **0.85 是待校准参数,非定值**;MVP **起步保守**(阈值取高 / 多数进 pending),上线后看真实"approved 中的脏 fact 率"再放松。别让"自信的错 fact"绕过质量门。
 - **M2c** `recall_memory({query})` agent 工具(打 agent_memory 表,owner 隔离)+ planner prompt 显式描述(对齐 `magi_system_read:planner.ts:230`,与之**不混**)。
 - **验收(vitest):** 跨两次 session 的 run,S2 能 `recall_memory` 召回 S1 写的 fact;MAGI 宕时 fail-open 退原生核心。
 
 ### M3 — agent 侧(TS,时序失效 = 「会更新」头条)
-- 写入新 fact 前:`provider.search` 同 owner 近邻 top-k → **agent 自己的 LLM 判**新 fact 取代哪条旧的 → `provider.write` 新条 + `provider.invalidate` 旧条。`invalidate` 失败 → 新条照写、旧条暂留、下次对账(不阻塞)。
-- **验收:** 「改主意」测试——先写「我用 Python」,再写「改用 Rust」→ 旧条 `valid_until` 被置、`recall_memory` 只返新条。
+- 写入新 fact 前:`provider.search` 同 owner 近邻 top-k → **agent 自己的 LLM 判**新 fact 与旧的关系 → 分三种处置:
+  - **取代(矛盾)** → `provider.write` 新条 + `provider.invalidate` 旧条(置 `valid_until=now`)。
+  - **近重复(同义重述,不矛盾,洞 C)** → **跳过写入**,只更新旧条 `last_accessed_at`;防近重复无限累积、防 recall 返冗余 + 表膨胀。
+  - **全新** → 直接 write。
+- **status × valid_until 交互(洞 D):** M3 的近邻搜**必须覆盖 `pending` + `approved`**(不只 approved),否则新高置信 fact 取代了某条 pending 旧 fact 却没失效它,留下矛盾;被取代的 pending 行直接置 `rejected`。
+- `invalidate` 失败 → 新条照写、旧条暂留、下次对账(不阻塞)。
+- **验收:** 「改主意」——先写「我用 Python」,再写「改用 Rust」→ 旧条 `valid_until` 被置、`recall_memory` 只返新条;「重述」——重复写近义 fact → 不新增行、`last_accessed_at` 更新(洞 C);「pending 被取代」——pending 旧 fact 被新 fact 取代 → 置 rejected(洞 D)。
 - **→ 停下评估。** 后续证据驱动增量(不前置):升格通道(日常→稳定升原生)、reflection→insight、轻主动召回 + sentiment、复用 MAGI review_queue+Next 做审核面板(`target_type='agent_memory_fragment'`)。
 
 ---
@@ -95,7 +104,7 @@ CREATE INDEX ON agent_memory_fragment (owner_id, status) WHERE valid_until IS NU
 
 | 失败点 | 处理 |
 |---|---|
-| MAGI 整体不可达 | fail-open:recall 返空+提示、write best-effort、**本轮不报错**,退原生核心 |
+| MAGI 整体不可达 | fail-open:recall 返空+提示、write best-effort、**本轮不报错**,退原生核心。**写丢弃必须记日志/计数(洞 F)**——否则慢性 MAGI 抖动 = 系统性丢记忆且无感知;计数超阈值告警。outbox 回灌延后。 |
 | 蒸馏 LLM 失败 | 不产 fact,run 继续 |
 | `invalidate` 失败 | 新 fact 照写、旧条暂留、下次对账 |
 | embed(bge/Ollama)失败 | 写 **NULL embedding** 行(fact 不丢);检索 `WHERE embedding IS NOT NULL` 自动跳过;backfill 补 |
@@ -108,6 +117,16 @@ CREATE INDEX ON agent_memory_fragment (owner_id, status) WHERE valid_until IS NU
 - 原生 memory 子系统(`memory_fragments`/`contextAdapter`/`autoExtract`/`consolidate`)**零改动**。
 - MAGI 现有表/路由/UI/`retrieval.py`**零改动**(只**新增**表 + 新端点 + 自写检索)。
 - 安全 gate:agent_memory **每条**数据路径带 `owner_id` 过滤,穷举测试;漏一处 = 跨用户隐私事故。
+
+### 5.1 信任边界(洞 A,设计级,M1 前必须定)
+**SQL 层 `owner_id` 过滤只在调用方可信时才成立。** `owner_id` 是 agent 传入的字符串,MAGI **无从独立验证**(agent userId 是 string,MAGI `get_current_user_id` 是 int,两套身份系统解耦)。若 `/api/agent-memory/*` 无服务间鉴权,任何内网调用方传 `owner_id=别人` 即可读走他人全部记忆——SQL 隔离形同虚设。
+- **修复(复用现成机制):** `/api/agent-memory/*` **强制校验** `Authorization: Bearer ${MAGI_SYSTEM_TOKEN}`(agent 侧 `integrations/magi.ts:23` 已在发此 token)。MAGI 侧**必须真的拒绝**无效/空 token(现状 `?? ''` 兜底 = 可能没强制,要查实并补)。由 agent 后端(已鉴权终端用户、掌握真实 owner_id)代表用户调用,MAGI 校验 token 后信任其传入的 owner_id。
+- **安全测试范围 = SQL WHERE + 鉴权两层:** 除"A 写 B 返空",必测"**无 token / 错 token → 401**"、"有效 token 但越权 owner_id → 仍只返该 owner"。
+
+### 5.2 群聊语境的记忆归属(洞 B,设计级)
+M7 群聊 run 没有单一清晰 owner。**铁律:`recall_memory` 与情景蒸馏在群 run 里一律锁 `run-owner` 的 `owner_id`,绝不跨成员**(召回/写入别人记忆 = 隐私事故)。
+- **非目标(显式留后):** 群共享知识、关于其他成员的事实——不在本期建模,不写入任何成员的个人记忆。
+- **测试:** 群 run 里 A 发起 → recall_memory 只返 A 的记忆;蒸馏出的 fact 只落 A 的 owner_id;B 的记忆永不出现。
 
 ## 6. 验证命令
 ```bash
