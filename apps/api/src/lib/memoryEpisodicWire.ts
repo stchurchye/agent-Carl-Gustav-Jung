@@ -36,7 +36,8 @@ export async function runEpisodicMemory(params: {
       signal: params.signal,
       log: params.log,
     });
-  } catch {
+  } catch (e) {
+    if (isAbortError(e, params.signal)) throw e; // 取消透传(provider 重包 abort,故查 signal)
     return; // fail-open:蒸馏失败不影响 finalize
   }
 
@@ -49,7 +50,8 @@ export async function runEpisodicMemory(params: {
         signal: params.signal,
         log: params.log,
       });
-    } catch {
+    } catch (e) {
+      if (isAbortError(e, params.signal)) throw e; // 取消透传
       // 逐条 fail-open:单条 reconcile 失败不影响其他、不抛
     }
   }

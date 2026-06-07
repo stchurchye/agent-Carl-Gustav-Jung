@@ -89,6 +89,29 @@ describe('runEpisodicMemory', () => {
     expect(reconcile).not.toHaveBeenCalled();
   });
 
+  it('#11: propagates cancellation when distill LLM re-wraps abort (signal.aborted)', async () => {
+    const ac = new AbortController();
+    distill.mockImplementation(async () => {
+      ac.abort();
+      const e = new Error('已取消');
+      e.name = 'LlmProviderError'; // provider 重包,非 AbortError
+      throw e;
+    });
+    await expect(runEpisodicMemory(params({ signal: ac.signal }))).rejects.toThrow(/取消/);
+  });
+
+  it('#11: propagates cancellation when reconcile re-wraps abort (signal.aborted)', async () => {
+    const ac = new AbortController();
+    distill.mockResolvedValue([{ text: 'f', confidence: 0.9 }]);
+    reconcile.mockImplementation(async () => {
+      ac.abort();
+      const e = new Error('已取消');
+      e.name = 'LlmProviderError';
+      throw e;
+    });
+    await expect(runEpisodicMemory(params({ signal: ac.signal }))).rejects.toThrow(/取消/);
+  });
+
   it('fail-open: one reconcile throws → others still attempted, no throw', async () => {
     distill.mockResolvedValue([
       { text: 'fact1', confidence: 0.9 },

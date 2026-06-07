@@ -3,6 +3,7 @@ import { lastNonEmptyLine } from '@xzz/shared';
 import type { LlmChatClient } from './llm/types.js';
 import { writeAgentMemory } from './integrations/magi.js';
 import { statusForConfidence } from './memoryStatus.js';
+import { isAbortError } from './memoryAbort.js';
 
 export type Sentiment = 'positive' | 'negative' | 'neutral' | 'mixed';
 const SENTIMENTS = new Set<Sentiment>(['positive', 'negative', 'neutral', 'mixed']);
@@ -106,8 +107,8 @@ export async function persistEpisodicMemories(
       );
       written += 1;
     } catch (e) {
-      // 逐条 fail-open:边界 best-effort,丢一条不影响其他;AbortError 仍透传以让 runtime 看到 cancel
-      if (e instanceof Error && e.name === 'AbortError') throw e;
+      // 逐条 fail-open:边界 best-effort,丢一条不影响其他;取消仍透传以让 runtime 看到 cancel
+      if (isAbortError(e, opts.signal)) throw e;
     }
   }
   return written;
