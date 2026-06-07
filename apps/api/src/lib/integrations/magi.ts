@@ -259,6 +259,30 @@ export async function decideAgentMemory(
   return { updated: json.updated };
 }
 
+/**
+ * 升格(M4h):MAGI 侧 compare-and-set promoted_at + 返回 text(供 agent 写原生核心)。
+ * 幂等:已升格 → {promoted:false}。owner-scoped + service token。未启用 → {promoted:false}。
+ */
+export async function promoteAgentMemory(
+  ownerId: string,
+  id: number,
+  signal?: AbortSignal,
+): Promise<{ promoted: boolean; text: string | null }> {
+  if (!magiSystemEnabled()) return { promoted: false, text: null };
+  const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/promote`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
+    },
+    body: JSON.stringify({ owner_id: ownerId, id }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`agent-memory promote HTTP ${res.status}`);
+  const json = (await res.json()) as { promoted: boolean; text: string | null };
+  return { promoted: json.promoted, text: json.text ?? null };
+}
+
 export async function ingestMagiContent(
   url: string,
   signal?: AbortSignal,

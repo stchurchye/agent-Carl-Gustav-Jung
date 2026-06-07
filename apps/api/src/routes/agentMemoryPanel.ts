@@ -3,6 +3,7 @@ import {
   listAgentMemory,
   decideAgentMemory,
 } from '../lib/integrations/magi.js';
+import { promoteMemoryToNative } from '../lib/memoryPromote.js';
 import type { AppVariables } from '../types.js';
 
 /**
@@ -34,4 +35,13 @@ agentMemoryPanelRouter.post('/decide', async (c) => {
     data: { updated: result.updated },
     requestId: c.get('requestId'),
   });
+});
+
+agentMemoryPanelRouter.post('/promote', async (c) => {
+  const userId = c.get('userId');
+  if (!userId) return c.json({ ok: false, message: '请先登录' }, 401);
+  const body = await c.req.json<{ id: number }>();
+  // owner=JWT(绝不信 body);text 由 MAGI 权威拿回 → 写原生核心。幂等。
+  const result = await promoteMemoryToNative(userId, body.id);
+  return c.json({ ok: true, data: result, requestId: c.get('requestId') });
 });
