@@ -167,6 +167,77 @@ export async function invalidateAgentMemory(
   return { invalidated: json.invalidated };
 }
 
+export type MemoryListItem = {
+  id: number;
+  text: string;
+  status: string;
+  confidence: number | null;
+  createdAt: string | null;
+  validUntil: string | null;
+  sourceRunId: string | null;
+};
+
+/** P5 面板:列出 owner 的记忆(可选 status 过滤)。owner-scoped + service token。 */
+export async function listAgentMemory(
+  ownerId: string,
+  status?: 'pending' | 'approved' | 'rejected',
+  signal?: AbortSignal,
+): Promise<MemoryListItem[]> {
+  if (!magiSystemEnabled()) return [];
+  const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/list`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
+    },
+    body: JSON.stringify({ owner_id: ownerId, status }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`agent-memory list HTTP ${res.status}`);
+  const json = (await res.json()) as {
+    items?: Array<{
+      id: number;
+      text: string;
+      status: string;
+      confidence?: number | null;
+      created_at?: string | null;
+      valid_until?: string | null;
+      source_run_id?: string | null;
+    }>;
+  };
+  return (json.items ?? []).map((it) => ({
+    id: it.id,
+    text: it.text,
+    status: it.status,
+    confidence: it.confidence ?? null,
+    createdAt: it.created_at ?? null,
+    validUntil: it.valid_until ?? null,
+    sourceRunId: it.source_run_id ?? null,
+  }));
+}
+
+/** P5 面板:审批一条 pending 记忆(approve/reject)。owner-scoped + service token。 */
+export async function decideAgentMemory(
+  ownerId: string,
+  id: number,
+  decision: 'approve' | 'reject',
+  signal?: AbortSignal,
+): Promise<{ updated: number }> {
+  if (!magiSystemEnabled()) return { updated: 0 };
+  const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/decide`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
+    },
+    body: JSON.stringify({ owner_id: ownerId, id, decision }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`agent-memory decide HTTP ${res.status}`);
+  const json = (await res.json()) as { updated: number };
+  return { updated: json.updated };
+}
+
 export async function ingestMagiContent(
   url: string,
   signal?: AbortSignal,
