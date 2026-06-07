@@ -184,6 +184,10 @@ export type MemoryListItem = {
   createdAt: string | null;
   validUntil: string | null;
   sourceRunId: string | null;
+  kind: string;
+  sentiment: string | null;
+  sourceFragmentIds: number[] | null;
+  promotedAt: string | null;
 };
 
 /** P5 面板:列出 owner 的记忆(可选 status 过滤)。owner-scoped + service token。 */
@@ -212,6 +216,10 @@ export async function listAgentMemory(
       created_at?: string | null;
       valid_until?: string | null;
       source_run_id?: string | null;
+      kind?: string;
+      sentiment?: string | null;
+      source_fragment_ids?: number[] | null;
+      promoted_at?: string | null;
     }>;
   };
   return (json.items ?? []).map((it) => ({
@@ -222,6 +230,10 @@ export async function listAgentMemory(
     createdAt: it.created_at ?? null,
     validUntil: it.valid_until ?? null,
     sourceRunId: it.source_run_id ?? null,
+    kind: it.kind ?? 'fact',
+    sentiment: it.sentiment ?? null,
+    sourceFragmentIds: it.source_fragment_ids ?? null,
+    promotedAt: it.promoted_at ?? null,
   }));
 }
 

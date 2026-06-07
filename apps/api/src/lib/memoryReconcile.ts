@@ -8,6 +8,7 @@ import {
   type MemoryHit,
 } from './integrations/magi.js';
 import { statusForConfidence } from './memoryStatus.js';
+import type { Sentiment } from './memoryEpisodicDistill.js';
 
 const NEAR_TOP_K = 5;
 
@@ -73,7 +74,7 @@ async function judgeSupersession(
 export async function reconcileMemoryWrite(
   llm: LlmChatClient,
   ownerId: string,
-  newFact: { text: string; confidence: number },
+  newFact: { text: string; confidence: number; sentiment?: Sentiment },
   opts: {
     sourceRunId?: string | null;
     sourceSessionId?: string | null;
@@ -90,6 +91,7 @@ export async function reconcileMemoryWrite(
         text: newFact.text,
         confidence: newFact.confidence,
         status,
+        sentiment: newFact.sentiment,
         sourceRunId: opts.sourceRunId ?? null,
         sourceSessionId: opts.sourceSessionId ?? null,
         topicId: opts.topicId ?? null,

@@ -52,6 +52,21 @@ describe('reconcileMemoryWrite', () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
+  it('M4e: forwards sentiment to writeAgentMemory (live wire path)', async () => {
+    search.mockResolvedValue([]);
+    const { llm } = fakeLlm('{}');
+    await reconcileMemoryWrite(
+      llm,
+      'userA',
+      { text: '上线成功', confidence: 0.9, sentiment: 'positive' },
+      {},
+    );
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '上线成功', sentiment: 'positive' }),
+      undefined,
+    );
+  });
+
   it('supersede: 改主意 → 写新 + 失效旧(头条"会更新")', async () => {
     search.mockResolvedValue([hit(1, '用户用 Python')]);
     write.mockResolvedValue({ id: 200 });
