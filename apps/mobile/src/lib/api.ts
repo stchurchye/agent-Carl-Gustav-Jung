@@ -122,6 +122,16 @@ async function request<T>(
   }
 }
 
+export type AgentMemoryItem = {
+  id: number;
+  text: string;
+  status: 'pending' | 'approved' | 'rejected';
+  confidence: number | null;
+  createdAt: string | null;
+  validUntil: string | null;
+  sourceRunId: string | null;
+};
+
 export const api = {
   health: () => request<{ service: string }>('/health'),
 
@@ -721,6 +731,17 @@ export const api = {
 
   deleteMemory: (id: string) =>
     request<unknown>(`/api/memory/${id}`, { method: 'DELETE' }),
+
+  // P5 长期记忆审核面板(agent 情景记忆,owner=JWT)
+  listAgentMemory: (status?: 'pending' | 'approved' | 'rejected') =>
+    request<{ items: AgentMemoryItem[] }>(
+      `/api/agent-memory/list${status ? `?status=${status}` : ''}`,
+    ),
+  decideAgentMemory: (id: number, decision: 'approve' | 'reject') =>
+    request<{ updated: number }>('/api/agent-memory/decide', {
+      method: 'POST',
+      body: JSON.stringify({ id, decision }),
+    }),
 
   btwAsk: (question: string, opts?: { groupId?: string; topicId?: string }) =>
     request<{ question: string; answer: string }>('/api/btw', {
