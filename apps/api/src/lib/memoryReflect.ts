@@ -92,15 +92,23 @@ export async function runReflection(params: {
   try {
     // 全量(各 status/kind):用 insight 找节流基线,用 approved fact 做合成。list 按 created_at DESC。
     const items = await listAgentMemory(params.ownerId, undefined, params.signal);
-    let lastInsightAt: string | null = null;
+    // 用毫秒数值比较时间戳,不用字典序:isoformat() 在 microsecond=0 时省略小数位,
+    // 同实例内精度可能不一('…:00+00:00' vs '…:00.123456+00:00'),字典序会误排(`.`>`+`)。
+    const ms = (s: string | null): number => (s ? Date.parse(s) : NaN);
+    let lastInsightMs = -Infinity;
     for (const it of items) {
-      if (it.kind === 'insight' && it.createdAt && (!lastInsightAt || it.createdAt > lastInsightAt)) {
-        lastInsightAt = it.createdAt;
+      if (it.kind === 'insight') {
+        const t = ms(it.createdAt);
+        if (!Number.isNaN(t) && t > lastInsightMs) lastInsightMs = t;
       }
     }
+    const hasInsight = lastInsightMs > -Infinity;
     const approvedFacts = items.filter((i) => i.kind === 'fact' && i.status === 'approved');
-    const newFacts = lastInsightAt
-      ? approvedFacts.filter((f) => f.createdAt && f.createdAt > lastInsightAt!)
+    const newFacts = hasInsight
+      ? approvedFacts.filter((f) => {
+          const t = ms(f.createdAt);
+          return !Number.isNaN(t) && t > lastInsightMs;
+        })
       : approvedFacts;
     if (newFacts.length < minNew) {
       return { reflected: false, written: 0, newFactCount: newFacts.length };
