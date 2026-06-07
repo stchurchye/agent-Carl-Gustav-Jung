@@ -86,7 +86,7 @@
 - [ ] **Step 0.1: Confirm starting commit is the M2 spec branch tip**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung"
 git status                       # Expected: "On branch feat/agent-runtime-m2-spec", clean
 git log --oneline -3             # Expected: top commit is "docs(agent): M2 spec 更新 ..."
 ```
@@ -102,13 +102,13 @@ Expected: `Switched to a new branch 'feat/agent-runtime-m2'`
 - [ ] **Step 0.3: Verify baseline tests + typecheck pass**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api 2>&1 | tail -5
 ```
 
 Expected: all tests pass (M1f baseline: 310). Note the exact count and record it as the **baseline** (you'll target baseline + ~50 by end of M2).
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit
 ```
 
 Expected: no errors.
@@ -165,13 +165,13 @@ ALTER TABLE agent_runs
 - [ ] **Step 1.2: Apply the migration locally**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && psql "$DATABASE_URL" -f apps/api/src/db/migrations/016_agent_run_sandbox_and_keys.sql
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && psql "$DATABASE_URL" -f apps/api/src/db/migrations/016_agent_run_sandbox_and_keys.sql
 ```
 
 Expected: `ALTER TABLE` (single line). If `DATABASE_URL` is not in shell env, source `.env` first:
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && set -a && . .env && set +a && psql "$DATABASE_URL" -f apps/api/src/db/migrations/016_agent_run_sandbox_and_keys.sql
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && set -a && . .env && set +a && psql "$DATABASE_URL" -f apps/api/src/db/migrations/016_agent_run_sandbox_and_keys.sql
 ```
 
 - [ ] **Step 1.3: Verify columns exist**
@@ -242,7 +242,7 @@ describe('M2 Task 1A: agent_runs new columns', () => {
 - [ ] **Step 1.7: Run test (should pass after Step 1.5 plumbing)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern store.test 2>&1 | tail -20
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern store.test 2>&1 | tail -20
 ```
 
 Expected: pass. If fails because store test file structure differs, adapt — the goal is just one test confirming column read/write.
@@ -250,7 +250,7 @@ Expected: pass. If fails because store test file structure differs, adapt — th
 - [ ] **Step 1.8: Commit migration + plumbing**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/db/migrations/016_agent_run_sandbox_and_keys.sql apps/api/src/lib/agent/types.ts apps/api/src/lib/agent/store.ts apps/api/src/lib/agent/__tests__/store.test.ts && git commit -m "feat(agent/m2): migration 016 — sandbox_id + user_api_keys_enc"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/api/src/db/migrations/016_agent_run_sandbox_and_keys.sql apps/api/src/lib/agent/types.ts apps/api/src/lib/agent/store.ts apps/api/src/lib/agent/__tests__/store.test.ts && git commit -m "feat(agent/m2): migration 016 — sandbox_id + user_api_keys_enc"
 ```
 
 ### 1B. Install E2B SDK + sandbox module
@@ -258,7 +258,7 @@ cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/db/migrations/0
 - [ ] **Step 1.9: Install E2B SDK**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npm install @e2b/code-interpreter -w @xzz/api
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npm install @e2b/code-interpreter -w @xzz/api
 ```
 
 Expected: a line like `added 1 package`. Open `apps/api/package.json` and confirm `@e2b/code-interpreter` is in `dependencies`. Pin to the version npm installed (don't widen).
@@ -281,7 +281,7 @@ JINA_API_KEY=
 Do NOT modify `.env`. Verify with:
 
 ```bash
-grep -E "E2B_API_KEY|OPENALEX_USER_AGENT|FRED_API_KEY|JINA_API_KEY" "/Users/hongpengwang/行动中止派/.env.example"
+grep -E "E2B_API_KEY|OPENALEX_USER_AGENT|FRED_API_KEY|JINA_API_KEY" "/Users/hongpengwang/agent-Carl-Gustav-Jung/.env.example"
 ```
 
 - [ ] **Step 1.11: Write the failing test for sandbox.ts**
@@ -381,7 +381,7 @@ describe('sandbox lifecycle', () => {
 - [ ] **Step 1.12: Run the failing test**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern sandbox.test 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern sandbox.test 2>&1 | tail -10
 ```
 
 Expected: FAIL — `Cannot find module '../sandbox.js'`.
@@ -446,7 +446,7 @@ export async function killSandboxForRun(runId: string): Promise<void> {
 - [ ] **Step 1.14: Run the test (should pass)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern sandbox.test 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern sandbox.test 2>&1 | tail -10
 ```
 
 Expected: 5 passed. If failures, read carefully — the mock structure must match: `Sandbox.create()` returns an object with `sandboxId`, `kill`; `Sandbox.connect()` returns same shape; `Sandbox.kill(sandboxId)` is a static.
@@ -601,7 +601,7 @@ describe('run_python tool', () => {
 - [ ] **Step 1.18: Run the failing tests**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.runPython.test 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.runPython.test 2>&1 | tail -10
 ```
 
 Expected: FAIL — `Cannot find module '../tools/runPython.js'`.
@@ -711,7 +711,7 @@ export function registerRunPython(): void {
 - [ ] **Step 1.20: Run the tests (should pass)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.runPython.test 2>&1 | tail -20
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.runPython.test 2>&1 | tail -20
 ```
 
 Expected: 6 passed. If the "Python exception" test fails because the mock shape differs from real E2B SDK, adjust the mock — the real SDK at `@e2b/code-interpreter` exposes `runCode` (or `notebook.execCell` depending on version); pick what your installed version supports and update both mock and implementation.
@@ -721,7 +721,7 @@ Expected: 6 passed. If the "Python exception" test fails because the mock shape 
 Grep for where existing tools are registered:
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "registerWebSearch|registerUrlFetch" apps/api/src --type ts -l
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "registerWebSearch|registerUrlFetch" apps/api/src --type ts -l
 ```
 
 Open the central registration file (likely `apps/api/src/lib/agent/registerAllTools.ts` or similar — if it doesn't exist look at how tools wire up at app start). Add:
@@ -735,16 +735,16 @@ registerRunPython();
 - [ ] **Step 1.22: Typecheck + commit Task 1**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
 ```
 
 Expected: no errors.
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/sandbox.ts apps/api/src/lib/agent/tools/runPython.ts apps/api/src/lib/agent/__tests__/sandbox.test.ts apps/api/src/lib/agent/__tests__/tools.runPython.test.ts apps/api/src/lib/agent/runLifecycle.ts apps/api/package.json apps/api/package-lock.json .env.example && git commit -m "feat(agent/m2): run_python tool + E2B sandbox lifecycle"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/api/src/lib/agent/sandbox.ts apps/api/src/lib/agent/tools/runPython.ts apps/api/src/lib/agent/__tests__/sandbox.test.ts apps/api/src/lib/agent/__tests__/tools.runPython.test.ts apps/api/src/lib/agent/runLifecycle.ts apps/api/package.json apps/api/package-lock.json .env.example && git commit -m "feat(agent/m2): run_python tool + E2B sandbox lifecycle"
 ```
 
-(If `apps/api/.env.example` is the actual file path, swap `.env.example` accordingly. Find via `ls "/Users/hongpengwang/行动中止派"/.env* "/Users/hongpengwang/行动中止派"/apps/api/.env*`.)
+(If `apps/api/.env.example` is the actual file path, swap `.env.example` accordingly. Find via `ls "/Users/hongpengwang/agent-Carl-Gustav-Jung"/.env* "/Users/hongpengwang/agent-Carl-Gustav-Jung"/apps/api/.env*`.)
 
 Also stage the registerAllTools change if it lives in a different file.
 
@@ -901,7 +901,7 @@ describe('get_paper_citations tool', () => {
 - [ ] **Step 2.2: Run the failing tests**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.searchPapers.test 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.searchPapers.test 2>&1 | tail -5
 ```
 
 Expected: FAIL — module not found.
@@ -1155,7 +1155,7 @@ Open `apps/api/src/lib/agent/__tests__/tools.searchPapers.test.ts`, find the cit
 - [ ] **Step 2.5: Run the tests (should pass)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.searchPapers.test 2>&1 | tail -20
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.searchPapers.test 2>&1 | tail -20
 ```
 
 Expected: 7 passed.
@@ -1165,11 +1165,11 @@ Expected: 7 passed.
 Add `registerSearchPapers()` to the central registration file (same one touched in Step 1.21).
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
 ```
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/tools/searchPapers.ts apps/api/src/lib/agent/__tests__/tools.searchPapers.test.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): search_papers (OpenAlex+CrossRef) + get_paper_citations"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/api/src/lib/agent/tools/searchPapers.ts apps/api/src/lib/agent/__tests__/tools.searchPapers.test.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): search_papers (OpenAlex+CrossRef) + get_paper_citations"
 ```
 
 (Adjust paths if `registerAllTools.ts` is named differently.)
@@ -1311,7 +1311,7 @@ describe('critique_last_answer tool', () => {
 - [ ] **Step 3.2: Run the failing tests**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.critiqueLastAnswer.test 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.critiqueLastAnswer.test 2>&1 | tail -5
 ```
 
 Expected: FAIL — module not found.
@@ -1321,7 +1321,7 @@ Expected: FAIL — module not found.
 First confirm `listStepsByRunId` exists in store.ts:
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "listStepsByRunId|listSteps|getStepsByRun" apps/api/src/lib/agent/store.ts -n
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "listStepsByRunId|listSteps|getStepsByRun" apps/api/src/lib/agent/store.ts -n
 ```
 
 If it has a different name, adjust both the test mock and the import below. Same for the LLM client helper — confirm `resolveLlmClient` is exported from `runLlmClient.ts`.
@@ -1476,7 +1476,7 @@ export function registerCritiqueLastAnswer(): void {
 - [ ] **Step 3.4: Verify extractJsonCandidate is exported from planner.ts**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "export.*extractJsonCandidate" apps/api/src/lib/agent/planner.ts
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "export.*extractJsonCandidate" apps/api/src/lib/agent/planner.ts
 ```
 
 If not exported, add `export` keyword (the M1f Task 4 added this function — confirm with grep). If the function lives elsewhere (e.g. its own file), update the import.
@@ -1484,7 +1484,7 @@ If not exported, add `export` keyword (the M1f Task 4 added this function — co
 - [ ] **Step 3.5: Verify `resolveLlmClient` signature matches**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "export.*resolveLlmClient" apps/api/src/lib/agent/runLlmClient.ts -A 10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "export.*resolveLlmClient" apps/api/src/lib/agent/runLlmClient.ts -A 10
 ```
 
 Confirm it accepts `{ runId, providerId, modelId }` and returns something with `.chat({ system, user, signal })`. If the signature differs (likely `.chat(messages, opts)` or `.chatCompletion(...)`), adapt the call in `critiqueLastAnswer.ts` accordingly. The principle: same call style as planner.ts uses.
@@ -1492,7 +1492,7 @@ Confirm it accepts `{ runId, providerId, modelId }` and returns something with `
 - [ ] **Step 3.6: Run tests (should pass)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.critiqueLastAnswer.test 2>&1 | tail -20
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.critiqueLastAnswer.test 2>&1 | tail -20
 ```
 
 Expected: 7 passed. If some fail because the LLM client mock shape doesn't match, adjust mocks to match the real `resolveLlmClient` return shape.
@@ -1502,8 +1502,8 @@ Expected: 7 passed. If some fail because the LLM client mock shape doesn't match
 Add `registerCritiqueLastAnswer()` to the central registration file.
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/tools/critiqueLastAnswer.ts apps/api/src/lib/agent/__tests__/tools.critiqueLastAnswer.test.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): critique_last_answer tool"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/api/src/lib/agent/tools/critiqueLastAnswer.ts apps/api/src/lib/agent/__tests__/tools.critiqueLastAnswer.test.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): critique_last_answer tool"
 ```
 
 ---
@@ -1620,7 +1620,7 @@ describe('fetch_url (Jina) tool', () => {
 - [ ] **Step 4.2: Run failing tests**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.fetchUrl.test 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.fetchUrl.test 2>&1 | tail -5
 ```
 
 Expected: FAIL — module not found.
@@ -1736,7 +1736,7 @@ export function registerFetchUrl(): void {
 - [ ] **Step 4.4: Run fetchUrl tests (should pass)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.fetchUrl.test 2>&1 | tail -20
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.fetchUrl.test 2>&1 | tail -20
 ```
 
 Expected: 6 passed.
@@ -1744,13 +1744,13 @@ Expected: 6 passed.
 - [ ] **Step 4.5: Delete urlFetch.ts and its test**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git rm apps/api/src/lib/agent/tools/urlFetch.ts apps/api/src/lib/agent/__tests__/tools.urlFetch.test.ts
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git rm apps/api/src/lib/agent/tools/urlFetch.ts apps/api/src/lib/agent/__tests__/tools.urlFetch.test.ts
 ```
 
 - [ ] **Step 4.6: Remove jsdom + readability from package.json**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npm uninstall jsdom @mozilla/readability -w @xzz/api
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npm uninstall jsdom @mozilla/readability -w @xzz/api
 ```
 
 Expected: removes both. Check `apps/api/package.json` — `dependencies` no longer lists either.
@@ -1758,7 +1758,7 @@ Expected: removes both. Check `apps/api/package.json` — `dependencies` no long
 - [ ] **Step 4.7: Find + fix all references to old `url_fetch` registration**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "registerUrlFetch|urlFetchTool|'url_fetch'|\"url_fetch\"" apps/api/src -l
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "registerUrlFetch|urlFetchTool|'url_fetch'|\"url_fetch\"" apps/api/src -l
 ```
 
 For each file found, replace `registerUrlFetch` → `registerFetchUrl`, `urlFetchTool` → `fetchUrlTool`, and string literals `'url_fetch'` / `"url_fetch"` → `'fetch_url'` / `"fetch_url"`. Use StrReplace per-file (not bulk sed).
@@ -1789,7 +1789,7 @@ Also update the docstring/description first line so the LLM understands the rena
 - [ ] **Step 4.9: Find + fix all literal references to `'web_search'`**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "'web_search'|\"web_search\"" apps/api/src -l
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "'web_search'|\"web_search\"" apps/api/src -l
 ```
 
 For each file, replace `'web_search'` → `'search_web'`. Include test fixtures, intentExecute defaults, planner test snapshots. Use StrReplace per-file.
@@ -1832,7 +1832,7 @@ describe('datetime_now tool', () => {
 - [ ] **Step 4.11: Run failing test**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.datetimeNow.test 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.datetimeNow.test 2>&1 | tail -5
 ```
 
 Expected: FAIL — module not found.
@@ -1884,7 +1884,7 @@ export function registerDatetimeNow(): void {
 - [ ] **Step 4.13: Run datetimeNow tests (should pass)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.datetimeNow.test 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.datetimeNow.test 2>&1 | tail -10
 ```
 
 Expected: 2 passed.
@@ -1896,7 +1896,7 @@ In the central registration file, replace `registerUrlFetch()` with `registerFet
 - [ ] **Step 4.15: Run full test suite to catch broken cross-refs**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api 2>&1 | tail -15
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api 2>&1 | tail -15
 ```
 
 If anything red: most likely tests that hardcode `'url_fetch'` or `'web_search'` strings. Fix by repeating Step 4.7 and 4.9 grep+replace.
@@ -1904,11 +1904,11 @@ If anything red: most likely tests that hardcode `'url_fetch'` or `'web_search'`
 - [ ] **Step 4.16: Typecheck + commit Task 4**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
 ```
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git add -A && git commit -m "feat(agent/m2): fetch_url (Jina) replaces url_fetch; rename web_search→search_web; add datetime_now"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add -A && git commit -m "feat(agent/m2): fetch_url (Jina) replaces url_fetch; rename web_search→search_web; add datetime_now"
 ```
 
 ---
@@ -1927,7 +1927,7 @@ cd "/Users/hongpengwang/行动中止派" && git add -A && git commit -m "feat(ag
 - [ ] **Step 5.1: Find how a "message row" is inserted today**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "INSERT INTO messages|insertMessage|appendMessage" apps/api/src/lib --type ts -l
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "INSERT INTO messages|insertMessage|appendMessage" apps/api/src/lib --type ts -l
 ```
 
 You need to know what helper to call from `renderDiagram.ts`. If you find e.g. `messageStore.insertMessage({ topicId, type, content, meta })`, the tool will call that. If the codebase uses raw SQL via `getPool().query`, do that. Document the signature you'll use in the test mock.
@@ -2021,7 +2021,7 @@ describe('render_diagram tool', () => {
 - [ ] **Step 5.3: Run failing tests**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.renderDiagram.test 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.renderDiagram.test 2>&1 | tail -5
 ```
 
 Expected: FAIL — module not found.
@@ -2133,7 +2133,7 @@ export function registerRenderDiagram(): void {
 **IMPORTANT**: The actual `messages` table schema may differ. Before running this step, confirm with:
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && psql "$DATABASE_URL" -c "\d messages"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && psql "$DATABASE_URL" -c "\d messages"
 ```
 
 Adjust the INSERT columns to match. If columns like `topic_id` don't exist (e.g. private vs group split tables), use the existing helper `writePrivatePlaceholder` style of indirection.
@@ -2141,7 +2141,7 @@ Adjust the INSERT columns to match. If columns like `topic_id` don't exist (e.g.
 - [ ] **Step 5.5: Run tests (should pass)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.renderDiagram.test 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.renderDiagram.test 2>&1 | tail -10
 ```
 
 Expected: 5 passed (or 4 if the topicId smoke is skipped).
@@ -2163,8 +2163,8 @@ Also extend the TypeScript type `ReplyRef` to include `'diagram'` in its `kind` 
 Add `registerRenderDiagram()` to the central registration file.
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/tools/renderDiagram.ts apps/api/src/lib/agent/__tests__/tools.renderDiagram.test.ts apps/api/src/lib/agent/replyGen.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): render_diagram tool + diagram ReplyRef kind"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/api/src/lib/agent/tools/renderDiagram.ts apps/api/src/lib/agent/__tests__/tools.renderDiagram.test.ts apps/api/src/lib/agent/replyGen.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): render_diagram tool + diagram ReplyRef kind"
 ```
 
 ### 5B. Mobile mermaid component
@@ -2172,13 +2172,13 @@ cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/tools
 - [ ] **Step 5.8: Confirm react-native-webview is installed**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "react-native-webview" apps/mobile/package.json
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "react-native-webview" apps/mobile/package.json
 ```
 
 If missing:
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx expo install react-native-webview -w @xzz/mobile
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx expo install react-native-webview -w @xzz/mobile
 ```
 
 Use whatever package manager the mobile app uses (`expo install` for Expo, `npm install` otherwise). Pin to whatever installs.
@@ -2186,7 +2186,7 @@ Use whatever package manager the mobile app uses (`expo install` for Expo, `npm 
 - [ ] **Step 5.9: Find where messages are rendered**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "type === 'text'|message\.type|switch.*type" apps/mobile/src -l --type tsx --type ts
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "type === 'text'|message\.type|switch.*type" apps/mobile/src -l --type tsx --type ts
 ```
 
 Identify the file that switches on message type (likely `apps/mobile/src/components/MessageItem.tsx` or in `ChatScreen.tsx`). Note its path — you'll add a `'diagram'` branch.
@@ -2296,7 +2296,7 @@ Adapt prop names to actual message shape.
 - [ ] **Step 5.12: Mobile typecheck**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/mobile" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/mobile" && npx tsc --noEmit 2>&1 | tail -5
 ```
 
 Expected: no errors. If errors about missing `react-native-webview` types, ensure types are installed (`@types/react-native-webview` is usually bundled).
@@ -2304,7 +2304,7 @@ Expected: no errors. If errors about missing `react-native-webview` types, ensur
 - [ ] **Step 5.13: Commit mobile**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git add apps/mobile/src/components/DiagramMessage.tsx apps/mobile/package.json apps/mobile/package-lock.json && git commit -m "feat(mobile/m2): DiagramMessage component for mermaid rendering"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/mobile/src/components/DiagramMessage.tsx apps/mobile/package.json apps/mobile/package-lock.json && git commit -m "feat(mobile/m2): DiagramMessage component for mermaid rendering"
 ```
 
 Also stage and commit the message-switch wiring change if it's a different file:
@@ -2502,7 +2502,7 @@ export function registerWikipedia(): void {
 - [ ] **Step 6.3: Run wikipedia tests + commit**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.wikipedia.test 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.wikipedia.test 2>&1 | tail -10
 ```
 
 Expected: 4 passed.
@@ -2510,8 +2510,8 @@ Expected: 4 passed.
 Add `registerWikipedia()` to registerAllTools. Then:
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/tools/wikipedia.ts apps/api/src/lib/agent/__tests__/tools.wikipedia.test.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): wikipedia tool"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/api/src/lib/agent/tools/wikipedia.ts apps/api/src/lib/agent/__tests__/tools.wikipedia.test.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): wikipedia tool"
 ```
 
 ### 6B. get_economic_series (FRED)
@@ -2737,7 +2737,7 @@ export function registerGetEconomicSeries(): void {
 - [ ] **Step 6.6: Run + register + commit**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.getEconomicSeries.test 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.getEconomicSeries.test 2>&1 | tail -10
 ```
 
 Expected: 4 passed.
@@ -2745,8 +2745,8 @@ Expected: 4 passed.
 Add `registerGetEconomicSeries()` to registerAllTools.
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/tools/getEconomicSeries.ts apps/api/src/lib/agent/__tests__/tools.getEconomicSeries.test.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): get_economic_series (FRED) tool"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/api/src/lib/agent/tools/getEconomicSeries.ts apps/api/src/lib/agent/__tests__/tools.getEconomicSeries.test.ts apps/api/src/lib/agent/registerAllTools.ts && git commit -m "feat(agent/m2): get_economic_series (FRED) tool"
 ```
 
 ### 6C. document_reader (PDF + Word + Excel)
@@ -2754,7 +2754,7 @@ cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/tools
 - [ ] **Step 6.7: Install deps**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npm install pdf-parse mammoth xlsx -w @xzz/api && npm install -D @types/pdf-parse -w @xzz/api
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npm install pdf-parse mammoth xlsx -w @xzz/api && npm install -D @types/pdf-parse -w @xzz/api
 ```
 
 `mammoth` and `xlsx` ship their own types. `pdf-parse` needs `@types/pdf-parse`.
@@ -3007,7 +3007,7 @@ export function registerDocumentReader(): void {
 - [ ] **Step 6.10: Run document_reader tests + commit**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern tools.documentReader.test 2>&1 | tail -20
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern tools.documentReader.test 2>&1 | tail -20
 ```
 
 Expected: 7 passed.
@@ -3017,8 +3017,8 @@ If mammoth's default export shape causes type errors at compile time, switch imp
 Add `registerDocumentReader()` to registerAllTools.
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/tools/documentReader.ts apps/api/src/lib/agent/__tests__/tools.documentReader.test.ts apps/api/src/lib/agent/registerAllTools.ts apps/api/package.json apps/api/package-lock.json && git commit -m "feat(agent/m2): document_reader (PDF + Word + Excel)"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/api/src/lib/agent/tools/documentReader.ts apps/api/src/lib/agent/__tests__/tools.documentReader.test.ts apps/api/src/lib/agent/registerAllTools.ts apps/api/package.json apps/api/package-lock.json && git commit -m "feat(agent/m2): document_reader (PDF + Word + Excel)"
 ```
 
 ---
@@ -3036,7 +3036,7 @@ cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/tools
 - [ ] **Step 7.1: Find secretBox helpers**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && rg "export.*function.*seal|export.*function.*unseal" apps/api/src/lib --type ts
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && rg "export.*function.*seal|export.*function.*unseal" apps/api/src/lib --type ts
 ```
 
 Note the exact names (likely `seal` / `unseal` or `sealV1` / `unsealV1`). Use those in the next step.
@@ -3135,7 +3135,7 @@ export function unsealUserApiKey(
 - [ ] **Step 7.4: Run tests + adapt**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern userApiKeys.test 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern userApiKeys.test 2>&1 | tail -10
 ```
 
 Expected: 3 passed. If failing because secretBox API differs, fix `userApiKeys.ts` imports/calls.
@@ -3186,7 +3186,7 @@ it('createAgentRun seals userApiKeys into the row', async () => {
 ```
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern userApiKeys.test 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern userApiKeys.test 2>&1 | tail -10
 ```
 
 - [ ] **Step 7.7: Wire unsealing into tools that need per-service keys**
@@ -3270,13 +3270,13 @@ JSON 结构必须是：
 - [ ] **Step 7.9: Run all planner tests (catch regressions)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern planner 2>&1 | tail -15
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern planner 2>&1 | tail -15
 ```
 
 Some snapshot tests may fail because prompt changed. Update snapshots:
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api --testPathPattern planner -u 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api --testPathPattern planner -u 2>&1 | tail -5
 ```
 
 Re-run to confirm.
@@ -3284,8 +3284,8 @@ Re-run to confirm.
 - [ ] **Step 7.10: Commit Task 7 work**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/userApiKeys.ts apps/api/src/lib/agent/__tests__/userApiKeys.test.ts apps/api/src/lib/agent/runLifecycle.ts apps/api/src/lib/agent/store.ts apps/api/src/lib/agent/planner.ts apps/api/src/lib/agent/__tests__/ && git commit -m "feat(agent/m2): user_api_keys_enc plumbing + planner prompt M2 tool guidance"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add apps/api/src/lib/agent/userApiKeys.ts apps/api/src/lib/agent/__tests__/userApiKeys.test.ts apps/api/src/lib/agent/runLifecycle.ts apps/api/src/lib/agent/store.ts apps/api/src/lib/agent/planner.ts apps/api/src/lib/agent/__tests__/ && git commit -m "feat(agent/m2): user_api_keys_enc plumbing + planner prompt M2 tool guidance"
 ```
 
 ### 7C. Full suite + lint + review + merge
@@ -3293,7 +3293,7 @@ cd "/Users/hongpengwang/行动中止派" && git add apps/api/src/lib/agent/userA
 - [ ] **Step 7.11: Full vitest run**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api 2>&1 | tail -15
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api 2>&1 | tail -15
 ```
 
 Expected: ≥350 tests, all passing (M1f baseline 310 + ~40 new from M2). Fix any red.
@@ -3301,7 +3301,7 @@ Expected: ≥350 tests, all passing (M1f baseline 310 + ~40 new from M2). Fix an
 - [ ] **Step 7.12: Lint (M1f #5 ESLint pipeline)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npm run lint -w @xzz/api 2>&1 | tail -15
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npm run lint -w @xzz/api 2>&1 | tail -15
 ```
 
 Expected: no errors. M1f's `agent-tool-fetch-signal` rule should pass on every new tool because each `fetch()` call uses `signal: ctx.signal`.
@@ -3311,8 +3311,8 @@ If errors: the rule will point to a fetch call missing `signal`. Add it.
 - [ ] **Step 7.13: tsc both apps**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派/apps/mobile" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/mobile" && npx tsc --noEmit 2>&1 | tail -5
 ```
 
 Expected: both clean.
@@ -3345,7 +3345,7 @@ Wait for the report. Address all high-severity findings before merging.
 - [ ] **Step 7.15: Final commit (any review fixes)**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git add -A && git commit -m "fix(agent/m2): code-reviewer findings (low/medium severity)"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git add -A && git commit -m "fix(agent/m2): code-reviewer findings (low/medium severity)"
 ```
 
 (Only commit if there were fixes.)
@@ -3353,7 +3353,7 @@ cd "/Users/hongpengwang/行动中止派" && git add -A && git commit -m "fix(age
 - [ ] **Step 7.16: Merge to main**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git checkout main && git pull --rebase && git merge --no-ff feat/agent-runtime-m2 -m "Merge feat/agent-runtime-m2: 11 new tools (run_python, search_papers, critique, fetch_url, render_diagram, wikipedia, get_economic_series, get_paper_citations, datetime_now, document_reader) + rename web_search→search_web"
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git checkout main && git pull --rebase && git merge --no-ff feat/agent-runtime-m2 -m "Merge feat/agent-runtime-m2: 11 new tools (run_python, search_papers, critique, fetch_url, render_diagram, wikipedia, get_economic_series, get_paper_citations, datetime_now, document_reader) + rename web_search→search_web"
 ```
 
 Expected: clean merge.
@@ -3361,13 +3361,13 @@ Expected: clean merge.
 - [ ] **Step 7.17: Tag**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git tag v0.m2 && git log --oneline -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git tag v0.m2 && git log --oneline -5
 ```
 
 - [ ] **Step 7.18: Run final smoke**
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && npx vitest run -w @xzz/api 2>&1 | tail -5 && npm run lint -w @xzz/api 2>&1 | tail -3
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npx vitest run -w @xzz/api 2>&1 | tail -5 && npm run lint -w @xzz/api 2>&1 | tail -3
 ```
 
 Both should be green.

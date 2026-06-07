@@ -8,6 +8,11 @@ vi.mock('../../../db/client.js', () => ({
   }),
 }));
 
+// M7 T6b：群聊分支动态 import writeAskUserPrompt；mock 成返回固定 id。
+vi.mock('../messageBridge.js', () => ({
+  writeAskUserPrompt: vi.fn(async () => 'msg_group_1'),
+}));
+
 const fakeCtx = {
   runId: 'r',
   stepId: 's',
@@ -34,15 +39,33 @@ describe('ask_user tool', () => {
     expect(out.error).toBeUndefined();
   });
 
-  it('group channel → ok:false (error mentions private)', async () => {
+  // M7 T6b：群聊已解禁 —— groupId+topicId 齐全时写 ask_user 群消息并暂停。
+  it('group channel with groupId+topicId → ok:true paused:true', async () => {
     const out = await askUserTool.handler(
       { question: '你想分析哪一年？' },
-      { ...fakeCtx, channel: 'group' as const },
+      {
+        ...fakeCtx,
+        channel: 'group' as const,
+        sessionId: undefined,
+        groupId: 'g1',
+        topicId: 't1',
+      },
+    );
+    expect(out.ok).toBe(true);
+    expect(out.paused).toBe(true);
+    expect(out.messageId).toBe('msg_group_1');
+    expect(out.error).toBeUndefined();
+  });
+
+  it('group channel missing groupId/topicId → ok:false (error mentions group)', async () => {
+    const out = await askUserTool.handler(
+      { question: '你想分析哪一年？' },
+      { ...fakeCtx, channel: 'group' as const, sessionId: undefined },
     );
     expect(out.ok).toBe(false);
     expect(out.paused).toBe(false);
     expect(out.messageId).toBe('');
-    expect(out.error).toMatch(/private/i);
+    expect(out.error).toMatch(/group/i);
   });
 
   it('empty question → ok:false (error mentions empty)', async () => {

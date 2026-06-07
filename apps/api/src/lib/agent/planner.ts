@@ -1,4 +1,5 @@
-import type { Plan, PlanStep, TodoItem } from './types.js';
+import type { AgentCheckpoint, Plan, PlanStep, TodoItem } from './types.js';
+import { sanitizeMergedUsername } from './types.js';
 import { toolRegistry, type ToolDef } from './toolRegistry.js';
 import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
 import type { AgentContextSnapshot } from './contextAdapter.js';
@@ -112,6 +113,20 @@ export type LlmPlannerInput = {
    * 防止子 agent 调 deep_research / ask_user / run_python 等危险/递归工具。
    */
   isSubagent?: boolean;
+  /** M7 P1a：合并的追问；非空时 buildPlannerUserPrompt 拼入 "# 后续追问" 段。 */
+  mergedInputs?: Array<{ text: string; byUserId: string; byUsername: string; at: string }>;
+  /**
+   * issue 0001 B2+B3：续跑(continuation-replan)重建时的「进展摘要」——已完成 todo +
+   * 成功步骤观察。非空时 buildPlannerUserPrompt 拼入 "# 已完成进展" 段，让新 plan
+   * 接着未完成的干、不重做已完成的，并基于已学到的结果规划。
+   */
+  progress?: string;
+  /**
+   * S3：累积式结构化 checkpoint。非空时 buildPlannerUserPrompt 渲染「# 任务状态（续跑中）」
+   * 并附 sd0x 式重注入（"下一步 = …，不要问是否继续"），优先于扁平的 progress 字符串。
+   * 注：nextStep 只是给 planner 的建议；是否收尾仍由 loop-end 的 reflection 单点裁决。
+   */
+  checkpoint?: AgentCheckpoint | null;
 };
 
 /**
@@ -215,6 +230,7 @@ JSON 结构必须是：
 - **本系统知识库** → magi_system_read（用户的私人笔记/记忆）
 - **问题模糊 / 缺关键前提**（"画个图" "做个分析" 没说数据源 / 时间范围） → 先 ask_user 反问，不要硬猜
 - **需要多步深挖一个子问题**（如 "近 5 年关于禀赋效应的实证支持" / "X 理论的当前争议"） → deep_research 派子 agent，比串多个 search_papers + fetch_url 更整洁
+- **需要某个旧步骤的完整细节**（"最近步骤"近窗里已滚出、或只剩摘要的那步） → recall_step({stepIdx}) 按步骤号重读完整原文（stepIdx 取自 [步骤 N] 标注或"更早 N 条已略"提示）
 - **绝对禁止**：在 deep_research 子任务里嵌套 deep_research / ask_user（运行时会拦截）
 `;
 
@@ -238,7 +254,73 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   const failure = input.previousFailure
     ? `\n\n# 上一步失败原因\n${input.previousFailure}\n请基于这个失败重新规划剩余步骤，避免重复同样错误。`
     : '';
-  return `# 用户请求\n${input.inputText}${summary}${failure}`;
+  // S3：有 checkpoint 时渲染结构化「任务状态」（含 sd0x 重注入），优先于扁平 progress。
+  // issue 0001 B2+B3：无 checkpoint（或 checkpoint 渲染为空——全 soft-fail 等边角）时退回
+  // 续跑进展摘要。整体 review #5：checkpoint 渲染空串也要落到 progress 兜底，别让续跑
+  // re-planner 拿不到任何先前上下文。
+  const cpRender = input.checkpoint ? renderCheckpointState(input.checkpoint) : '';
+  const progress =
+    cpRender ||
+    (input.progress
+      ? `\n\n# 已完成进展\n${input.progress}\n请接着还没完成的部分继续，不要重做上面已完成的 todo；可基于已得到的结果规划下一步。`
+      : '');
+  // M7 P1a：合并的追问段（不污染 DB，每次 planner 调用按当前 merged_inputs 全量拼）。
+  const merged = input.mergedInputs ?? [];
+  const mergedSection =
+    merged.length > 0
+      ? `\n\n# 后续追问（合并自其他成员，需在新 plan 中一并回应）\n` +
+        merged.map((m, i) => `${i + 1}. @${sanitizeMergedUsername(m.byUsername)} (${m.at}): ${m.text}`).join('\n')
+      : '';
+  return `# 用户请求\n${input.inputText}${mergedSection}${summary}${failure}${progress}`;
+}
+
+/**
+ * S3：把累积 checkpoint 渲染成 planner 的「任务状态」段 + sd0x 式重注入。
+ * 让续跑接着已完成的干、基于已确认发现规划，并明确"别问是否继续、直接规划剩余步骤"。
+ */
+/** planner prompt 里最多渲染多少条累积发现（防长 run 撑爆；S4 会进一步压缩列表）。 */
+const CHECKPOINT_RENDER_MAX_FINDINGS = 20;
+/** 累积发现渲染字节上限。v4 后单条 finding 可达 2000 字 → 仅限条数不够，须再按字节收口。 */
+const CHECKPOINT_RENDER_MAX_CHARS = 10000;
+/** 近窗 digestTail 在 planner prompt 里的字节上限（digestTail 整体可达 32K）。 */
+const CHECKPOINT_RENDER_DIGEST_MAX_CHARS = 6000;
+
+function renderCheckpointState(cp: AgentCheckpoint): string {
+  // 全空（无发现、无待办）→ 不渲染"自动续跑中"框架，避免给裸目标 + "别问是否继续"的误导。
+  if (cp.completed.length === 0 && cp.remainingPlan.length === 0) return '';
+
+  // 先按条数取最近 20，再按字节预算从最近往前收（planner 偏好近期进展；富 finding 不撑爆）。
+  const recent = cp.completed.slice(-CHECKPOINT_RENDER_MAX_FINDINGS);
+  const lines = recent.map((c) => (c.finding ? `- ${c.text}: ${c.finding}` : `- ${c.text}`));
+  const keptLines: string[] = [];
+  let usedChars = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (keptLines.length > 0 && usedChars + lines[i].length + 1 > CHECKPOINT_RENDER_MAX_CHARS) break;
+    keptLines.unshift(lines[i]);
+    usedChars += lines[i].length + 1;
+  }
+  const overflow = cp.completed.length - keptLines.length;
+  const done =
+    cp.completed.length > 0
+      ? '\n已确认的发现（不要重做）：\n' +
+        (overflow > 0 ? `（更早 ${overflow} 条已略）\n` : '') +
+        keptLines.join('\n')
+      : '';
+  const remaining =
+    cp.remainingPlan.length > 0
+      ? '\n待完成：\n' + cp.remainingPlan.map((t) => `- ${t}`).join('\n')
+      : '';
+  const next = cp.nextStep ? `\n下一步 = ${cp.nextStep}` : '';
+  // v5：把近窗逐字 digestTail 接进 planner（此前只进 reply 终稿 → planner 续跑只能看
+  // ≤2000 字摘要、看不到最近几步逐字细节）。限 6000 字防撑爆；带 [步骤 N] 标注，
+  // 模型可据此 recall_step({idx}) 重读已滚出近窗的旧步完整原文。
+  const tail = cp.digestTail
+    ? `\n\n最近步骤（逐字近窗，需更早细节可 recall_step(步骤号)）：\n${cp.digestTail.slice(0, CHECKPOINT_RENDER_DIGEST_MAX_CHARS)}`
+    : '';
+  return (
+    `\n\n# 任务状态（自动续跑中）\n目标：${cp.goal}${done}${remaining}${next}${tail}` +
+    `\n（自动续跑仍在进行；请直接规划剩余步骤，不要问"是否继续"。）`
+  );
 }
 
 type LooseStep = {

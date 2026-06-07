@@ -12,7 +12,7 @@
 - **commit 粒度：** 每个 task 一次 commit；task 内部小 sub-step 不单独 commit。
 - **测试命令：**
   ```bash
-  cd "/Users/hongpengwang/行动中止派/apps/api" && \
+  cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && \
     DATABASE_URL=postgresql://xzz:xzz_dev_password@localhost:5433/xzz_app \
     npx vitest run --testPathPattern <pattern> 2>&1 | tail -30
   ```
@@ -27,13 +27,13 @@
 ## Task 0：Branch + baseline
 
 ```bash
-cd "/Users/hongpengwang/行动中止派" && git checkout main && git pull --rebase origin main && git checkout -b feat/agent-runtime-m3
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && git checkout main && git pull --rebase origin main && git checkout -b feat/agent-runtime-m3
 ```
 
 验证 baseline：
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && DATABASE_URL=... npx vitest run 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -3
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && DATABASE_URL=... npx vitest run 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -3
 ```
 
 记录基线测试数（用 M2 收尾的 ~366 passed 数字）。
@@ -907,7 +907,7 @@ export async function resumeAgentRun(runId: string, userInput: string): Promise<
 ### 6.6 mobile tsc + commit
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/mobile" && npx tsc --noEmit 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/mobile" && npx tsc --noEmit 2>&1 | tail -10
 git add -A && git commit -m "feat(mobile/m3): AskUserPrompt + DeepResearchReport components"
 ```
 
@@ -918,10 +918,10 @@ git add -A && git commit -m "feat(mobile/m3): AskUserPrompt + DeepResearchReport
 ### 7.1 全量测试 + tsc + lint
 
 ```bash
-cd "/Users/hongpengwang/行动中止派/apps/api" && DATABASE_URL=... npx vitest run 2>&1 | tail -15
-cd "/Users/hongpengwang/行动中止派/apps/api" && npx tsc --noEmit 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派/apps/mobile" && npx tsc --noEmit 2>&1 | tail -5
-cd "/Users/hongpengwang/行动中止派" && npm run lint -w @xzz/api 2>&1 | tail -10
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && DATABASE_URL=... npx vitest run 2>&1 | tail -15
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung/apps/mobile" && npx tsc --noEmit 2>&1 | tail -5
+cd "/Users/hongpengwang/agent-Carl-Gustav-Jung" && npm run lint -w @xzz/api 2>&1 | tail -10
 ```
 
 预期 ≥ 395 tests passed（基线 366 + ~25 新增；9 个 flaky 不变）。

@@ -37,4 +37,9 @@ export type IntentExecuteResult =
       userMessageId: string | null;
       placeholderMessageId: string | null;
       confirmation?: string;
+      // M7：本次请求被合并到既有 active run；mobile 据此显示"已合并"提示。
+      mergedIntoRunId?: string;
+      // M7：本次请求被排队；mobile 据此显示"排队中·前 N 个"。
+      queued?: boolean;
+      queuePosition?: number;
     };

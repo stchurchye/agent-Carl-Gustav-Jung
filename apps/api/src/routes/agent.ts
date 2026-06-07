@@ -23,6 +23,18 @@ export const agentRouter = new Hono<{ Variables: AppVariables }>();
 agentRouter.use('*', requireAuth);
 
 /**
+ * S2：给客户端的 run 序列化 —— 剥掉 `contextCheckpoint`（内部 compaction 状态，
+ * 随 run 累积增大，客户端不消费；避免每次轮询下发数 KB 冗余 + 不泄漏内部状态）。
+ */
+export function runForClient(
+  run: AgentRun | null,
+): Omit<AgentRun, 'contextCheckpoint'> | null {
+  if (!run) return null;
+  const { contextCheckpoint: _omit, ...rest } = run;
+  return rest;
+}
+
+/**
  * 私聊：仅 owner 可访问。群聊：owner 或群成员可访问（任意成员可看/取消，对齐 spec §8.5 + AC2）。
  * Exported for unit tests (T12).
  */
@@ -35,6 +47,29 @@ export async function canAccessRun(run: AgentRun, userId: string): Promise<boole
     );
     return rows.length > 0;
   }
+  return false;
+}
+
+/**
+ * M7 T6d：群聊 ask_user resume 权限。比 canAccessRun 更严：
+ *   - 私聊：仅 owner
+ *   - 群聊 owner：永远可答（隐式最高权限）
+ *   - 群聊其他人：必须先是群成员，再满足任一：是 askUserTargetUserId，或 openedForAll 已生效
+ *   - 非群成员：永远不可答（即便 target 被误设为非成员，也兜底拒绝）
+ */
+export async function canAnswerAskUser(run: AgentRun, userId: string): Promise<boolean> {
+  if (run.channel !== 'group') return userId === run.ownerId;
+  if (userId === run.ownerId) return true;
+  // 严格：先 enforce 群成员身份，再看 target / openedForAll。
+  const { rows } = await getPool().query(
+    `SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1`,
+    [run.groupId, userId],
+  );
+  if (rows.length === 0) return false;
+  if (run.askUserTargetUserId && userId === run.askUserTargetUserId) return true;
+  // openedForAllAt 由 worker 在 30s 后置为 NOW()，一旦非空即代表已开放。
+  // 不和 JS new Date() 比大小 —— DB 时钟与进程时钟有偏移（实测 OrbStack PG 快 ~20ms）。
+  if (run.askUserOpenedForAllAt) return true;
   return false;
 }
 
@@ -56,7 +91,7 @@ agentRouter.get('/runs', async (c) => {
   const hasMore = runs.length === limit;
   return c.json({
     ok: true,
-    data: { runs, hasMore },
+    data: { runs: runs.map(runForClient), hasMore },
     requestId: c.get('requestId'),
   });
 });
@@ -73,7 +108,7 @@ agentRouter.get('/runs/:id', async (c) => {
   const notices = await listNoticesForRun(id, { limit: 20 });
   return c.json({
     ok: true,
-    data: { run, steps, notices },
+    data: { run: runForClient(run), steps, notices },
     requestId: c.get('requestId'),
   });
 });
@@ -210,7 +245,7 @@ agentRouter.get('/runs/:id/long-poll', async (c) => {
     const steps = await store.listSteps(id);
     const newSteps = steps.filter((s) => s.idx > after);
     const notices = await listNoticesForRun(id, { limit: 20 });
-    return { type: 'batch', run: latest, steps: newSteps, notices, hasMore: false };
+    return { type: 'batch', run: runForClient(latest), steps: newSteps, notices, hasMore: false };
   }
 
   // Terminal → immediate batch
@@ -256,6 +291,14 @@ agentRouter.get('/runs/:id/long-poll', async (c) => {
         event.run.id === id
       ) {
         settle('run');
+      } else if (
+        // M7 T8：状态-only 变化也立即出 batch（出队 / ask_user 升级 / 追问入队 / 状态切换）。
+        (event.type === 'run.status_changed' && event.run.id === id) ||
+        (event.type === 'run.dequeued' && event.run.id === id) ||
+        (event.type === 'ask_user.opened_for_all' && event.runId === id) ||
+        (event.type === 'run.merged_input_appended' && event.runId === id)
+      ) {
+        settle('run');
       }
     });
 
@@ -268,7 +311,7 @@ agentRouter.get('/runs/:id/long-poll', async (c) => {
 
   if (reason === 'idle') {
     const latest = await store.getAgentRun(id);
-    holdLines.push({ type: 'idle', lastIdx: after, run: latest });
+    holdLines.push({ type: 'idle', lastIdx: after, run: runForClient(latest) });
   } else {
     holdLines.push(await buildBatchLine());
   }
@@ -298,7 +341,8 @@ agentRouter.post('/runs/:id/resume', async (c) => {
   const id = c.req.param('id');
   const run = await store.getAgentRun(id);
   if (!run) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
-  if (!(await canAccessRun(run, userId))) return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
+  // M7 T6d：resume 用更严的 canAnswerAskUser（群聊 owner-lock / openedForAll / 成员校验）。
+  if (!(await canAnswerAskUser(run, userId))) return jsonError(c, ErrorCodes.AUTH_FORBIDDEN, 403);
   if (run.status !== 'awaiting_user_input') return jsonError(c, ErrorCodes.VALIDATION, 409);
 
   let body: { userInput?: string } = {};
@@ -312,7 +356,7 @@ agentRouter.post('/runs/:id/resume', async (c) => {
 
   try {
     const result = await resumeAgentRun({ runId: id, userInput });
-    return c.json({ ok: true, data: { run: result.run }, requestId: c.get('requestId') });
+    return c.json({ ok: true, data: { run: runForClient(result.run) }, requestId: c.get('requestId') });
   } catch {
     return jsonError(c, ErrorCodes.VALIDATION, 409);
   }

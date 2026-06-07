@@ -84,6 +84,86 @@ function stepBase(overrides: Partial<AgentStep>): AgentStep {
   };
 }
 
+describe('buildReplyMessages with checkpoint (S2)', () => {
+  it('sources accumulated findings + refs from the checkpoint, not just last-6 steps', () => {
+    // 一个长 run：早期发现（step-2 的 url）已折叠进 checkpoint.completed，
+    // 但当前传入的 steps 不含它（模拟 last-N 窗口外）。终稿应仍引用它。
+    const runWithCp: AgentRun = {
+      ...baseRun,
+      contextCheckpoint: {
+        version: 1,
+        goal: '研究家族信托并存档',
+        intent: '研究家族信托',
+        completed: [
+          { text: 'fetch_url', finding: '权威来源给出信托三要素', refs: [{ kind: 'url', id: 'https://early-source.example/trust', label: '信托三要素' }] },
+        ],
+        remainingPlan: [],
+        openQuestions: [],
+        nextStep: 'FINALIZE',
+        successCount: 3,
+        producedAtIdx: 9,
+        digestTail: '- run_python: {"result":{"ok":true,"stdout":"computed=42"}}',
+      },
+    };
+    const msgs = buildReplyMessages({ run: runWithCp, plan, steps: [] });
+    const user = msgs[1].content;
+    expect(user).toContain('https://early-source.example/trust'); // 早期来源进了终稿
+    expect(user).toContain('信托三要素');
+    expect(user).toContain('computed=42'); // digestTail 的近窗细节
+  });
+
+  it('redacts secrets in tool output projection (S2d) — output value never reaches the reply LLM', () => {
+    const SECRET = 'sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ';
+    const steps: AgentStep[] = [
+      stepBase({ idx: 1, kind: 'tool_call', toolName: 'fetch_url', output: { result: { ok: true, text: `leaked ${SECRET}` } } }),
+    ];
+    const msgs = buildReplyMessages({ run: baseRun, plan, steps });
+    expect(msgs[1].content).not.toContain(SECRET);
+    expect(msgs[1].content).toContain('[REDACTED');
+  });
+
+  it('omits empty-finding lines (silent tools) from the checkpoint digest but keeps their refs', () => {
+    const runWithCp: AgentRun = {
+      ...baseRun,
+      contextCheckpoint: {
+        version: 1, goal: 'g', intent: 'i',
+        completed: [
+          { text: 'render_diagram', finding: '', refs: [{ kind: 'diagram', id: 'd1', label: '架构图' }] },
+          { text: 'fetch_url', finding: '读到了关键结论', refs: [] },
+        ],
+        remainingPlan: [], openQuestions: [], nextStep: '', successCount: 2, producedAtIdx: 5, digestTail: '',
+      },
+    };
+    const user = buildReplyMessages({ run: runWithCp, plan, steps: [] })[1].content;
+    expect(user).not.toContain('render_diagram: \n'); // 无空摘要噪声行
+    expect(user).toContain('读到了关键结论');
+    expect(user).toContain('架构图'); // silent 工具的 ref 仍在资源清单
+  });
+
+  it('digestTail injected into reply prompt is trimmed to ≤8000 chars (reply writer does not need 32K verbatim output)', () => {
+    // v4 digestTail 可达 8 步 × 4000 字 = 32K；reply writer 只需知道"做了什么"，
+    // 32K 原始 output 对终稿质量无额外价值，且浪费 token。
+    const bigDigestTail = 'X'.repeat(40000);
+    const runWithCp: AgentRun = {
+      ...baseRun,
+      contextCheckpoint: {
+        version: 1, goal: 'g', intent: 'i',
+        completed: [{ text: 'fetch_url', finding: '关键结论', refs: [] }],
+        remainingPlan: [], openQuestions: [], nextStep: '', successCount: 1, producedAtIdx: 1,
+        digestTail: bigDigestTail,
+      },
+    };
+    const user = buildReplyMessages({ run: runWithCp, plan, steps: [] })[1].content;
+    expect(user.length).toBeLessThan(bigDigestTail.length); // 不是原封不动插入
+    // digestTail 在 prompt 里占用的字节 ≤ 8000
+    const dtStart = user.indexOf('最近步骤详情');
+    if (dtStart >= 0) {
+      const dtSection = user.slice(dtStart);
+      expect(dtSection.length).toBeLessThanOrEqual(8100);
+    }
+  });
+});
+
 describe('buildReplyMessages', () => {
   it('formats user prompt with intent + recent tool digests + exported doc hint', () => {
     const steps: AgentStep[] = [

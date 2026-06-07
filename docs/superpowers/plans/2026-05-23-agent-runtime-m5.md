@@ -44,7 +44,7 @@ cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx v
 - [ ] **Step 1：开分支 + 全量后端测试通过**
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git checkout main && git pull --ff-only
 git checkout -b feat/agent-runtime-m5
 cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx vitest run

@@ -15,6 +15,7 @@ import { ingestMagiContent, queryMagiSystem } from './integrations/magi.js';
 import type { IntentChannel } from './intentAnalyzer.js';
 import * as pg from '../store/pg.js';
 import * as social from '../store/pg-social.js';
+import { DEFAULT_BUDGET, type AgentRun } from './agent/types.js';
 
 export type { IntentExecuteResult };
 
@@ -143,6 +144,43 @@ async function compactPrivateSession(
   return '已整理并压缩对话上下文，后续回复会优先参考摘要。';
 }
 
+/**
+ * M7：把 createAgentRun 的 user key 密封逻辑提前跑一次，避免 withTopicCoordination
+ * 持锁的 critical section 内做加密 IO 拉长锁时长。返回可直接展开给 insertAgentRunInTx。
+ */
+async function sealUserApiKeysForInsert(opts: {
+  apiKey: string;
+  apiKeySource: 'user' | 'server';
+  providerId?: 'deepseek' | 'zenmux';
+  userApiKeys?: Record<string, string>;
+}): Promise<{
+  userApiKeyEnc?: string | null;
+  userZenmuxKeyEnc?: string | null;
+  userApiKeysEnc?: Record<string, string>;
+}> {
+  let userApiKeyEnc: string | null = null;
+  let userZenmuxKeyEnc: string | null = null;
+  if (opts.apiKeySource === 'user' && opts.apiKey) {
+    try {
+      const { isSecretBoxAvailable, sealUserApiKey } = await import('./agent/secretBox.js');
+      if (isSecretBoxAvailable()) {
+        const sealed = sealUserApiKey(opts.apiKey);
+        if (opts.providerId === 'zenmux') userZenmuxKeyEnc = sealed;
+        else userApiKeyEnc = sealed;
+      }
+    } catch {
+      /* seal 失败 → worker 退回 server key，不阻塞建 run */
+    }
+  }
+  const { sealUserApiKeys } = await import('./agent/userApiKeys.js');
+  const sealedRaw = sealUserApiKeys(opts.userApiKeys ?? {});
+  const userApiKeysEnc =
+    Object.keys(sealedRaw).length > 0
+      ? (sealedRaw as Record<string, string>)
+      : undefined;
+  return { userApiKeyEnc, userZenmuxKeyEnc, userApiKeysEnc };
+}
+
 export async function executeIntent(
   input: ExecuteIntentInput,
 ): Promise<IntentExecuteResult> {
@@ -206,17 +244,160 @@ export async function executeIntent(
       if (!input.groupId || !input.topicId) {
         return { type: 'skipped', reason: 'AGENT_GROUP_REQUIRES_GROUP_TOPIC' };
       }
+      const groupId = input.groupId;
+      const topicId = input.topicId;
+
+      // M7 T3：withTopicCoordination 持锁事务内决策 + INSERT → commit 后做 placeholder/hook。
+      const { withTopicCoordination, acquireTopicSlot } =
+        await import('./agent/topicCoord.js');
+      const {
+        applyMergeInTx,
+        insertAgentRunInTx,
+        MergeTargetTerminalError,
+        getMergedInputCounts,
+        getAgentRun,
+      } = await import('./agent/store.js');
+      const { getUserById } = await import('../store/pg-profile.js');
+      const { agentHookBus } = await import('./agent/hooks.js');
+      const { getPool } = await import('../db/client.js');
+
+      // 提前密封 user key，让 critical section 内仅做 INSERT。
+      const sealedKeys = await sealUserApiKeysForInsert({
+        apiKey,
+        apiKeySource,
+        providerId,
+      });
+
+      type SlotResult =
+        | { kind: 'merge'; targetRunId: string; mergedByUserId?: string }
+        | { kind: 'fresh'; run: AgentRun }
+        | { kind: 'queue'; run: AgentRun; precedingCount: number };
+
+      let slot: SlotResult | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          slot = await withTopicCoordination(topicId, async (client) => {
+            const decision = await acquireTopicSlot(
+              { channel: 'group', topicId, ownerId: input.userId, parentRunId: null },
+              client,
+            );
+            if (decision.action === 'merge') {
+              const profile = await getUserById(input.userId);
+              const byUsername =
+                profile?.displayName ?? profile?.username ?? input.userId;
+              await applyMergeInTx(
+                decision.targetRunId,
+                {
+                  text: input.text,
+                  byUserId: input.userId,
+                  byUsername,
+                  at: new Date().toISOString(),
+                },
+                client,
+              );
+              return {
+                kind: 'merge' as const,
+                targetRunId: decision.targetRunId,
+                mergedByUserId: decision.mergedByUserId,
+              };
+            }
+            const initialStatus = decision.action === 'queue' ? 'queued' : 'draft';
+            const run = await insertAgentRunInTx(client, {
+              ownerId: input.userId,
+              channel: 'group',
+              sessionId: null,
+              groupId,
+              topicId,
+              intentTurnId: null,
+              role: 'generalist',
+              status: initialStatus,
+              inputText: input.text,
+              budget: DEFAULT_BUDGET,
+              apiKeyOwnerId: apiKeySource === 'user' ? input.userId : null,
+              apiKeySource,
+              ...sealedKeys,
+              providerId,
+              modelId,
+              parentRunId: null,
+              queuePosition:
+                decision.action === 'queue' ? decision.precedingCount : null,
+            });
+            return decision.action === 'queue'
+              ? { kind: 'queue' as const, run, precedingCount: decision.precedingCount }
+              : { kind: 'fresh' as const, run };
+          });
+          break; // 成功，跳出 retry
+        } catch (err) {
+          if (err instanceof MergeTargetTerminalError && attempt === 0) {
+            continue; // 目标 run 在 merge 事务期间转 terminal，重判
+          }
+          throw err;
+        }
+      }
+      if (!slot) throw new Error('agent run slot acquisition failed after retry');
+
+      // ====== 锁已释放：以下都是非互斥后续工作 ======
+      if (slot.kind === 'merge') {
+        const counts = await getMergedInputCounts(slot.targetRunId);
+        const targetRun = await getAgentRun(slot.targetRunId);
+        if (targetRun && counts) {
+          agentHookBus.emitEvent({
+            type: 'run.merged_input_appended',
+            runId: slot.targetRunId,
+            mergedInputsCount: counts.total,
+          });
+        }
+        // 写 1 条 invoker 群消息（人类发言），指向原 run。
+        const invoke = await social.addGroupMessage(input.userId, groupId, topicId, {
+          kind: 'human',
+          content: input.text,
+        });
+        if (invoke) {
+          await getPool().query(
+            `UPDATE group_messages
+               SET payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object(
+                 'agentRun', jsonb_build_object(
+                   'agentRunId', $2::text,
+                   'role', 'merged_invoker',
+                   'mergedByUserId', $3::text
+                 )
+               )
+             WHERE id = $1`,
+            [invoke.id, slot.targetRunId, input.userId],
+          );
+        }
+        return {
+          type: 'agent',
+          runId: slot.targetRunId,
+          userMessageId: invoke?.id ?? null,
+          placeholderMessageId: null,
+          mergedIntoRunId: slot.targetRunId,
+        };
+      }
+
+      // queue / fresh：复用 createAgentRun 后半段写 placeholder / 联动 worker（跳过重复 INSERT）。
       const r = await createAgentRun({
         ownerId: input.userId,
         channel: 'group',
-        groupId: input.groupId,
-        topicId: input.topicId,
+        groupId,
+        topicId,
         inputText: input.text,
         apiKey,
         apiKeySource,
         providerId,
         modelId,
+        existingRun: slot.run,
       });
+      if (slot.kind === 'queue') {
+        return {
+          type: 'agent',
+          runId: r.run.id,
+          userMessageId: r.userMessageId,
+          placeholderMessageId: r.placeholderMessageId,
+          queued: true,
+          queuePosition: slot.precedingCount,
+        };
+      }
       return {
         type: 'agent',
         runId: r.run.id,

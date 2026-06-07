@@ -16,6 +16,10 @@ import * as store from './store.js';
 import {
   AgentBudgetExhausted,
   AgentCancelled,
+  type AgentCheckpoint,
+  type AgentRun,
+  type AgentStep,
+  type Plan,
   type TodoItem,
 } from './types.js';
 import { runCritique, isToolFailure } from './critique.js';
@@ -26,7 +30,14 @@ import { checkBudget } from './budget.js';
 import { runControllers } from './runtimeRegistry.js';
 import { TOOL_TIMEOUT_MS, HIGH_COST_TOOL_TIMEOUT_MS, withTimeout } from './runtimeShared.js';
 import { softComplete } from './runLifecycle.js';
-import { buildInitialPlan } from './runPlanGlue.js';
+import { buildInitialPlan, buildProgressSummary } from './runPlanGlue.js';
+import {
+  buildCheckpoint,
+  checkpointNeedsCompaction,
+  compactCheckpointViaLlm,
+} from './checkpoint.js';
+import { resolveLlmClient } from './runLlmClient.js';
+import { reflectGoalCompletion } from './reflection.js';
 import { pickFallbackFinalContent } from './runReply.js';
 import {
   resolveToolCallKey,
@@ -64,6 +75,53 @@ function coerceErrorToString(raw: unknown, fallback: string): string {
     return JSON.stringify(raw).slice(0, CAP);
   } catch {
     return fallback;
+  }
+}
+
+/**
+ * S1：reload-before-update 地重算累积 checkpoint。续跑点与收尾点共用，避免重复。
+ * 拿最新 contextCheckpoint 作 prior（防 reclaim 重拾竞态），从全量 finalSteps 折叠
+ * idx>producedAtIdx 的新步。返回 checkpoint，由调用方连同 status 一起 updateAgentRun。
+ */
+async function computeCheckpoint(
+  runId: string,
+  fallbackRun: AgentRun,
+  plan: Plan,
+  finalSteps: AgentStep[],
+  liveTodos: TodoItem[],
+  successCount: number,
+  signal: AbortSignal,
+  /** S5：仅续跑点压缩（压缩成果喂下一轮 planner）；收尾点是末轮、压缩纯属浪费延迟 → false。 */
+  allowCompaction: boolean,
+): Promise<AgentCheckpoint> {
+  const latest = (await store.getAgentRun(runId)) ?? fallbackRun;
+  const mechanical = buildCheckpoint(latest.contextCheckpoint, finalSteps, liveTodos, {
+    goal: fallbackRun.inputText,
+    intent: plan.intentSummary,
+    successCount,
+    toolMap: new Map(toolRegistry.list().map((t) => [t.name, t])),
+  });
+  // S5：仅在续跑、completed 过大、非测试 env、且未超预算时才 LLM 压缩列表。
+  const isTestEnv =
+    process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+  const overBudget = latest.usage.tokens >= latest.budget.maxTokens;
+  if (
+    !allowCompaction ||
+    isTestEnv ||
+    overBudget ||
+    !checkpointNeedsCompaction(mechanical)
+  ) {
+    return mechanical;
+  }
+  const llm = await resolveLlmClient(latest);
+  if (!llm) return mechanical;
+  try {
+    // compactCheckpointViaLlm 内部 fail-open；坏输出/出错 → 返回机械版。
+    return await compactCheckpointViaLlm({ checkpoint: mechanical, llm, signal });
+  } catch (e) {
+    // abort 透传：包成 AgentCancelled，让收尾正确标 cancelled（而非 system_error/failed）。
+    if (signal.aborted) throw new AgentCancelled('user');
+    throw e;
   }
 }
 
@@ -122,6 +180,35 @@ export async function executeRun(runId: string): Promise<void> {
     let pendingGrantBypass = await detectPendingGrantBypass(runId);
 
     for (let i = completedCount; i < plan.steps.length; i++) {
+      // === M7 P1：检查未消化追问 → 触发 replan，让 worker re-pickup 走 applyReplanningIfNeeded ===
+      // 仅 SELECT 2 列，<1ms（R12）。inputText 永不改写（ADR-M7-13），追问只进 merged_inputs。
+      const mergedCounts = await store.getMergedInputCounts(runId);
+      if (mergedCounts && mergedCounts.total > mergedCounts.consumed) {
+        const fromStatus = run.status;
+        await recordStep({
+          runId,
+          kind: 'replan',
+          output: {
+            reason: 'merge_trigger',
+            mergedTotal: mergedCounts.total,
+            previouslyConsumed: mergedCounts.consumed,
+          },
+        });
+        await store.updateAgentRun(runId, {
+          mergedInputsConsumedCount: mergedCounts.total,
+          status: 'replanning',
+        });
+        const latest = (await store.getAgentRun(runId))!;
+        agentHookBus.emitEvent({
+          type: 'run.status_changed',
+          run: latest,
+          from: fromStatus,
+          to: 'replanning',
+        });
+        return;
+      }
+      // === End M7 P1 ===
+
       if (abortController.signal.aborted) {
         // 区分 steer vs user cancel：steerRun 已经写了 status='replanning'
         const cur = await store.getAgentRun(runId);
@@ -297,11 +384,15 @@ export async function executeRun(runId: string): Promise<void> {
         error: softError,
       });
 
+      // issue 0001：soft-fail 的 step 不应把 todo 标 completed —— 否则"没干成的活"
+      // 被当作做完,continuation-replan 与 UI todos 卡片都会被误导。
       const newTodos: TodoItem[] = (run.todos.length > 0
         ? run.todos
         : plan.todos
       ).map((t) =>
-        t.id === planStep.todoId ? { ...t, status: 'completed' as const } : t,
+        t.id === planStep.todoId && !softFailed
+          ? { ...t, status: 'completed' as const }
+          : t,
       );
       const elapsedFinal = Math.floor(
         (Date.now() - startedAt.getTime()) / 1000,
@@ -337,13 +428,27 @@ export async function executeRun(runId: string): Promise<void> {
         obsObj?.paused === true
       ) {
         const question = (planStep.input as { question?: unknown })?.question;
+        const fromStatus = run.status; // ADR-M7-12：update 前 capture
         // M4 Task 5：写 24h timeout 戳。worker tick 的
         // autoExpireAwaitingUserInput 会自动 cancel('user_timeout')。
-        await store.updateAgentRun(runId, {
+        const patch: store.UpdateAgentRunPatch = {
           status: 'awaiting_user_input',
           pendingUserPrompt: typeof question === 'string' ? question : '',
           pendingUserStepIdx: i,
           pendingUserInputExpiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+        };
+        // M7 T6c：群聊扩展 —— 记录 owner 30s 独占应答的起点。
+        if (run.channel === 'group') {
+          patch.askUserTargetUserId = run.ownerId;
+          patch.askUserStartedAt = new Date();
+          patch.askUserOpenedForAllAt = null;
+        }
+        const updated = (await store.updateAgentRun(runId, patch))!;
+        agentHookBus.emitEvent({
+          type: 'run.status_changed',
+          run: updated,
+          from: fromStatus,
+          to: 'awaiting_user_input',
         });
         return;
       }
@@ -356,6 +461,7 @@ export async function executeRun(runId: string): Promise<void> {
           plan,
           recentSteps: recentTail,
           reason: 'periodic',
+          mergedInputs: run.mergedInputs, // M7 P3
         });
         await recordStep({ runId, kind: 'critique', output: c });
       }
@@ -369,6 +475,7 @@ export async function executeRun(runId: string): Promise<void> {
           plan,
           recentSteps: allSteps.slice(-4),
           reason: 'consecutive_failures',
+          mergedInputs: run.mergedInputs, // M7 P3
         });
         await recordStep({ runId, kind: 'critique', output: c });
         if (c.shouldReplan) {
@@ -377,6 +484,166 @@ export async function executeRun(runId: string): Promise<void> {
         }
       }
     }
+
+    // issue 0001 continuation-replan：plan 跑完，但仍有"有 step 却没完成"的 todo
+    // （其 step soft-fail 了，且失败数 < critique 的 ≥2 阈值，所以没被 critique 提前
+    // replan）→ 续跑一轮而非直接收尾。纯标签 todo（无对应 step）不计入，避免误触发。
+    const attemptedTodoIds = new Set(
+      plan.steps
+        .map((s) => s.todoId)
+        .filter((id): id is string => id != null),
+    );
+    const liveTodos = run.todos.length > 0 ? run.todos : plan.todos;
+    const hasUnfinishedAttempted = liveTodos.some(
+      (t) => attemptedTodoIds.has(t.id) && t.status !== 'completed',
+    );
+    // 仅当确有 soft-fail 留下没干成的活才续跑。reclaim / idempotency 命中的成功 step
+    // 也可能让 todo 暂为 pending（worker A 崩在标完成前、或缓存跳过标记），但它们没有
+    // error，不该误触发续跑 —— 用"存在 soft-fail step"把这两种情况区分开。
+    // review #8：只看「上次 replan 之后」的 step，避免上一轮的陈旧 soft-fail 误触发本轮续跑。
+    const finalSteps = await store.listSteps(runId);
+    const lastReplanIdx = finalSteps.map((s) => s.kind).lastIndexOf('replan');
+    const stepsSinceReplan =
+      lastReplanIdx >= 0 ? finalSteps.slice(lastReplanIdx + 1) : finalSteps;
+    const hadSoftFail = stepsSinceReplan.some(
+      (s) => s.kind === 'tool_call' && s.error != null && s.error !== '',
+    );
+    // 续跑轮数硬上限：replan 会把 usage.steps 重置为 0（applyReplanningIfNeeded），
+    // 所以 maxSteps 兜不住续跑循环 —— 确定性 soft-fail 的工具会一直续跑到 maxSeconds/
+    // maxTokens 烧完。必须按"已续跑次数"显式封顶。智能"无进展停" = issue 0002。
+    const CONTINUATION_ROUND_CAP = 2;
+    const continuationRounds = finalSteps.filter(
+      (s) =>
+        s.kind === 'replan' &&
+        (s.output as { reason?: unknown } | null)?.reason === 'continuation',
+    ).length;
+    // review #9：子 agent 不自行续跑（父 agent 管其生命周期，避免被父超时孤儿化）；
+    // budget(token/秒)已耗尽则不再发起续跑（续跑要多一次 planner LLM 调用）。
+    const budgetLeft =
+      run.usage.tokens < run.budget.maxTokens &&
+      run.usage.elapsedSeconds < run.budget.maxSeconds;
+    // issue 0003 A：统一收尾决策。生产 + 有 LLM 时，由 reflectGoalCompletion 单点拍板
+    // "用户目标达成没"——它从 finalSteps（含 tool_error 硬失败）语义判断，**同时涵盖**
+    // 「没干完」(#7：被 replan 丢掉的 todo / #2b：跨轮 todo) 和「关键步骤失败」。
+    // test env / 无 LLM / 无工具时回退机械信号（hasUnfinishedAttempted && hadSoftFail），
+    // 机械信号从"决策者"降为 fallback。
+    const isTestEnvReflect =
+      process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+    const didToolWork = finalSteps.some(
+      (s) => s.kind === 'tool_call' || s.kind === 'tool_error',
+    );
+    const canContinue =
+      !run.parentRunId &&
+      budgetLeft &&
+      continuationRounds < CONTINUATION_ROUND_CAP;
+
+    let shouldContinue = false;
+    let reflectionReason: string | undefined;
+    if (canContinue) {
+      if (isTestEnvReflect || !didToolWork) {
+        // test env（确定性、无 LLM）/ 没跑过工具的 run：用机械信号兜底。
+        shouldContinue = hasUnfinishedAttempted && hadSoftFail;
+      } else {
+        // 生产 + 跑过工具：由 reflection 单点拍板。拿不到 LLM（无 key）或 reflection 报错
+        // → fail-open 收尾，**不**回退机械信号续跑 —— 续跑要 LLM 重规划，没 working
+        // reflection 时续跑只会空转烧续跑轮数，直接收尾更稳（review：两条 fail 路径统一）。
+        const reflectLlm = await resolveLlmClient(run);
+        if (reflectLlm) {
+          try {
+            const reflection = await reflectGoalCompletion({
+              inputText: run.inputText,
+              steps: finalSteps,
+              llm: reflectLlm,
+              signal: abortController.signal,
+              // S2：prior 累积 checkpoint + 本轮 tail = 让评审看到整 run。
+              checkpoint: run.contextCheckpoint,
+            });
+            shouldContinue = !reflection.goalMet;
+            reflectionReason = reflection.reason;
+          } catch {
+            // 取消 → 重抛 AgentCancelled，别让外层误标 failed；其它错 → fail-open 收尾。
+            if (abortController.signal.aborted) {
+              const cur = await store.getAgentRun(runId);
+              if (cur?.status === 'replanning') throw new AgentCancelled('steer');
+              throw new AgentCancelled('user');
+            }
+            shouldContinue = false;
+          }
+        }
+        // reflectLlm 为 null（生产无 key）→ shouldContinue 保持 false → 收尾。
+      }
+    }
+
+    // issue 0002 stall guard：无进展检测。续跑若没产生**新的成功步骤**（累计成功
+    // tool_call 数没比上一轮续跑时多），就提前收尾，不傻等到 CONTINUATION_ROUND_CAP。
+    // review：observe（idempotency 缓存命中 = 成功复用上一步结果）也算进展，否则
+    // 全靠缓存推进的一轮会被误判无进展、提前收尾（还会盖掉 reflection 的"没完成"）。
+    const successCount = finalSteps.filter(
+      (s) =>
+        (s.kind === 'tool_call' && (s.error == null || s.error === '')) ||
+        s.kind === 'observe',
+    ).length;
+    const lastContinuation = [...finalSteps]
+      .reverse()
+      .find(
+        (s) =>
+          s.kind === 'replan' &&
+          (s.output as { reason?: unknown } | null)?.reason === 'continuation',
+      );
+    const priorSuccessCount = (
+      lastContinuation?.output as { successCount?: unknown } | null
+    )?.successCount;
+    const madeProgress =
+      typeof priorSuccessCount !== 'number' || successCount > priorSuccessCount;
+
+    if (shouldContinue && madeProgress) {
+      // review #2：在 todos 还完整时算好进展、塞进 continuation replan step；
+      // buildInitialPlan 从这条 step 读，扛过 applyReplanningIfNeeded 清空 run.todos。
+      const progress = buildProgressSummary(finalSteps, liveTodos);
+      await recordStep({
+        runId,
+        kind: 'replan',
+        output: {
+          reason: 'continuation',
+          progress: progress ?? null,
+          reflection: reflectionReason ?? null,
+          // 0002：存当前累计成功步数，下一轮续跑用它判有无进展。
+          successCount,
+        },
+      });
+      // S1：把累积式结构化 checkpoint 写进 run 列（单一真相源）。
+      const checkpoint = await computeCheckpoint(
+        runId,
+        run,
+        plan,
+        finalSteps,
+        liveTodos,
+        successCount,
+        abortController.signal,
+        true, // 续跑点：允许压缩（喂下一轮 planner）
+      );
+      await store.updateAgentRun(runId, {
+        status: 'replanning',
+        contextCheckpoint: checkpoint,
+      });
+      return;
+    }
+
+    // S1：收尾前也写一次 checkpoint —— 否则续跑一轮后在末轮完成的 run，其最后
+    // （决定性的）发现永远不会进 checkpoint。供 S2 终稿 / 后续读取拿到最新状态。
+    const finalCheckpoint = await computeCheckpoint(
+      runId,
+      run,
+      plan,
+      finalSteps,
+      liveTodos,
+      successCount,
+      abortController.signal,
+      false, // 收尾点：末轮，不压缩（压缩成果无后续 planner 消费，只会徒增延迟）
+    );
+    await store.updateAgentRun(runId, { contextCheckpoint: finalCheckpoint });
+    // 同步本地 run，让下游 softComplete→buildFinalContent→buildReplyMessages 读到最新 checkpoint。
+    run.contextCheckpoint = finalCheckpoint;
 
     // M1c：终稿在 softComplete 里走 buildFinalContent（含 LLM 终稿）；
     // 这里仍记一条 reply step，但内容直接用 fallback 概要——

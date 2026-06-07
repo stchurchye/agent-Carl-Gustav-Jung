@@ -31,7 +31,7 @@ Mobile 编译：`cd apps/mobile && npx tsc --noEmit`
 - [ ] **Step 1: 拉新分支 + 后端全量测试**
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git checkout main && git pull --ff-only
 git checkout -b feat/agent-runtime-m6
 cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx vitest run
@@ -475,7 +475,7 @@ Expected：所有 case PASS（基线 ~451 + 新增 7 = ~458）。
 ### Step 7：Commit
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git add apps/api/src/routes/agent.ts \
         apps/api/src/lib/agent/longPollJitter.ts \
         apps/api/src/routes/__tests__/agent.longpoll.test.ts \
@@ -699,7 +699,7 @@ Expected：exit 0。
 ### Step 4：Commit
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git add apps/mobile/src/features/agent/hooks/useAgentRunPoll.ts \
         apps/mobile/src/features/agent/agentApi.ts
 git commit -m "feat(agent/m6 t1b): mobile useAgentRunPoll 切到增量 long-poll —— 35s client timeout + 1s 错误退避"
@@ -967,7 +967,7 @@ Expected：exit 0。
 ### Step 9：Commit
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git add apps/mobile/src/features/agent/AgentRunCard.tsx \
         apps/mobile/src/screens/SettingsDocumentsScreen.tsx \
         apps/mobile/src/navigation/types.ts
@@ -1161,7 +1161,7 @@ Expected：全绿。
 ### Step 5：Commit
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git add apps/api/src/lib/agent/store.ts \
         apps/api/src/lib/agent/__tests__/store.jsonbNull.test.ts
 git commit -m "fix(agent/m6 t3): jsonbOrNull helper 统一处理 JSONB null-clear → SQL NULL
@@ -1190,7 +1190,7 @@ roundtrip 非 null 写入回归。"
 ### Step 1：装依赖
 
 ```bash
-cd /Users/hongpengwang/行动中止派/apps/api && npm install youtube-transcript@^1.2.1
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung/apps/api && npm install youtube-transcript@^1.2.1
 ```
 
 Expected：success（包大小约 50KB，无 native）。如果 `^1.2.1` 不存在，用 `npm view youtube-transcript versions --json | tail -5` 看可用版本再选 latest。
@@ -1581,7 +1581,7 @@ Expected：exit 0。
 ### Step 8：Commit
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git add apps/api/package.json apps/api/package-lock.json \
         apps/api/src/lib/agent/tools/youtubeTranscript.ts \
         apps/api/src/lib/agent/registerAgentTools.ts \
@@ -1639,7 +1639,7 @@ Prompt 要点：
 ### Step 5：Merge main + tag
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git checkout main && git pull --ff-only
 git merge --no-ff feat/agent-runtime-m6 -m "M6: long-poll + artifact ref 跳转 + JSONB null 修补 + youtube_transcript (v0.m6)"
 git tag v0.m6

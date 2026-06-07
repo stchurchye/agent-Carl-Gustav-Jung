@@ -55,6 +55,22 @@ export type CreateAgentRunInput = {
   userApiKeys?: Record<string, string>;
   /** M3 Task 4：子 run 的父 run ID（deep_research spawn 时填）。null/undefined 表示顶层 run。 */
   parentRunId?: string | null;
+  /** M7：T3 queue 分支专用，决定 INSERT 的初始 status。默认 'draft'。 */
+  initialStatus?: 'draft' | 'queued';
+  /** M7：queued 时记录入队 N。 */
+  queuePosition?: number;
+  /**
+   * M7：调用方已经在持锁事务里 INSERT 了 run 行（R13 闭环），
+   * 传入时 createAgentRun 跳过 store.insertAgentRun，直接走 placeholder/updateRun 后续。
+   */
+  existingRun?: AgentRun;
+  /**
+   * M7 T7：占位写入方式。
+   *   - 'default'：现有 writeGroupPlaceholder（human invoker + ai placeholder）
+   *   - 'child_card'：deep_research 群聊子 run；走 writeGroupChildPlaceholder（仅 ai）
+   * 未指定时默认 'default'。
+   */
+  surfaceMode?: 'default' | 'child_card';
 };
 
 export type CreateAgentRunResult = {
@@ -97,7 +113,8 @@ export async function createAgentRun(
       ? (userApiKeysSealedRaw as Record<string, string>)
       : undefined;
 
-  const run = await store.insertAgentRun({
+  // M7：existingRun 已由调用方在持锁事务里 INSERT（R13），跳过重复 INSERT。
+  const run = input.existingRun ?? await store.insertAgentRun({
     ownerId: input.ownerId,
     channel: input.channel,
     sessionId: input.sessionId ?? null,
@@ -105,7 +122,7 @@ export async function createAgentRun(
     topicId: input.topicId ?? null,
     intentTurnId: input.intentTurnId ?? null,
     role: 'generalist',
-    status: 'draft',
+    status: input.initialStatus ?? 'draft',
     inputText: input.inputText,
     budget: input.budget ?? DEFAULT_BUDGET,
     apiKeyOwnerId: input.apiKeySource === 'user' ? input.ownerId : null,
@@ -116,6 +133,7 @@ export async function createAgentRun(
     modelId: input.modelId,
     userApiKeysEnc,
     parentRunId: input.parentRunId ?? null,
+    queuePosition: input.queuePosition ?? null,
   });
 
   let userMessageId: string | null = null;
@@ -143,18 +161,40 @@ export async function createAgentRun(
   }
 
   if (input.channel === 'group' && input.groupId && input.topicId) {
-    const bridge = await writeGroupPlaceholder({
-      userId: input.ownerId,
-      groupId: input.groupId,
-      topicId: input.topicId,
-      inputText: input.inputText,
-      agentRunId: run.id,
-    });
-    userMessageId = bridge.invokeMessageId;
+    // M7 T7：child_card 走无 invoker 的子卡片占位；default 保持原行为。
+    const surfaceMode = input.surfaceMode ?? 'default';
+    let bridge: {
+      invokeMessageId: string;
+      placeholderAiMessageId: string;
+      llmJobId: string;
+    };
+    if (surfaceMode === 'child_card') {
+      if (!input.parentRunId) {
+        throw new Error('surfaceMode=child_card requires parentRunId');
+      }
+      const { writeGroupChildPlaceholder } = await import('./messageBridge.js');
+      bridge = await writeGroupChildPlaceholder({
+        parentRunId: input.parentRunId,
+        parentOwnerId: input.ownerId,
+        childRunId: run.id,
+        groupId: input.groupId,
+        topicId: input.topicId,
+        childInputText: input.inputText,
+      });
+    } else {
+      bridge = await writeGroupPlaceholder({
+        userId: input.ownerId,
+        groupId: input.groupId,
+        topicId: input.topicId,
+        inputText: input.inputText,
+        agentRunId: run.id,
+      });
+    }
+    userMessageId = bridge.invokeMessageId || null;
     placeholderMessageId = bridge.placeholderAiMessageId;
     llmJobId = bridge.llmJobId;
     const updated = await store.updateAgentRun(run.id, {
-      invokeMessageId: bridge.invokeMessageId,
+      invokeMessageId: bridge.invokeMessageId || null,
       resultMessageId: placeholderMessageId,
     });
     return {
@@ -269,6 +309,12 @@ export async function softComplete(
       run: latest,
       resource: detail ?? 'unknown',
     });
+  }
+
+  // M7：群聊 run 终态 → 释放 slot，触发同 topic 队首 dequeue。
+  if (run.channel === 'group' && run.topicId) {
+    const { dequeueNextOnTopic } = await import('./topicCoord.js');
+    await dequeueNextOnTopic(run.topicId);
   }
 }
 
@@ -404,5 +450,12 @@ export async function cancelRun(
         });
       }
     }
+  }
+
+  // M7：cancelled 也是 terminal，释放 slot 触发队首 dequeue。
+  // （dequeueNextOnTopic 幂等：提为 draft 后该 run 即算 blocking，softComplete 再调时 no-op。）
+  if (run.channel === 'group' && run.topicId) {
+    const { dequeueNextOnTopic } = await import('./topicCoord.js');
+    await dequeueNextOnTopic(run.topicId);
   }
 }

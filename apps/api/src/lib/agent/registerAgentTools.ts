@@ -24,6 +24,7 @@ import { registerDocumentReader } from './tools/documentReader.js';
 import { registerAskUser } from './tools/askUser.js';
 import { registerDeepResearch } from './tools/deepResearch.js';
 import { registerYoutubeTranscript } from './tools/youtubeTranscript.js';
+import { registerRecallStep } from './tools/recallStep.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -42,4 +43,5 @@ export function registerAgentTools(): void {
   registerAskUser();
   registerDeepResearch();
   registerYoutubeTranscript();
+  registerRecallStep();
 }

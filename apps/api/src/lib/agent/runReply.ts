@@ -59,7 +59,11 @@ export async function buildFinalContent(
   const text = run.inputText ?? '';
   const isTestEnv =
     process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
-  const looksLikeEcho = /echo/i.test(text);
+  // issue 0004：与 runPlanGlue.buildInitialPlan 对齐——关键词 echo 短路只在显式
+  // dev flag(AGENT_ECHO_KEYWORD=1)下生效,否则生产里含 "echo" 的真实消息会拿到
+  // 写死的 echo 回复(跳过 generateFinalReply)。两处必须同步,否则 fix 只关一半。
+  const devEchoKeyword = process.env.AGENT_ECHO_KEYWORD === '1';
+  const looksLikeEcho = devEchoKeyword && /echo/i.test(text);
   if (isTestEnv || looksLikeEcho || !run.plan) {
     return pickFallbackFinalContent(run, run.plan);
   }

@@ -89,6 +89,126 @@ describe('M1f planner prompt 升级 (#1)', () => {
     expect(usr).toMatch(/web_search HTTP 429/);
     expect(usr).toMatch(/重新规划/);
   });
+
+  it('user prompt 渲染 checkpoint 的结构化任务状态 + nextStep + 不要问是否继续 (S3 sd0x)', () => {
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: '研究 Sutton',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      checkpoint: {
+        version: 1,
+        goal: '研究 Sutton 的贡献',
+        intent: '搜索并读权威来源',
+        completed: [{ text: 'search_web', finding: '找到 NSF 官方页', refs: [] }],
+        remainingPlan: ['读取并汇总'],
+        openQuestions: [],
+        nextStep: '抓取 NSF 页并汇总三要素',
+        successCount: 1,
+        producedAtIdx: 2,
+        digestTail: '',
+      },
+    });
+    expect(usr).toMatch(/任务状态/);
+    expect(usr).toMatch(/找到 NSF 官方页/); // 累积发现
+    expect(usr).toMatch(/读取并汇总/); // remainingPlan
+    expect(usr).toMatch(/抓取 NSF 页并汇总三要素/); // nextStep
+    expect(usr).toMatch(/不要问.*继续|不要问是否继续/); // sd0x：别问"是否继续"
+  });
+
+  it('checkpoint 渲染封顶（长 run 不撑爆 planner prompt）', () => {
+    const many = Array.from({ length: 35 }, (_, i) => ({
+      text: `tool${i}`,
+      finding: `finding-${i}`,
+      refs: [],
+    }));
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i', completed: many,
+        remainingPlan: [], openQuestions: [], nextStep: '', successCount: 35, producedAtIdx: 40, digestTail: '',
+      },
+    });
+    expect(usr).toMatch(/更早 \d+ 条已略/); // 有 overflow 提示
+    expect(usr).not.toContain('finding-0'); // 最早的被略掉
+    expect(usr).toContain('finding-34'); // 最近的保留
+  });
+
+  it('checkpoint 渲染受字节预算约束（富 finding 长 run 不撑爆 planner prompt）', () => {
+    // 20 条 × 每条 2000 字 = ~40K 字；即便条数 ≤20，也必须按字节收口
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      text: `tool${i}`,
+      finding: `MARK${i}-` + 'y'.repeat(2000),
+      refs: [],
+    }));
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i', completed: many,
+        remainingPlan: [], openQuestions: [], nextStep: '', successCount: 20, producedAtIdx: 25, digestTail: '',
+      },
+    });
+    expect(usr.length).toBeLessThan(14000); // 受字节预算约束，不是 40K
+    expect(usr).toContain('MARK19-'); // 最近的保留（planner 偏好近期）
+    expect(usr).toMatch(/更早 \d+ 条已略/); // 早期被略
+  });
+
+  it('planner prompt 含 digestTail 近窗逐字（修 digestTail→planner 断链）', () => {
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i',
+        completed: [{ text: 'fetch_url', finding: '只是摘要版', refs: [] }],
+        remainingPlan: [], openQuestions: [], nextStep: '',
+        successCount: 1, producedAtIdx: 5,
+        digestTail: '- [步骤 5] fetch_url: {"result":{"ok":true,"NEARWINDOW_MARKER":"逐字原文细节"}}',
+      },
+    });
+    expect(usr).toContain('NEARWINDOW_MARKER'); // 近窗逐字真进了 planner（之前只进 reply）
+    expect(usr).toContain('[步骤 5]'); // idx 标注可见 → 模型可据此 recall_step
+  });
+
+  it('planner 渲染 digestTail 限字节（巨型近窗不撑爆 planner prompt）', () => {
+    const huge = '- [步骤 1] fetch_url: ' + 'Z'.repeat(40000);
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i',
+        completed: [{ text: 't', finding: 'f', refs: [] }],
+        remainingPlan: [], openQuestions: [], nextStep: '',
+        successCount: 1, producedAtIdx: 1, digestTail: huge,
+      },
+    });
+    expect(usr.length).toBeLessThan(20000); // digestTail 段被收口，不是 40K
+  });
+
+  it('checkpoint 渲染为空时退回 progress 兜底（review #5）', () => {
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      // 全空 checkpoint（渲染成 ''）但有 progress 兜底字符串
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i', completed: [],
+        remainingPlan: [], openQuestions: [], nextStep: '', successCount: 0, producedAtIdx: 0, digestTail: '',
+      },
+      progress: 'PROGRESS-FALLBACK-MARKER',
+    });
+    expect(usr).toContain('PROGRESS-FALLBACK-MARKER'); // 不再被 checkpoint 空串短路掉
+  });
+
+  it('全空 checkpoint（无发现无待办）不渲染"自动续跑中"框架', () => {
+    const usr = _buildPlannerUserPromptForTest({
+      inputText: 'x',
+      snapshot: { systemPrompt: '', shortSummary: '' } as never,
+      checkpoint: {
+        version: 1, goal: 'g', intent: 'i', completed: [],
+        remainingPlan: [], openQuestions: [], nextStep: '', successCount: 0, producedAtIdx: 0, digestTail: '',
+      },
+    });
+    expect(usr).not.toMatch(/任务状态|不要问/);
+  });
 });
 
 describe('M1f parsePlannerJson 宽容化 (#4)', () => {

@@ -1,5 +1,6 @@
 import * as store from './store.js';
 import { agentHookBus } from './hooks.js';
+import { redactSecrets } from './redact.js';
 import type { AgentRun, StepKind } from './types.js';
 
 export type RecordStepInput = {
@@ -21,7 +22,12 @@ export type RecordStepInput = {
  */
 export async function recordStep(input: RecordStepInput) {
   const nextIdx = (await store.maxStepIdx(input.runId)) + 1;
-  const step = await store.insertStep({ ...input, idx: nextIdx });
+  // S0：落库前脱敏 step.input（用户可能把 API key 误粘进工具入参）。
+  // 只动 input —— 幂等 key 在 runExecute 里早已用原始 input 算好并经 toolCallKey 传入；
+  // output 保持原始（幂等 replay / extractRef 结构化读它，到投影点再脱敏）。
+  const safeInput =
+    input.input === undefined ? input.input : redactSecrets(input.input);
+  const step = await store.insertStep({ ...input, input: safeInput, idx: nextIdx });
   agentHookBus.emitEvent({ type: 'step.recorded', runId: input.runId, step });
   return step;
 }

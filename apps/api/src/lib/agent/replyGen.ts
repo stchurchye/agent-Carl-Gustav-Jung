@@ -1,6 +1,8 @@
 import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
 import type { AgentRun, AgentStep, Plan, ReplyRef } from './types.js';
+import { sanitizeMergedUsername } from './types.js';
 import { toolRegistry, type ToolDef, type ToolReplyMeta } from './toolRegistry.js';
+import { redactSecrets } from './redact.js';
 
 export type { ReplyRef };
 
@@ -42,8 +44,15 @@ export function collectReplyRefs(
       continue;
     }
     try {
-      const ref = extractRef(raw);
-      if (!ref) continue;
+      const rawRef = extractRef(raw);
+      if (!rawRef) continue;
+      // S0 followup（整体 review #1）：ref 从原始 output 抽取（未脱敏）—— url id/label
+      // 可能带密钥（如 ?api_key=… 的链接）。脱敏 id/label，避免泄进 checkpoint 列与终稿。
+      const ref = {
+        ...rawRef,
+        id: redactSecrets(rawRef.id) as string,
+        ...(rawRef.label ? { label: redactSecrets(rawRef.label) as string } : {}),
+      };
       const key = `${ref.kind}:${ref.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -63,9 +72,11 @@ export function collectReplyRefs(
  * - silent：返回空串（caller 应跳过该行）
  */
 export function summarizeStepOutput(
-  out: unknown,
+  rawOut: unknown,
   kind: ToolReplyMeta['summaryKind'] = 'text',
 ): string {
+  // S2d：送 LLM 的投影脱敏（持久化的 step.output 保持原始；密钥不进终稿/摘要）。
+  const out = redactSecrets(rawOut);
   if (kind === 'silent') return '';
   if (kind === 'export_ref') return '[已写入资源，详见下方资源清单]';
   if (kind === 'list') {
@@ -108,34 +119,71 @@ export function buildReplyMessages(params: {
   const toolMap =
     params.toolMap ?? new Map(toolRegistry.list().map((t) => [t.name, t]));
 
-  const toolSteps = steps.filter(
-    (s) => s.kind === 'tool_call' || s.kind === 'observe',
-  );
-  const recent = toolSteps.slice(-6);
-
-  const stepDigest = recent
-    .map((s, i) => {
-      const tool = s.toolName ?? 'unknown';
-      const kind = toolMap.get(s.toolName ?? '')?.replyMeta?.summaryKind ?? 'text';
-      const summary = summarizeStepOutput(s.output, kind);
-      if (!summary) return null; // silent
-      return `${i + 1}. ${tool}: ${summary}`;
-    })
-    .filter((line): line is string => line !== null)
-    .join('\n');
-
-  const refs = collectReplyRefs(steps, toolMap);
+  // S2：有累积 checkpoint 时，从 checkpoint.completed（跨全 run 累积、不丢早期发现）
+  // + digestTail（近窗细节）取摘要与 refs，而非只看 last-6 步。否则退回 last-6。
+  const cp = run.contextCheckpoint;
+  let stepDigest: string;
+  let refs: ReplyRef[];
+  // 整体 review #6：completed 空但 digestTail 有内容（成功步全是 ref-less/silent）也走
+  // checkpoint 分支，否则会退回 last-6 把 digestTail 的近窗结论丢掉。
+  if (cp && (cp.completed.length > 0 || cp.digestTail)) {
+    // 跳过空 finding（silent 工具如 render_diagram，其价值在 refs 里、非摘要文本），
+    // 与 last-6 分支的 `if(!summary)` 过滤对齐，避免终稿出现 "N. tool: " 噪声行。
+    const lines = cp.completed
+      .filter((c) => c.finding)
+      .map((c, i) => `${i + 1}. ${c.text}: ${c.finding}`);
+    // digestTail v4 扩容到 32K 字；reply writer 只需"做了什么"的线索，不需要读全量原始 output。
+    // 截到 8000 字（约 2K token），保留近窗细节但不浪费 reply LLM 的上下文预算。
+    const tailForReply = cp.digestTail ? cp.digestTail.slice(0, 8000) : '';
+    stepDigest =
+      lines.join('\n') +
+      (tailForReply ? `\n\n最近步骤详情：\n${tailForReply}` : '');
+    const seen = new Set<string>();
+    refs = [];
+    for (const r of [
+      ...cp.completed.flatMap((c) => c.refs),
+      ...collectReplyRefs(steps, toolMap),
+    ]) {
+      const k = `${r.kind}:${r.id}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      refs.push(r);
+    }
+  } else {
+    const recent = steps
+      .filter((s) => s.kind === 'tool_call' || s.kind === 'observe')
+      .slice(-6);
+    stepDigest = recent
+      .map((s, i) => {
+        const tool = s.toolName ?? 'unknown';
+        const kind = toolMap.get(s.toolName ?? '')?.replyMeta?.summaryKind ?? 'text';
+        const summary = summarizeStepOutput(s.output, kind);
+        if (!summary) return null; // silent
+        return `${i + 1}. ${tool}: ${summary}`;
+      })
+      .filter((line): line is string => line !== null)
+      .join('\n');
+    refs = collectReplyRefs(steps, toolMap);
+  }
   const refLines = refs.length
     ? '\n\n已写入资源：\n' +
       refs.map((r) => `- [${r.kind}] ${r.label ?? r.id} (id: ${r.id})`).join('\n')
     : '';
+
+  // M7 P2：合并的追问 → 终稿需统一回应。
+  const merged = run.mergedInputs ?? [];
+  const mergedSection =
+    merged.length > 0
+      ? `\n\n# 后续追问列表（共 ${merged.length} 条，需在 reply 中统一回应）\n` +
+        merged.map((m) => `- @${sanitizeMergedUsername(m.byUsername)}: ${m.text}`).join('\n')
+      : '';
 
   const user = `用户原始请求：${run.inputText}
 
 执行目标：${plan.intentSummary}
 
 工具调用摘要：
-${stepDigest || '（无工具调用）'}${refLines}
+${stepDigest || '（无工具调用）'}${refLines}${mergedSection}
 
 最终回复风格提示：${plan.finalReplyHint || '简明、对话风格'}`;
 

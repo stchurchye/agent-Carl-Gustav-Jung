@@ -67,7 +67,7 @@
 ```bash
 git checkout main
 git pull
-pkill -f "tsx watch.*行动中止派" 2>/dev/null
+pkill -f "tsx watch.*agent-Carl-Gustav-Jung" 2>/dev/null
 git checkout -b feat/agent-runtime-m1e
 set -a; source .env; set +a
 npm run test -w @xzz/api   # baseline 169 tests

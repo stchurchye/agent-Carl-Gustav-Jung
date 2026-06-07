@@ -15,6 +15,8 @@ export type AgentRunStatus =
   | 'awaiting_user_input'
   | 'running'
   | 'replanning'
+  // M7：同 topic active run 占用时，新触发的群聊 run 入队等待。
+  | 'queued'
   | 'completed'
   | 'failed'
   | 'cancelled'
@@ -69,6 +71,26 @@ export type AgentUsage = {
   costCny: number;
 };
 
+/**
+ * M7：合并到活动 run 的追问。acquireTopicSlot 的 merge 分支 append 到
+ * agent_runs.merged_inputs JSONB 数组；runExecute 据 consumed count 推进消化。
+ */
+export type MergedInput = {
+  text: string;
+  byUserId: string;
+  byUsername: string;
+  at: string; // ISO timestamp
+};
+
+/**
+ * M7 review fix：byUsername 来自用户可改的 displayName，渲染进 LLM prompt 前剥掉
+ * 换行 / 制表符并 clamp 长度，避免用换行 + "# 用户请求" 之类伪造段落标题做注入。
+ */
+export function sanitizeMergedUsername(name: string | null | undefined): string {
+  const cleaned = (name ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 48);
+  return cleaned || '成员';
+}
+
 export type AgentRun = {
   id: string;
   ownerId: string;
@@ -117,6 +139,20 @@ export type AgentRun = {
   pendingApprovalToolName: string | null;
   cancelledByUserId: string | null;
   cancelReason: CancelReason | null;
+  /** M7：追问数组，acquireTopicSlot merge 分支 append。 */
+  mergedInputs: MergedInput[];
+  /** M7：runExecute 已注入 planner / replan 的追问数。每步前比较推进。 */
+  mergedInputsConsumedCount: number;
+  /** S1：累积式结构化 checkpoint（context compaction）。null = 还没产生。 */
+  contextCheckpoint: AgentCheckpoint | null;
+  /** M7：queued 状态下记录的初始位次（UI hint，非真源）。 */
+  queuePosition: number | null;
+  /** M7：ask_user 群聊期待谁答（默认 = ownerId）。 */
+  askUserTargetUserId: string | null;
+  /** M7：本次 ask_user 进入 awaiting 时刻；30s 后 worker 升级为开放。 */
+  askUserStartedAt: Date | null;
+  /** M7：worker checker 升级后 set；UI 据此切显示+权限。 */
+  askUserOpenedForAllAt: Date | null;
   createdAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -132,6 +168,8 @@ export type StepKind =
   // M3 hotfix: 用户对 ask_user 的回答；不属于 plan step 推进，不应被 reclaim 计数。
   // 使用独立 kind 而非 'observe' 可让 recordReclaimIfNeeded 精确过滤。
   | 'user_input'
+  // M7：merge 时写的追问（同 topic 的后续 agent_run 被合并到活动 run）。
+  | 'user_message_appended'
   | 'reply'
   | 'approval_request'
   | 'approval_grant'
@@ -205,6 +243,32 @@ export type ReplyRef = {
   kind: 'document' | 'url' | 'magi_card' | 'diagram';
   id: string;
   label?: string;
+};
+
+/**
+ * S1（context compaction）：累积式结构化 checkpoint —— 跨步累积的任务状态，
+ * 存在 agent_runs.context_checkpoint 列。类型放 types.ts 避免 store ↔ checkpoint 循环依赖。
+ */
+export type CheckpointFinding = {
+  text: string;
+  finding: string;
+  refs: ReplyRef[];
+};
+export type AgentCheckpoint = {
+  version: 1;
+  goal: string;
+  intent: string;
+  completed: CheckpointFinding[];
+  remainingPlan: string[];
+  openQuestions: string[];
+  nextStep: string;
+  successCount: number;
+  producedAtIdx: number;
+  /**
+   * S2：近窗高保真 —— 最近 K 步成功工具输出的较全摘要（比 completed[].finding 的
+   * 200 字更全，每条 ≤~1.5KB）。弥补本 agent「无逐字近窗」的架构短板。
+   */
+  digestTail: string;
 };
 
 /**

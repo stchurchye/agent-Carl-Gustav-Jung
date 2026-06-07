@@ -73,7 +73,32 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
   const steerIsNewest =
     !!lastSteer && (!lastDeny || lastSteer.idx > lastDeny.idx);
 
-  if (denyIsNewest) {
+  // M7 P1：P1 路径刚写过一条 replan(reason='merge_trigger')，这里别重复 record，
+  // 但仍要清 plan 让 executeRun 重新规划（追问已进 merged_inputs / context）。
+  // 关键：只看「最后一条 step」是否就是 merge_trigger replan —— 若其后又跑了步骤
+  // 再因 critique 进 replanning，最后一条不再是它，critique 的审计 replan 不被误抑制。
+  const lastStep = steps[steps.length - 1];
+  // M7 P1 的 merge_trigger 与 issue 0001 的 continuation 都在进入 replanning 前
+  // 已经自己写过一条 replan step；这里别再补记一条「critique_or_unspecified」幻影 replan
+  // （否则审计日志把续跑/合并误算成 critique replan，污染信号）。
+  const lastReplanReason =
+    lastStep?.kind === 'replan'
+      ? (lastStep.output as { reason?: string } | null)?.reason
+      : undefined;
+  const alreadyReplanRecorded =
+    lastReplanReason === 'merge_trigger' || lastReplanReason === 'continuation';
+
+  if (alreadyReplanRecorded) {
+    // continuation(issue 0001) / merge_trigger(M7 P1)：最新一步就是它们自己写的 replan，
+    // 直接清 plan 让 executeRun 走 buildInitialPlan 重生成（progress / merged_inputs 已就绪）。
+    // 必须优先于 deny/steer 检测 —— 否则历史里残留的 approval_deny / steer step 会被
+    // denyIsNewest/steerIsNewest 误判成"最新"，把续跑/合并错误路由到 deny 重规划或 steer no-op，
+    // 丢掉 stashed progress / 重放同一 plan。(review round-3 finding)
+    next = (await store.updateAgentRun(run.id, {
+      plan: null,
+      todos: [],
+    }))!;
+  } else if (denyIsNewest) {
     const newPlan = generatePlanForApprovalDeny(
       run.plan!,
       lastDeny!.toolName ?? 'unknown',

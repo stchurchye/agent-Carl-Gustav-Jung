@@ -86,7 +86,7 @@ export function AuthScreen({ onAuthenticated }: Props) {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.brand}>行动中止派</Text>
+        <Text style={styles.brand}>agent-Carl-Gustav-Jung</Text>
         <Text style={styles.subtitle}>
           {mode === 'login' ? '请先登录后再继续' : '注册新账号'}
         </Text>

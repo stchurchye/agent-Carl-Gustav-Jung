@@ -3,7 +3,7 @@
 - 项目代号：`agent-runtime`
 - 日期：2026-05-20（v2，基于现有项目代码事实重写）
 - 状态：设计已定稿，待用户复核 → writing-plans
-- 关联：本项目是「行动中止派」全局规划的子项目 A，详见末尾 §20。
+- 关联：本项目是「agent-Carl-Gustav-Jung」全局规划的子项目 A，详见末尾 §20。
 
 ---
 
@@ -22,7 +22,7 @@
 
 ### 1.1 问题陈述
 
-当前「行动中止派」（Expo + Hono monorepo）已经具备较完整的对话基础：
+当前「agent-Carl-Gustav-Jung」（Expo + Hono monorepo）已经具备较完整的对话基础：
 
 - **私聊**（`chat.ts` + `private_chat_*` 表）+ **群聊**（`groupChat.ts` + `group_messages` + `llm_invoke_jobs`）
 - **意图体系**：`packages/shared/social.ts` 的 `IntentKind` enum + `intentRules.ts`（regex 候选）+ `intentClassify.ts`（LLM 兜底）+ `intentAnalyzer.ts`（统一编排）+ `intentExecute.ts`（按 kind 派发）+ `routes/intent.ts`（HTTP）+ mobile `intentFlow.ts` + `IntentChipBar.tsx`
@@ -602,7 +602,7 @@ async function generatePlan(input: {
 ### 9.3 Prompt 骨架
 
 ```
-你是「行动中止派」的 agent。任务是为下面的用户请求生成一个 JSON plan。
+你是「agent-Carl-Gustav-Jung」的 agent。任务是为下面的用户请求生成一个 JSON plan。
 
 用户请求：{text}
 当前上下文摘要：{snapshot.shortSummary}

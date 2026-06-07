@@ -20,7 +20,7 @@
 - [ ] **Step 1: 确认 main 干净**
 
 ```bash
-cd /Users/hongpengwang/行动中止派
+cd /Users/hongpengwang/agent-Carl-Gustav-Jung
 git status
 git log --oneline -3
 ```
@@ -29,7 +29,7 @@ Expected：`On branch main`、`nothing to commit`、最新 commit 是 `a789b2b d
 - [ ] **Step 2: kill 任何残留 dev server**
 
 ```bash
-pkill -f "tsx watch.*行动中止派" 2>/dev/null
+pkill -f "tsx watch.*agent-Carl-Gustav-Jung" 2>/dev/null
 ls /Users/hongpengwang/.cursor/projects/Users-hongpengwang/terminals
 ```
 Expected：无 tsx 进程。terminals 文件夹里现有的可继续用。

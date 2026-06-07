@@ -28,7 +28,7 @@ git checkout main
 git pull   # 若有多机
 git checkout -b feat/agent-runtime-m1c
 set -a; source .env; set +a
-pkill -f "tsx watch.*行动中止派" 2>/dev/null
+pkill -f "tsx watch.*agent-Carl-Gustav-Jung" 2>/dev/null
 npm run typecheck && npm run test -w @xzz/api   # baseline 87 tests
 ```
 
