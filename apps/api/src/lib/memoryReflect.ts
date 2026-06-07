@@ -13,6 +13,8 @@ import { isAbortError } from './memoryAbort.js';
 const REFLECT_MIN_NEW_FACTS = 8;
 /** 合成输入的宽窗口:取最近 N 条 approved 事实(非仅增量,保洞见质量,见 ADR M4-2)。 */
 const REFLECT_WINDOW = 30;
+/** list 拉取上限:要够大以可靠定位最新 insight 基线(防『反思停摆久后』lastInsight 掉出窗 → 过触发)。 */
+const REFLECT_LIST_LIMIT = 500;
 
 export type Insight = {
   text: string;
@@ -91,7 +93,12 @@ export async function runReflection(params: {
   const windowSize = params.window ?? REFLECT_WINDOW;
   try {
     // 全量(各 status/kind):用 insight 找节流基线,用 approved fact 做合成。list 按 created_at DESC。
-    const items = await listAgentMemory(params.ownerId, undefined, params.signal);
+    const items = await listAgentMemory(
+      params.ownerId,
+      undefined,
+      params.signal,
+      REFLECT_LIST_LIMIT,
+    );
     // 用毫秒数值比较时间戳,不用字典序:isoformat() 在 microsecond=0 时省略小数位,
     // 同实例内精度可能不一('…:00+00:00' vs '…:00.123456+00:00'),字典序会误排(`.`>`+`)。
     const ms = (s: string | null): number => (s ? Date.parse(s) : NaN);

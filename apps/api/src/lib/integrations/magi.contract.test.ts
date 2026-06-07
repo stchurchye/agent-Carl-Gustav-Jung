@@ -137,4 +137,12 @@ describe('magi agent-memory HTTP contract', () => {
     mockFetch({ promoted: false, text: null });
     expect(await promoteAgentMemory('userA', 7)).toEqual({ promoted: false, text: null });
   });
+
+  it('unpromoteAgentMemory: parses MAGI /unpromote {unpromoted}', async () => {
+    const { unpromoteAgentMemory } = await importMagi();
+    const fetchFn = mockFetch({ unpromoted: 1 });
+    expect(await unpromoteAgentMemory('userA', 7)).toEqual({ unpromoted: 1 });
+    const body = JSON.parse(fetchFn.mock.calls[0][1].body);
+    expect(body).toMatchObject({ owner_id: 'userA', id: 7 });
+  });
 });

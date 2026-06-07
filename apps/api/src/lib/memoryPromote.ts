@@ -1,4 +1,4 @@
-import { promoteAgentMemory } from './integrations/magi.js';
+import { promoteAgentMemory, unpromoteAgentMemory } from './integrations/magi.js';
 import * as intel from '../store/pg-intelligence.js';
 
 /**
@@ -20,14 +20,25 @@ export async function promoteMemoryToNative(
   if (!promoted || !text) return { promoted: false };
 
   const title = text.length <= 24 ? text : `${[...text].slice(0, 24).join('')}…`;
-  const { fragment } = await intel.createMemoryFragment({
-    userId,
-    scope: 'user',
-    category: 'general',
-    title,
-    content: text,
-    source: 'import',
-    status: 'active',
-  });
-  return { promoted: true, fragmentId: fragment.id };
+  try {
+    const { fragment } = await intel.createMemoryFragment({
+      userId,
+      scope: 'user',
+      category: 'general',
+      title,
+      content: text,
+      source: 'import',
+      status: 'active',
+    });
+    return { promoted: true, fragmentId: fragment.id };
+  } catch (e) {
+    // 补偿(code-review #1):MAGI 已置 promoted_at 但原生写失败 → 回滚 promoted_at,
+    // 使事实重回 episodic search 且可重升格,避免两层皆失、幂等锁死。回滚 best-effort。
+    try {
+      await unpromoteAgentMemory(userId, id, signal);
+    } catch {
+      // 回滚也失败:promoted_at 残留,需 ops 手工清(已尽力);仍抛原始错误让调用方知晓
+    }
+    throw e;
+  }
 }

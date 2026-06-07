@@ -195,6 +195,7 @@ export async function listAgentMemory(
   ownerId: string,
   status?: 'pending' | 'approved' | 'rejected',
   signal?: AbortSignal,
+  limit?: number,
 ): Promise<MemoryListItem[]> {
   if (!magiSystemEnabled()) return [];
   const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/list`, {
@@ -203,7 +204,7 @@ export async function listAgentMemory(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
     },
-    body: JSON.stringify({ owner_id: ownerId, status }),
+    body: JSON.stringify({ owner_id: ownerId, status, ...(limit ? { limit } : {}) }),
     signal,
   });
   if (!res.ok) throw new Error(`agent-memory list HTTP ${res.status}`);
@@ -281,6 +282,30 @@ export async function promoteAgentMemory(
   if (!res.ok) throw new Error(`agent-memory promote HTTP ${res.status}`);
   const json = (await res.json()) as { promoted: boolean; text: string | null };
   return { promoted: json.promoted, text: json.text ?? null };
+}
+
+/**
+ * 升格补偿(M4h):清 MAGI 侧 promoted_at。供升格时原生写失败回滚,使事实重回 episodic search。
+ * owner-scoped + service token。未启用 → no-op。
+ */
+export async function unpromoteAgentMemory(
+  ownerId: string,
+  id: number,
+  signal?: AbortSignal,
+): Promise<{ unpromoted: number }> {
+  if (!magiSystemEnabled()) return { unpromoted: 0 };
+  const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/unpromote`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
+    },
+    body: JSON.stringify({ owner_id: ownerId, id }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`agent-memory unpromote HTTP ${res.status}`);
+  const json = (await res.json()) as { unpromoted: number };
+  return { unpromoted: json.unpromoted };
 }
 
 export async function ingestMagiContent(
