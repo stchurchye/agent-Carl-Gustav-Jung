@@ -27,6 +27,13 @@ const FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'approved', label: '已批准' },
 ];
 
+const SENTIMENT_LABEL: Record<string, string> = {
+  positive: '积极',
+  negative: '消极',
+  neutral: '中性',
+  mixed: '复杂',
+};
+
 export function BrainEpisodicMemoryScreen(_props: Props) {
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<StatusFilter>('pending');
@@ -54,6 +61,13 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
   const decide = (id: number, decision: 'approve' | 'reject') => {
     void api
       .decideAgentMemory(id, decision)
+      .then(load)
+      .catch((e) => Alert.alert('失败', apiErrorText(e).message));
+  };
+
+  const promote = (id: number) => {
+    void api
+      .promoteAgentMemory(id)
       .then(load)
       .catch((e) => Alert.alert('失败', apiErrorText(e).message));
   };
@@ -89,10 +103,25 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
         ) : (
           items.map((it) => (
             <View key={it.id} style={styles.card}>
+              {it.kind === 'insight' || it.sentiment ? (
+                <View style={styles.badges}>
+                  {it.kind === 'insight' ? (
+                    <Text style={[styles.badge, styles.insightBadge]}>洞见</Text>
+                  ) : null}
+                  {it.sentiment ? (
+                    <Text style={styles.badge}>
+                      {SENTIMENT_LABEL[it.sentiment] ?? it.sentiment}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
               <Text style={styles.text}>{it.text}</Text>
               <Text style={styles.meta}>
                 {it.confidence != null ? `置信 ${it.confidence.toFixed(2)} · ` : ''}
                 {it.createdAt ? it.createdAt.slice(0, 10) : ''}
+                {it.kind === 'insight' && it.sourceFragmentIds?.length
+                  ? ` · 由 ${it.sourceFragmentIds.length} 条合成`
+                  : ''}
               </Text>
               {filter === 'pending' ? (
                 <View style={styles.actions}>
@@ -109,7 +138,18 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
                     <Text style={styles.btnText}>拒绝</Text>
                   </Pressable>
                 </View>
-              ) : null}
+              ) : it.promotedAt ? (
+                <Text style={styles.promoted}>已升格到核心记忆</Text>
+              ) : (
+                <View style={styles.actions}>
+                  <Pressable
+                    style={[styles.btn, styles.promoteBtn]}
+                    onPress={() => promote(it.id)}
+                  >
+                    <Text style={styles.btnText}>升格到核心</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           ))
         )}
@@ -145,9 +185,22 @@ const styles = StyleSheet.create({
   },
   text: { fontSize: typography.body, color: colors.text },
   meta: { fontSize: typography.caption, color: colors.textMuted, marginTop: 6 },
+  badges: { flexDirection: 'row', gap: 6, marginBottom: 6 },
+  badge: {
+    fontSize: typography.caption,
+    color: colors.textMuted,
+    backgroundColor: colors.background,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  insightBadge: { color: '#fff', backgroundColor: colors.primary },
   actions: { flexDirection: 'row', gap: 10, marginTop: 10 },
   btn: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 8 },
   approve: { backgroundColor: colors.primary },
   reject: { backgroundColor: '#d9534f' },
+  promoteBtn: { backgroundColor: colors.primary },
+  promoted: { fontSize: typography.caption, color: colors.textMuted, marginTop: 10 },
   btnText: { fontSize: typography.caption, color: '#fff' },
 });

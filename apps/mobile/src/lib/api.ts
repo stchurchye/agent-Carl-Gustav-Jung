@@ -130,6 +130,10 @@ export type AgentMemoryItem = {
   createdAt: string | null;
   validUntil: string | null;
   sourceRunId: string | null;
+  kind: string;
+  sentiment: 'positive' | 'negative' | 'neutral' | 'mixed' | null;
+  sourceFragmentIds: number[] | null;
+  promotedAt: string | null;
 };
 
 export const api = {
@@ -741,6 +745,11 @@ export const api = {
     request<{ updated: number }>('/api/agent-memory/decide', {
       method: 'POST',
       body: JSON.stringify({ id, decision }),
+    }),
+  promoteAgentMemory: (id: number) =>
+    request<{ promoted: boolean; fragmentId?: string }>('/api/agent-memory/promote', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
     }),
 
   btwAsk: (question: string, opts?: { groupId?: string; topicId?: string }) =>
