@@ -64,3 +64,32 @@ plan v6→v8 的迭代一度倾向"MAGI 当全后端(B),原生退役"。grilling
 **失败处理矩阵:** MAGI 整体不可达 → fail-open(recall 返空、write best-effort、本轮不报错、退原生核心);蒸馏 LLM 失败 → 不产 fact、run 继续;`invalidate` 失败 → 新 fact 照写、旧条暂留、下次对账;**embed(bge/Ollama)失败 → 写 NULL embedding 行(fact 不丢)**,MAGI 检索本就 `WHERE embedding IS NOT NULL` 故 NULL 行自动不进语义检索,后台 backfill 补向量再可召回(优雅降级,胜过整条丢弃);pending 无人审堆积 → MVP 放着(见下)。
 
 **审核 UX:MVP 不做 UI,置信自流。** 高置信(≥0.85)→ 自动 `approved` 即可用;低置信/被 flag → `pending` 堆着(不召回、不浮现)。等 M1-M3 跑通、看真实 pending 量再决定 UI 方向。复用路径已探明:`ReviewQueueItem` 多态(`target_type` String(32)),pending 项以 `target_type='agent_memory_fragment'` 入队即可稍改复用 MAGI review_queue + Next 前端(P5,非 MVP)。不预设 UI 形态。
+
+## 补充决策:M4 增强层(反思 / 升格 / 主动召回 / sentiment / 中文 sparse)
+
+- 状态:已接受(grilling 定稿,2026-06-07)
+- 基调:**knowing override**。M1-M3+P5 已上线,本节诸特性原 §7 列为「证据驱动、不前置」(零使用数据)。用户在听过"全建=投机、正是 plan 警告"后明确选择**全建(8 项)**,并要求**判据按检索/记忆质量(性能)优先**,而非最小风险。下列决策即在「质量优先 + 全建」前提下取最优形态;诚实保留两处弱点:① sentiment 近期无运行时消费者(纯数据沉淀);② 零数据下 reflection 可能合成稀薄 → 节流阈值起步保守。
+
+**M4-1 schema 全用列,不开新表(迁移 056,纯 additive)。** `kind TEXT NOT NULL DEFAULT 'fact'`(CHECK `fact|insight`)+ `source_fragment_ids BIGINT[]`(insight 的 provenance = 由哪些 fact 合成)+ `sentiment TEXT`(CHECK `positive|negative|neutral|mixed`)+ `promoted_at TIMESTAMPTZ`(升格幂等)+ `status` DB CHECK(B7,纵深防御)。
+- *理由:* insight **也是 fragment**,共用同一套 owner/status/时序/embedding/召回机制,只 `kind` 不同 → 单表检索不变、不动 `_ALLOWED_TABLES` 白名单、无 join。开新表要改白名单 + 召回跨表 UNION,复杂度高且无收益。全列 nullable/带默认 → 旧行零影响、无 backfill。
+- *权衡:* 用 `BIGINT[]` 数组存 provenance 而非 join 表 —— MVP 够用,牺牲了引用完整性约束(数组里的 id 可悬空),可接受(provenance 仅供展示/追溯,非强一致需求)。
+
+**M4-2 reflection→insight:agent 侧 + softComplete 边界 + 节流。** 复用 episodic wiring 同钩子(run 收尾、**响应之后**、不阻塞、fail-open)。节流不开新状态表:`list` 拉该 owner approved 事实,数「自上条 insight 以来新增事实数」≥阈值(起步保守,如 8)才合成;合成**输入取宽窗口**(近期 N + 语义聚类,非仅增量)以保洞见质量;产物 `writeAgentMemory(kind='insight', source_fragment_ids=[...])`。
+- *否 MAGI Celery:* MAGI API 层刻意无 LLM("inference on agent side"),distill/reconcile/judge 全在 agent 用 agent 的 `LlmChatClient`。reflection 是 LLM 合成,放 MAGI 要么破坏该原则、要么用 MAGI 异构模型(非 agent persona);且 agent(Hono)无入站端点供 Celery 回调。边界+节流更一致、零新基建,且用懂 persona/领域的同一模型 → 质量更优。
+
+**M4-3 升格通道:面板手动升格,非自动硬化。** approved 事实/洞见上加「升格到核心」按钮,用户手动点 → agent 侧 `createMemoryFragment(scope='user', source='import', status='active')`(守原生 char 预算 `consolidateUserMemoriesIfNeeded`)+ MAGI 置 `promoted_at`(幂等,面板隐藏按钮)。
+- *理由(质量):* always-on 核心是每轮注入的最贵地段,自动升格会拿噪声污染它;且 distill **刻意排除**身份/长期偏好/习惯(那些归原生 auto-extract),故 approved 的 episodic 事实**按设计不是稳定特质** → 任何"自动判硬化"启发式在零证据下必然瞎猜。人工授权 = 最高精度 + 守住 distill 边界 + 给面板真实职责。
+- *权衡:* 牺牲了"全自动"的便利,换核心记忆质量;自动升格(按复发计数)留作攒到复发数据后的增量。
+
+**M4-4 主动召回:`resolveMemoriesForContext` 处注入,复用全局开关。** private(contextPipeline)+ group(groupLlm)都穿过此函数 → 一处注入 `<proactive_memory>` 块覆盖两边。query = 当前用户消息;top-K=3 + relevance 阈值(~0.6,滤噪)+ **排除已升格**(`promoted_at` 非空,已在原生 always-on,免双重)+ 紧超时 + fail-open;门控复用 `magiSystemEnabled`(不新增 toggle)。用与 recall **同款 dense+sparse RRF**。
+- *热路径代价(诚实记录):* 必须在模型回复**前**同步注入(否则对本轮不"主动"),每轮多一次 MAGI 检索(query 端嵌入 + 向量搜,~50-200ms)。靠紧超时 + fail-open 兜底:MAGI 慢/挂即跳过,绝不阻塞回复。
+
+**M4-5 sentiment:distill 写 / 面板读,不接召回排序。** distill 逐条事实打 `sentiment` 标签(TEXT 枚举)→ 存 → 面板展示。
+- *诚实:* 零证据下唯一靠谱近期消费者 = 面板展示 + 为以后情感/关系特性沉淀语料,**近期不改变运行时行为**。不接主动召回排序 —— 拿情感调检索权重在零证据下是瞎调、**伤精度**,违背"质量优先"。"情感关系"需实体抽取(无实体模型),超范围。
+
+**M4-6 中文 sparse:应用层 jieba 分词,只动 agent_memory_fragment。** MAGI write 用 python `jieba` 分词 → 空格拼接 → `to_tsvector('simple', segmented)`(迁移 057 drop 本表 trigger,改 write 端点 app 层写 `search_vector`);search 端 dense cosine + 分词后 query 的 `ts_rank_cd` + RRF。
+- *否 zhparser:* 镜像 `pgvector/pgvector:pg16` **不带** zhparser/pg_jieba,装它要自建 Postgres 镜像(编译 SCWS+zhparser)+ superuser + 碰**共享 fragments 表**的 `'simple'` 配置 + 跟另一会话协调。代价大。
+- *质量上 jieba ≥ zhparser/SCWS:* jieba 词典更新、HMM 新词发现、是事实标准;app 层分词还能挂领域用户词典再提召回。检索质量大头在 dense(bge-zh)与 sparse 的 **RRF 融合**。**只动本表**(不碰 fragments)→ 无跨会话协调、无共享配置风险。
+- *贯穿性质量线:* sparse 落地后,`recall_memory` / 主动召回 / reconcile 近邻搜**全部**切到 dense+sparse RRF,不止 sparse 自己用。
+
+**M4-H 加固(纯 TDD,无设计):** B6 测试跑真实 alembic 迁移(非 `create_all`,防 model↔迁移漂移)；B7 status DB CHECK(并入 056)；B8 跨 repo 契约测试(agent 侧 `searchAgentMemory/writeAgentMemory/...` 打真实/录制 MAGI 响应,校验解析,防字段漂移)。
