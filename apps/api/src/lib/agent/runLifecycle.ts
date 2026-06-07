@@ -33,6 +33,7 @@ import { sealUserApiKeys } from './userApiKeys.js';
 import { recordStep } from './stepRecorder.js';
 import { collectReplyRefs } from './replyGen.js';
 import { toolRegistry } from './toolRegistry.js';
+import { runEpisodicMemory } from '../memoryEpisodicWire.js';
 
 export type CreateAgentRunInput = {
   ownerId: string;
@@ -309,6 +310,34 @@ export async function softComplete(
       run: latest,
       resource: detail ?? 'unknown',
     });
+  }
+
+  // 情景记忆(plan §M2b/M3):completed run 收尾蒸馏事实 → 写新/取代旧/跳过重复。
+  // 全程 fail-open(runEpisodicMemory 内部已兜 + 这里再兜),绝不影响 run finalize。
+  // owner 锁 run-owner(群聊不跨成员 §5.2);reply 已在前面 finalize,不阻塞用户感知延迟。
+  if (status === 'completed') {
+    try {
+      const { resolveLlmClient } = await import('./runLlmClient.js');
+      const llm = await resolveLlmClient(run);
+      if (llm) {
+        await runEpisodicMemory({
+          ownerId: run.ownerId,
+          runId: run.id,
+          sessionId: run.sessionId,
+          topicId: run.topicId,
+          transcript: `用户:${run.inputText}\n助手:${finalContent}`,
+          llm,
+          signal: runControllers.get(run.id)?.signal ?? new AbortController().signal,
+          log: {
+            userId: run.ownerId,
+            channel: 'memory_extract',
+            sessionId: run.sessionId ?? undefined,
+          },
+        });
+      }
+    } catch {
+      // fail-open:情景记忆任何失败绝不影响 run finalize
+    }
   }
 
   // M7：群聊 run 终态 → 释放 slot，触发同 topic 队首 dequeue。

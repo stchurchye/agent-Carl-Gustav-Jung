@@ -25,6 +25,7 @@ import { registerAskUser } from './tools/askUser.js';
 import { registerDeepResearch } from './tools/deepResearch.js';
 import { registerYoutubeTranscript } from './tools/youtubeTranscript.js';
 import { registerRecallStep } from './tools/recallStep.js';
+import { registerRecallMemory } from './tools/recallMemory.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -44,4 +45,5 @@ export function registerAgentTools(): void {
   registerDeepResearch();
   registerYoutubeTranscript();
   registerRecallStep();
+  registerRecallMemory();
 }
