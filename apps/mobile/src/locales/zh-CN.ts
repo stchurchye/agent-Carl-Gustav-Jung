@@ -481,6 +481,7 @@ export const zh = {
       memoryShort: '短期记忆',
       memorySearch: '记忆搜寻',
       memoryReview: '记忆审核',
+      memoryEpisodic: '长期记忆审核',
       memoryPrefs: '记忆设置',
       catHealth: '流浪猫健康监控',
       llmLogs: '流浪猫通讯记录',

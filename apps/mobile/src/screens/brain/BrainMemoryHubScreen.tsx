@@ -17,6 +17,7 @@ const SECONDARY_ROUTES = {
   memoryShort: 'BrainShortMemory',
   memorySearch: 'BrainSessionSearch',
   memoryReview: 'BrainMemoryReview',
+  memoryEpisodic: 'BrainEpisodicMemory',
   memoryPrefs: 'BrainMemoryPrefs',
   catHealth: 'BrainHermes',
 } as const satisfies Record<string, keyof BrainStackParamList>;

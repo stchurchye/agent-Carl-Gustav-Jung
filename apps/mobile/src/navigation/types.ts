@@ -36,6 +36,7 @@ export type BrainStackParamList = {
   BrainMemoryHub: undefined;
   BrainLongMemory: undefined;
   BrainShortMemory: undefined;
+  BrainEpisodicMemory: undefined;
   BrainSessionSearch: undefined;
   BrainMemoryReview: undefined;
   BrainHermes: undefined;
