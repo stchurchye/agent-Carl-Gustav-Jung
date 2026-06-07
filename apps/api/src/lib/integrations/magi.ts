@@ -102,6 +102,12 @@ export type WriteAgentMemoryParams = {
   sourceRunId?: string | null;
   sourceSessionId?: string | null;
   topicId?: string | null;
+  /** M4:fact|insight(reflection 产物默认 fact)。 */
+  kind?: 'fact' | 'insight';
+  /** M4:情感标签(distill 打);省略 → MAGI 存 NULL。 */
+  sentiment?: 'positive' | 'negative' | 'neutral' | 'mixed';
+  /** M4:insight 的 provenance(由哪些 fragment id 合成)。 */
+  sourceFragmentIds?: number[];
 };
 
 /**
@@ -129,6 +135,9 @@ export async function writeAgentMemory(
       source_run_id: params.sourceRunId ?? null,
       source_session_id: params.sourceSessionId ?? null,
       topic_id: params.topicId ?? null,
+      kind: params.kind ?? 'fact',
+      sentiment: params.sentiment ?? null,
+      source_fragment_ids: params.sourceFragmentIds ?? null,
     }),
     signal,
   });
