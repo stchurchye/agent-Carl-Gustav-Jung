@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WeChatChatHeader } from '../../components/WeChatChatHeader';
 import { api, type AgentMemoryItem } from '../../lib/api';
 import { apiErrorText } from '../../lib/apiError';
+import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
 import { colors, typography } from '../../theme/colors';
 import { wechatChatStyles } from '../../theme/wechatChat';
@@ -74,7 +75,7 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
 
   return (
     <View style={wechatChatStyles.page}>
-      <WeChatChatHeader title="长期记忆审核" showBack />
+      <WeChatChatHeader title={zh.brain.sections.memoryEpisodic} showBack />
       <View style={styles.filters}>
         {FILTERS.map((f) => (
           <Pressable
@@ -98,7 +99,7 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
           <ActivityIndicator color={colors.primary} style={styles.loader} />
         ) : items.length === 0 ? (
           <Text style={styles.empty}>
-            {filter === 'pending' ? '没有待审的记忆' : '还没有已批准的记忆'}
+            {filter === 'pending' ? '没有待审核的记忆' : '还没有已批准的记忆'}
           </Text>
         ) : (
           items.map((it) => (
