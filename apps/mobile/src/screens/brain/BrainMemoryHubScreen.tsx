@@ -20,6 +20,7 @@ const SECONDARY_ROUTES = {
   memoryEpisodic: 'BrainEpisodicMemory',
   memoryPrefs: 'BrainMemoryPrefs',
   catHealth: 'BrainHermes',
+  skillReview: 'BrainSkillReview',
 } as const satisfies Record<string, keyof BrainStackParamList>;
 
 type HubKey = keyof typeof SECONDARY_ROUTES;

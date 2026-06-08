@@ -22,6 +22,7 @@ import { BrainEpisodicMemoryScreen } from '../screens/brain/BrainEpisodicMemoryS
 import { BrainAgentTasksScreen } from '../screens/brain/BrainAgentTasksScreen';
 import { BrainAgentTaskDetailScreen } from '../screens/brain/BrainAgentTaskDetailScreen';
 import { BrainAgentDefaultModelScreen } from '../screens/brain/BrainAgentDefaultModelScreen';
+import { BrainSkillReviewScreen } from '../screens/brain/BrainSkillReviewScreen';
 import { SettingsDocumentsScreen } from '../screens/SettingsDocumentsScreen';
 import { brainTokens } from '../theme/brainTokens';
 
@@ -61,6 +62,7 @@ export function BrainStack() {
       <Stack.Screen name="BrainAgentTasks" component={BrainAgentTasksScreen} />
       <Stack.Screen name="BrainAgentTaskDetail" component={BrainAgentTaskDetailScreen} />
       <Stack.Screen name="BrainAgentDefaultModel" component={BrainAgentDefaultModelScreen} />
+      <Stack.Screen name="BrainSkillReview" component={BrainSkillReviewScreen} />
       <Stack.Screen name="SettingsDocuments" component={SettingsDocumentsScreen} />
     </Stack.Navigator>
   );
