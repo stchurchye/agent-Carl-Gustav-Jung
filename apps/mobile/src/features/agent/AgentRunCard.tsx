@@ -318,7 +318,7 @@ export function AgentRunCard({
               approveAgentRun(runId).catch((e) => Alert.alert('授权失败', String(e)))
             }
           >
-            <Text style={{ color: colors.success, marginRight: 16 }}>同意</Text>
+            <Text style={{ color: colors.link, marginRight: 16 }}>同意</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() =>
