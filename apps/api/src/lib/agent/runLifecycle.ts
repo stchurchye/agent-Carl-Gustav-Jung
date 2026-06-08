@@ -320,6 +320,12 @@ export async function softComplete(
       const { resolveLlmClient } = await import('./runLlmClient.js');
       const llm = await resolveLlmClient(run);
       if (llm) {
+        const signal = runControllers.get(run.id)?.signal ?? new AbortController().signal;
+        const log = {
+          userId: run.ownerId,
+          channel: 'memory_extract' as const,
+          sessionId: run.sessionId ?? undefined,
+        };
         await runEpisodicMemory({
           ownerId: run.ownerId,
           runId: run.id,
@@ -327,16 +333,29 @@ export async function softComplete(
           topicId: run.topicId,
           transcript: `用户:${run.inputText}\n助手:${finalContent}`,
           llm,
-          signal: runControllers.get(run.id)?.signal ?? new AbortController().signal,
-          log: {
-            userId: run.ownerId,
-            channel: 'memory_extract',
-            sessionId: run.sessionId ?? undefined,
-          },
+          signal,
+          log,
         });
+
+        // 技能自蒸馏(self-improvement loop):成功多步父 run 收尾把"这类任务怎么做"沉淀成
+        // enabled=false 的 user-scope topic_skill(待人评审)。子 agent(parentRunId)不自蒸馏。
+        // runEpisodicMemory 仅在 abort 时 throw(普通失败内部 fail-open),故能走到这里 = 未取消。
+        if (!run.parentRunId) {
+          const { distillSkillFromRun } = await import('./skillDistill.js');
+          await distillSkillFromRun({
+            ownerId: run.ownerId,
+            runId: run.id,
+            inputText: run.inputText,
+            finalContent,
+            steps: stepsForSummary,
+            llm,
+            signal,
+            log,
+          });
+        }
       }
     } catch {
-      // fail-open:情景记忆任何失败绝不影响 run finalize
+      // fail-open:情景记忆 / 技能蒸馏任何失败绝不影响 run finalize
     }
   }
 
