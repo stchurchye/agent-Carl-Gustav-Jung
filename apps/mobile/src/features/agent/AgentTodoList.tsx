@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import type { AgentTodo, AgentTodoStatus } from './types';
+import { colors } from '../../theme/colors';
 
 const ICON: Record<AgentTodoStatus, string> = {
   pending: '○',
@@ -29,7 +30,7 @@ export function AgentTodoList({ todos }: { todos: AgentTodo[] }) {
             <Text
               style={{
                 width: 18,
-                color: failed ? '#c33' : t.status === 'in_progress' ? '#456' : '#333',
+                color: failed ? colors.danger : t.status === 'in_progress' ? colors.link : colors.text,
               }}
             >
               {ICON[t.status]}
@@ -39,7 +40,7 @@ export function AgentTodoList({ todos }: { todos: AgentTodo[] }) {
                 flex: 1,
                 marginLeft: 8,
                 opacity: finished ? 0.55 : 1,
-                color: failed ? '#c33' : undefined,
+                color: failed ? colors.danger : undefined,
               }}
             >
               {t.text}

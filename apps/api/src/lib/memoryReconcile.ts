@@ -8,6 +8,8 @@ import {
   type MemoryHit,
 } from './integrations/magi.js';
 import { statusForConfidence } from './memoryStatus.js';
+import type { Sentiment } from './memoryEpisodicDistill.js';
+import { isAbortError } from './memoryAbort.js';
 
 const NEAR_TOP_K = 5;
 
@@ -73,7 +75,7 @@ async function judgeSupersession(
 export async function reconcileMemoryWrite(
   llm: LlmChatClient,
   ownerId: string,
-  newFact: { text: string; confidence: number },
+  newFact: { text: string; confidence: number; sentiment?: Sentiment },
   opts: {
     sourceRunId?: string | null;
     sourceSessionId?: string | null;
@@ -90,6 +92,7 @@ export async function reconcileMemoryWrite(
         text: newFact.text,
         confidence: newFact.confidence,
         status,
+        sentiment: newFact.sentiment,
         sourceRunId: opts.sourceRunId ?? null,
         sourceSessionId: opts.sourceSessionId ?? null,
         topicId: opts.topicId ?? null,
@@ -122,7 +125,7 @@ export async function reconcileMemoryWrite(
       await invalidateAgentMemory(ownerId, oldId, opts.signal);
       invalidatedIds.push(oldId);
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') throw e;
+      if (isAbortError(e, opts.signal)) throw e;
       // 逐条 fail-open:失效失败不阻断;新 fact 已写,旧条暂留,下次对账
     }
   }

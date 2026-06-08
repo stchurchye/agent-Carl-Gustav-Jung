@@ -2,6 +2,7 @@ import { formatMemoryContextSections } from '@xzz/shared';
 import { retrieveMemoriesForContext } from './memoryRetrieve.js';
 import type { MemoryScope } from '@xzz/shared';
 import * as intel from '../store/pg-intelligence.js';
+import { resolveProactiveRecall } from './memoryProactiveRecall.js';
 
 export async function resolveMemoriesForContext(params: {
   userId: string;
@@ -9,9 +10,13 @@ export async function resolveMemoriesForContext(params: {
   sessionId?: string | null;
   groupId?: string | null;
   topicId?: string | null;
+  signal?: AbortSignal;
 }): Promise<string> {
   const sections = await retrieveMemoriesForContext(params);
-  return formatMemoryContextSections(sections);
+  const nativeBlock = formatMemoryContextSections(sections);
+  // M4g 主动召回:用当前消息拉 top-K 情景记忆,拼成 <proactive_memory> 块。fail-open + 紧超时,绝不阻塞。
+  const proactive = await resolveProactiveRecall(params.userId, params.query, params.signal);
+  return [nativeBlock, proactive].filter(Boolean).join('\n\n');
 }
 
 export async function listMemoryTargetsForUser(params: {

@@ -88,4 +88,13 @@ describe('012_agent_runtime migration', () => {
     expect(indexes).toContain('idx_agent_runs_topic_blocking');
     expect(indexes).toContain('idx_agent_runs_topic_queued');
   });
+
+  it('023: topic_skills has source + source_run_id columns for skill distillation', async () => {
+    const { rows } = await getPool().query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'topic_skills' ORDER BY ordinal_position`,
+    );
+    const names = rows.map((r) => r.column_name);
+    expect(names).toEqual(expect.arrayContaining(['source', 'source_run_id']));
+  });
 });

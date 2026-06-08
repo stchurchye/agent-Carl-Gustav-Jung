@@ -12,7 +12,7 @@ import { BrainMetricBar } from '../../components/brain/BrainMetricBar';
 import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainPersonalityEdit'>;
 
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginHorizontal: 12,
     marginBottom: 6,
-    color: evaBrain.accentBright,
+    color: brainTokens.accentBright,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   sectionIntro: {
     marginHorizontal: 12,
     marginBottom: 10,
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 13,
     lineHeight: 19,
   },
@@ -152,24 +152,24 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 10,
     padding: 14,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
   },
   rowText: { flex: 1 },
   label: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 12,
     marginBottom: 4,
   },
   value: {
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 14,
     lineHeight: 20,
   },
   chevron: {
-    color: evaBrain.textDim,
+    color: brainTokens.textDim,
     fontSize: 22,
     marginLeft: 8,
   },
@@ -181,14 +181,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    backgroundColor: evaBrain.bgElevated,
+    backgroundColor: brainTokens.bgElevated,
     borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.borderSubtle,
+    borderColor: brainTokens.borderSubtle,
   },
   linkText: {
     flex: 1,
-    color: evaBrain.info,
+    color: brainTokens.info,
     fontSize: 14,
   },
 });

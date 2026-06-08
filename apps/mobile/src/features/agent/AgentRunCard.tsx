@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Alert, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useNavigation } from '@react-navigation/native';
 import { navigateBrainTab } from '../../lib/navigateBrain';
+import { colors } from '../../theme/colors';
 import { useAgentRunPoll as useAgentRunSubscription } from './hooks/useAgentRunPoll';
 import {
   approveAgentRun,
@@ -19,14 +20,14 @@ import { AgentSteerInput } from './AgentSteerInput';
 import { agentLlmDisplayName } from '@xzz/shared';
 
 const NOTICE_BG: Record<AgentNoticeSeverity, string> = {
-  info: '#e6f4ff',
-  warn: '#fff8e0',
-  error: '#fff0f0',
+  info: colors.infoBg,
+  warn: colors.warningBg,
+  error: colors.errorBg,
 };
 const NOTICE_FG: Record<AgentNoticeSeverity, string> = {
-  info: '#055',
-  warn: '#a60',
-  error: '#a00',
+  info: colors.info,
+  warn: colors.warning,
+  error: colors.danger,
 };
 const NOTICE_GLYPH: Record<AgentNoticeSeverity, string> = {
   info: 'i',
@@ -99,7 +100,7 @@ function ArtifactBlock({
         marginTop: 8,
         padding: 10,
         borderRadius: 8,
-        backgroundColor: '#f0f7f0',
+        backgroundColor: colors.successBg,
       }}
     >
       <Text style={{ fontSize: 11, fontWeight: '600', opacity: 0.6, marginBottom: 6 }}>
@@ -107,7 +108,7 @@ function ArtifactBlock({
       </Text>
 
       <Text
-        style={{ fontSize: 13, lineHeight: 20, color: '#1a1a1a' }}
+        style={{ fontSize: 13, lineHeight: 20, color: colors.text }}
         numberOfLines={expanded ? undefined : 5}
       >
         {artifact.finalContent}
@@ -118,12 +119,12 @@ function ArtifactBlock({
           onPress={() => setExpanded((v) => !v)}
           style={{ marginTop: 4 }}
         >
-          <Text style={{ fontSize: 12, color: '#0a6' }}>{expanded ? '收起' : '展开'}</Text>
+          <Text style={{ fontSize: 12, color: colors.link }}>{expanded ? '收起' : '展开'}</Text>
         </TouchableOpacity>
       ) : null}
 
       {artifact.refs.length > 0 ? (
-        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: '#c8dcc8' }}>
+        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: colors.primaryBorder }}>
           <Text style={{ fontSize: 11, opacity: 0.55, marginBottom: 4 }}>
             引用 ({artifact.refs.length})：
           </Text>
@@ -148,7 +149,7 @@ function ArtifactBlock({
                 }
               }}
             >
-              <Text style={{ fontSize: 12, color: '#0a6', marginBottom: 2 }}>
+              <Text style={{ fontSize: 12, color: colors.link, marginBottom: 2 }}>
                 • [{ref.kind}] {ref.label ?? ref.id}
               </Text>
             </TouchableOpacity>
@@ -161,7 +162,7 @@ function ArtifactBlock({
           marginTop: 8,
           paddingTop: 8,
           borderTopWidth: 0.5,
-          borderTopColor: '#c8dcc8',
+          borderTopColor: colors.primaryBorder,
           flexDirection: 'row',
           alignItems: 'center',
           flexWrap: 'wrap',
@@ -173,7 +174,7 @@ function ArtifactBlock({
             await Clipboard.setStringAsync(artifact.finalContent);
           }}
         >
-          <Text style={{ fontSize: 12, color: '#0a6' }}>复制全文</Text>
+          <Text style={{ fontSize: 12, color: colors.link }}>复制全文</Text>
         </TouchableOpacity>
         <Text style={{ fontSize: 12, opacity: 0.45 }}>·</Text>
         <Text style={{ fontSize: 12, opacity: 0.45 }}>产出于 {producedAt}</Text>
@@ -197,7 +198,7 @@ export function AgentRunCard({
 
   if (!run) {
     return (
-      <View style={{ padding: 10, borderRadius: 8, backgroundColor: '#f4f4f4', marginVertical: 6 }}>
+      <View style={{ padding: 10, borderRadius: 8, backgroundColor: colors.fill, marginVertical: 6 }}>
         <Text>加载 agent run…</Text>
       </View>
     );
@@ -212,7 +213,7 @@ export function AgentRunCard({
         padding: 10,
         borderRadius: 8,
         marginVertical: 6,
-        backgroundColor: terminal ? '#f4f4f4' : '#eef4ff',
+        backgroundColor: terminal ? colors.fill : colors.selectedBg,
       }}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -222,19 +223,19 @@ export function AgentRunCard({
         </Text>
         {!terminal ? (
           <TouchableOpacity onPress={() => cancelAgentRun(runId).catch(() => {})}>
-            <Text style={{ color: '#c33' }}>取消</Text>
+            <Text style={{ color: colors.danger }}>取消</Text>
           </TouchableOpacity>
         ) : null}
       </View>
 
       {/* M7 T9：排队 / 已合并追问 后缀 */}
       {run.status === 'queued' ? (
-        <Text style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+        <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>
           排队中 · 前面还有 {run.queuePosition ?? '?'} 个任务
         </Text>
       ) : null}
       {run.mergedInputs && run.mergedInputs.length > 0 ? (
-        <Text style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+        <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>
           已合并 {run.mergedInputs.length} 个追问
         </Text>
       ) : null}
@@ -264,7 +265,7 @@ export function AgentRunCard({
               <Text style={{ fontSize: 12, color: NOTICE_FG[n.severity], fontWeight: '600' }}>
                 [{NOTICE_GLYPH[n.severity]}] {n.message}
               </Text>
-              <Text style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+              <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 2 }}>
                 {n.code}
               </Text>
             </View>
@@ -283,13 +284,13 @@ export function AgentRunCard({
             paddingVertical: 6,
             paddingHorizontal: 10,
             borderRadius: 6,
-            backgroundColor: '#fff0f0',
+            backgroundColor: colors.errorBg,
           }}
         >
-          <Text style={{ fontSize: 12, color: '#a00', fontWeight: '600' }}>
+          <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600' }}>
             预算已用尽
           </Text>
-          <Text style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
+          <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
             步骤 {run.usage.steps}/{run.budget.maxSteps} · tokens{' '}
             {run.usage.tokens}/{run.budget.maxTokens} · 用时{' '}
             {run.usage.elapsedSeconds}s/{run.budget.maxSeconds}s
@@ -304,7 +305,7 @@ export function AgentRunCard({
             paddingVertical: 8,
             paddingHorizontal: 10,
             borderRadius: 6,
-            backgroundColor: '#fff7e0',
+            backgroundColor: colors.warningBg,
             flexDirection: 'row',
             alignItems: 'center',
           }}
@@ -317,14 +318,14 @@ export function AgentRunCard({
               approveAgentRun(runId).catch((e) => Alert.alert('授权失败', String(e)))
             }
           >
-            <Text style={{ color: '#393', marginRight: 16 }}>同意</Text>
+            <Text style={{ color: colors.link, marginRight: 16 }}>同意</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() =>
               denyAgentRun(runId).catch((e) => Alert.alert('拒绝失败', String(e)))
             }
           >
-            <Text style={{ color: '#c33' }}>拒绝</Text>
+            <Text style={{ color: colors.danger }}>拒绝</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -371,7 +372,7 @@ export function AgentRunCard({
               }
             }}
           >
-            <Text style={{ color: '#0a6' }}>再试一次</Text>
+            <Text style={{ color: colors.link }}>再试一次</Text>
           </TouchableOpacity>
         </View>
       ) : null}

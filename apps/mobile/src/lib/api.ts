@@ -130,6 +130,21 @@ export type AgentMemoryItem = {
   createdAt: string | null;
   validUntil: string | null;
   sourceRunId: string | null;
+  kind: string;
+  sentiment: 'positive' | 'negative' | 'neutral' | 'mixed' | null;
+  sourceFragmentIds: number[] | null;
+  promotedAt: string | null;
+};
+
+/** 技能(topic_skill)前端子集。source='auto_distilled' 为 M1 自蒸馏的建议技能;手写为 null。 */
+export type TopicSkill = {
+  id: string;
+  scope: 'topic' | 'user' | 'group';
+  title: string;
+  content: string;
+  enabled: boolean;
+  source: string | null;
+  sourceRunId: string | null;
 };
 
 export const api = {
@@ -742,6 +757,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ id, decision }),
     }),
+  promoteAgentMemory: (id: number) =>
+    request<{ promoted: boolean; fragmentId?: string }>('/api/agent-memory/promote', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
+
+  listSkills: () => request<{ skills: TopicSkill[] }>('/api/agent/skills'),
+  patchSkill: (id: string, patch: { enabled?: boolean; title?: string; content?: string }) =>
+    request<{ skill: TopicSkill }>(`/api/agent/skills/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  deleteSkill: (id: string) =>
+    request<Record<string, never>>(`/api/agent/skills/${id}`, { method: 'DELETE' }),
 
   btwAsk: (question: string, opts?: { groupId?: string; topicId?: string }) =>
     request<{ question: string; answer: string }>('/api/btw', {

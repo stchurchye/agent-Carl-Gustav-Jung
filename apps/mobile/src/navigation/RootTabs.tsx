@@ -5,7 +5,7 @@ import type { BrainStackParamList, GroupStackParamList } from './types';
 import { GroupStack } from './GroupStack';
 import { BrainStack } from './BrainStack';
 import { zh } from '../locales/zh-CN';
-import { evaBrain } from '../theme/evaBrain';
+import { brainTokens } from '../theme/brainTokens';
 import { colors } from '../theme/colors';
 import { wechat } from '../theme/wechat';
 
@@ -65,8 +65,8 @@ export function RootTabs() {
           tabBarLabel: ({ focused }) => (
             <TabLabel label={zh.tabs.brain} focused={focused} brain />
           ),
-          tabBarActiveTintColor: evaBrain.accent,
-          tabBarInactiveTintColor: evaBrain.textMuted,
+          tabBarActiveTintColor: brainTokens.accent,
+          tabBarInactiveTintColor: brainTokens.textMuted,
           tabBarStyle: [styles.tabBar, styles.tabBarBrain],
         }}
       />
@@ -85,12 +85,12 @@ const styles = StyleSheet.create({
     borderTopColor: wechat.separator,
   },
   tabBarBrain: {
-    backgroundColor: evaBrain.tabBarBg,
-    borderTopColor: evaBrain.borderSubtle,
+    backgroundColor: brainTokens.tabBarBg,
+    borderTopColor: brainTokens.borderSubtle,
   },
   tabLabel: { fontSize: 11, marginTop: 2 },
   tabLabelStudio: { color: wechat.textSecondary },
   tabLabelStudioFocused: { color: colors.primary, fontWeight: '600' },
-  tabLabelBrain: { color: evaBrain.textMuted },
-  tabLabelBrainFocused: { color: evaBrain.accent, fontWeight: '700' },
+  tabLabelBrain: { color: brainTokens.textMuted },
+  tabLabelBrainFocused: { color: brainTokens.accent, fontWeight: '700' },
 });

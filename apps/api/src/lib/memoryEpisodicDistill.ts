@@ -3,10 +3,16 @@ import { lastNonEmptyLine } from '@xzz/shared';
 import type { LlmChatClient } from './llm/types.js';
 import { writeAgentMemory } from './integrations/magi.js';
 import { statusForConfidence } from './memoryStatus.js';
+import { isAbortError } from './memoryAbort.js';
+
+export type Sentiment = 'positive' | 'negative' | 'neutral' | 'mixed';
+const SENTIMENTS = new Set<Sentiment>(['positive', 'negative', 'neutral', 'mixed']);
 
 export type EpisodicFact = {
   text: string;
   confidence: number;
+  /** M4:情感标签(distill 打,面板展示 + 语料沉淀);非法/缺省则不带。 */
+  sentiment?: Sentiment;
 };
 
 /**
@@ -21,8 +27,9 @@ const SYSTEM_PROMPT = `从对话中提炼 0～5 条值得长期记住的**情景
 **排除**(这些归核心个人记忆,不在这里抽):用户的稳定身份/称呼、长期偏好、固定习惯。
 判别:这条 fact 的主语是"用户本人的稳定特质"→ 跳过;是"世界/工作/某次经历"→ 收。
 跳过琐碎、一次性调试细节、易搜索的常识。
+每条可选打情感标签 sentiment(positive|negative|neutral|mixed,拿不准就省略)。
 输出单独一行 JSON,不要代码块:
-{"facts":[{"text":"事实","confidence":0.0-1.0}]}
+{"facts":[{"text":"事实","confidence":0.0-1.0,"sentiment":"neutral"}]}
 无值得记住的 → {"facts":[]}`;
 
 function parseFacts(rawOut: string): EpisodicFact[] {
@@ -40,7 +47,9 @@ function parseFacts(rawOut: string): EpisodicFact[] {
     const confidence = (f as { confidence?: unknown })?.confidence;
     if (typeof text !== 'string' || !text.trim()) continue;
     if (typeof confidence !== 'number' || confidence < 0 || confidence > 1) continue;
-    out.push({ text: text.trim(), confidence });
+    const rawSent = (f as { sentiment?: unknown })?.sentiment;
+    const sentiment = SENTIMENTS.has(rawSent as Sentiment) ? (rawSent as Sentiment) : undefined;
+    out.push({ text: text.trim(), confidence, ...(sentiment ? { sentiment } : {}) });
   }
   return out;
 }
@@ -89,6 +98,7 @@ export async function persistEpisodicMemories(
           text: f.text,
           confidence: f.confidence,
           status,
+          sentiment: f.sentiment,
           sourceRunId: opts.sourceRunId ?? null,
           sourceSessionId: opts.sourceSessionId ?? null,
           topicId: opts.topicId ?? null,
@@ -97,8 +107,8 @@ export async function persistEpisodicMemories(
       );
       written += 1;
     } catch (e) {
-      // 逐条 fail-open:边界 best-effort,丢一条不影响其他;AbortError 仍透传以让 runtime 看到 cancel
-      if (e instanceof Error && e.name === 'AbortError') throw e;
+      // 逐条 fail-open:边界 best-effort,丢一条不影响其他;取消仍透传以让 runtime 看到 cancel
+      if (isAbortError(e, opts.signal)) throw e;
     }
   }
   return written;

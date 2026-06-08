@@ -102,6 +102,12 @@ export type WriteAgentMemoryParams = {
   sourceRunId?: string | null;
   sourceSessionId?: string | null;
   topicId?: string | null;
+  /** M4:fact|insight(reflection 产物默认 fact)。 */
+  kind?: 'fact' | 'insight';
+  /** M4:情感标签(distill 打);省略 → MAGI 存 NULL。 */
+  sentiment?: 'positive' | 'negative' | 'neutral' | 'mixed';
+  /** M4:insight 的 provenance(由哪些 fragment id 合成)。 */
+  sourceFragmentIds?: number[];
 };
 
 /**
@@ -129,6 +135,9 @@ export async function writeAgentMemory(
       source_run_id: params.sourceRunId ?? null,
       source_session_id: params.sourceSessionId ?? null,
       topic_id: params.topicId ?? null,
+      kind: params.kind ?? 'fact',
+      sentiment: params.sentiment ?? null,
+      source_fragment_ids: params.sourceFragmentIds ?? null,
     }),
     signal,
   });
@@ -175,6 +184,10 @@ export type MemoryListItem = {
   createdAt: string | null;
   validUntil: string | null;
   sourceRunId: string | null;
+  kind: string;
+  sentiment: string | null;
+  sourceFragmentIds: number[] | null;
+  promotedAt: string | null;
 };
 
 /** P5 面板:列出 owner 的记忆(可选 status 过滤)。owner-scoped + service token。 */
@@ -182,6 +195,7 @@ export async function listAgentMemory(
   ownerId: string,
   status?: 'pending' | 'approved' | 'rejected',
   signal?: AbortSignal,
+  limit?: number,
 ): Promise<MemoryListItem[]> {
   if (!magiSystemEnabled()) return [];
   const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/list`, {
@@ -190,7 +204,7 @@ export async function listAgentMemory(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
     },
-    body: JSON.stringify({ owner_id: ownerId, status }),
+    body: JSON.stringify({ owner_id: ownerId, status, ...(limit ? { limit } : {}) }),
     signal,
   });
   if (!res.ok) throw new Error(`agent-memory list HTTP ${res.status}`);
@@ -203,6 +217,10 @@ export async function listAgentMemory(
       created_at?: string | null;
       valid_until?: string | null;
       source_run_id?: string | null;
+      kind?: string;
+      sentiment?: string | null;
+      source_fragment_ids?: number[] | null;
+      promoted_at?: string | null;
     }>;
   };
   return (json.items ?? []).map((it) => ({
@@ -213,6 +231,10 @@ export async function listAgentMemory(
     createdAt: it.created_at ?? null,
     validUntil: it.valid_until ?? null,
     sourceRunId: it.source_run_id ?? null,
+    kind: it.kind ?? 'fact',
+    sentiment: it.sentiment ?? null,
+    sourceFragmentIds: it.source_fragment_ids ?? null,
+    promotedAt: it.promoted_at ?? null,
   }));
 }
 
@@ -236,6 +258,54 @@ export async function decideAgentMemory(
   if (!res.ok) throw new Error(`agent-memory decide HTTP ${res.status}`);
   const json = (await res.json()) as { updated: number };
   return { updated: json.updated };
+}
+
+/**
+ * 升格(M4h):MAGI 侧 compare-and-set promoted_at + 返回 text(供 agent 写原生核心)。
+ * 幂等:已升格 → {promoted:false}。owner-scoped + service token。未启用 → {promoted:false}。
+ */
+export async function promoteAgentMemory(
+  ownerId: string,
+  id: number,
+  signal?: AbortSignal,
+): Promise<{ promoted: boolean; text: string | null }> {
+  if (!magiSystemEnabled()) return { promoted: false, text: null };
+  const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/promote`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
+    },
+    body: JSON.stringify({ owner_id: ownerId, id }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`agent-memory promote HTTP ${res.status}`);
+  const json = (await res.json()) as { promoted: boolean; text: string | null };
+  return { promoted: json.promoted, text: json.text ?? null };
+}
+
+/**
+ * 升格补偿(M4h):清 MAGI 侧 promoted_at。供升格时原生写失败回滚,使事实重回 episodic search。
+ * owner-scoped + service token。未启用 → no-op。
+ */
+export async function unpromoteAgentMemory(
+  ownerId: string,
+  id: number,
+  signal?: AbortSignal,
+): Promise<{ unpromoted: number }> {
+  if (!magiSystemEnabled()) return { unpromoted: 0 };
+  const res = await fetch(`${MAGI_SYSTEM_URL}/api/agent-memory/unpromote`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MAGI_SYSTEM_TOKEN ?? ''}`,
+    },
+    body: JSON.stringify({ owner_id: ownerId, id }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`agent-memory unpromote HTTP ${res.status}`);
+  const json = (await res.json()) as { unpromoted: number };
+  return { unpromoted: json.unpromoted };
 }
 
 export async function ingestMagiContent(

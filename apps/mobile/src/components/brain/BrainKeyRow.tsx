@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = {
   slotLabel: string;
@@ -37,25 +37,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
     paddingHorizontal: 14,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
     borderRadius: 4,
   },
   rowPressed: {
-    backgroundColor: evaBrain.bgElevated,
-    borderColor: evaBrain.accentBright,
+    backgroundColor: brainTokens.bgElevated,
+    borderColor: brainTokens.accentBright,
   },
   left: { flex: 1, paddingRight: 8 },
   slot: {
-    color: evaBrain.accentBright,
+    color: brainTokens.accentBright,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
     marginBottom: 4,
   },
   title: {
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -71,19 +71,19 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginTop: 4,
   },
-  dotOn: { backgroundColor: evaBrain.accent },
-  dotOff: { backgroundColor: evaBrain.textDim },
+  dotOn: { backgroundColor: brainTokens.accent },
+  dotOff: { backgroundColor: brainTokens.textDim },
   status: {
     flex: 1,
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 12,
     lineHeight: 17,
   },
   statusOn: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
   },
   chevron: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 22,
     fontWeight: '300',
   },

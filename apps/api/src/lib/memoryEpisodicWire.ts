@@ -3,6 +3,8 @@ import type { LlmChatClient } from './llm/types.js';
 import { magiSystemEnabled } from './integrations/magi.js';
 import { distillEpisodicMemories } from './memoryEpisodicDistill.js';
 import { reconcileMemoryWrite } from './memoryReconcile.js';
+import { runReflection } from './memoryReflect.js';
+import { isAbortError } from './memoryAbort.js';
 
 /** 太短的转录不值得花一次 LLM 蒸馏(仿 autoExtract 的 min 门);只挡"在""好的"这种 trivial ack,
  *  保留有内容的短对话。 */
@@ -34,7 +36,8 @@ export async function runEpisodicMemory(params: {
       signal: params.signal,
       log: params.log,
     });
-  } catch {
+  } catch (e) {
+    if (isAbortError(e, params.signal)) throw e; // 取消透传(provider 重包 abort,故查 signal)
     return; // fail-open:蒸馏失败不影响 finalize
   }
 
@@ -47,8 +50,25 @@ export async function runEpisodicMemory(params: {
         signal: params.signal,
         log: params.log,
       });
-    } catch {
+    } catch (e) {
+      if (isAbortError(e, params.signal)) throw e; // 取消透传
       // 逐条 fail-open:单条 reconcile 失败不影响其他、不抛
     }
+  }
+
+  // reflection→insight(M4f):节流触发,自上条 insight 以来新增事实够多才合成。内部 fail-open。
+  try {
+    await runReflection({
+      ownerId: params.ownerId,
+      llm: params.llm,
+      signal: params.signal,
+      log: params.log,
+      sourceRunId: params.runId,
+      sourceSessionId: params.sessionId,
+      topicId: params.topicId,
+    });
+  } catch (e) {
+    if (isAbortError(e, params.signal)) throw e;
+    // fail-open:反思失败不影响 finalize
   }
 }

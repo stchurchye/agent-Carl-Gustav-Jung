@@ -174,6 +174,11 @@ export type StepKind =
   | 'approval_request'
   | 'approval_grant'
   | 'approval_deny'
+  // M3-S0：子 agent 越权工具被 exec-time 白名单护栏拦截。专用 kind（不复用
+  // 'approval_deny'）—— 护栏是「策略越权拦截」，与「用户拒绝审批」语义不同。
+  // 复用 approval_deny 会被 applyReplanningIfNeeded 误判成 denyIsNewest，
+  // 触发 generatePlanForApprovalDeny 生成 echo 替代 plan（把安全拦截混淆成换方案）。
+  | 'subagent_tool_denied'
   | 'approval_timeout'
   | 'cancel'
   | 'steer'

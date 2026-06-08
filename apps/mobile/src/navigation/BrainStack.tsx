@@ -22,8 +22,9 @@ import { BrainEpisodicMemoryScreen } from '../screens/brain/BrainEpisodicMemoryS
 import { BrainAgentTasksScreen } from '../screens/brain/BrainAgentTasksScreen';
 import { BrainAgentTaskDetailScreen } from '../screens/brain/BrainAgentTaskDetailScreen';
 import { BrainAgentDefaultModelScreen } from '../screens/brain/BrainAgentDefaultModelScreen';
+import { BrainSkillReviewScreen } from '../screens/brain/BrainSkillReviewScreen';
 import { SettingsDocumentsScreen } from '../screens/SettingsDocumentsScreen';
-import { evaBrain } from '../theme/evaBrain';
+import { brainTokens } from '../theme/brainTokens';
 
 const Stack = createNativeStackNavigator<BrainStackParamList>();
 
@@ -33,7 +34,7 @@ export function BrainStack() {
       initialRouteName="BrainHub"
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: evaBrain.bg },
+        contentStyle: { backgroundColor: brainTokens.bg },
       }}
     >
       <Stack.Screen name="BrainHub" component={BrainHubScreen} />
@@ -61,6 +62,7 @@ export function BrainStack() {
       <Stack.Screen name="BrainAgentTasks" component={BrainAgentTasksScreen} />
       <Stack.Screen name="BrainAgentTaskDetail" component={BrainAgentTaskDetailScreen} />
       <Stack.Screen name="BrainAgentDefaultModel" component={BrainAgentDefaultModelScreen} />
+      <Stack.Screen name="BrainSkillReview" component={BrainSkillReviewScreen} />
       <Stack.Screen name="SettingsDocuments" component={SettingsDocumentsScreen} />
     </Stack.Navigator>
   );

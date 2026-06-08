@@ -142,9 +142,31 @@ cd /Users/church/claude/MAGI-System && pytest backend/tests -k agent_memory
 cd apps/api && DATABASE_URL=$(grep DATABASE_URL ../../.env | cut -d= -f2-) npx vitest run
 ```
 
-## 7. 延后 / 未来工作(非阻塞,证据驱动再做)
+## 7. M4 增强层执行计划(本期建全 8 项;决策见 ADR 0001「M4 增强层」)
 
-- **中文 sparse hybrid(独立基建任务)。** 现状检索 **dense-only**(bge,中文语义已够)。plan 原设想 dense+sparse+RRF,但 Postgres `'simple'` 配置**不切中文词**(`to_tsvector('simple','我喜欢猫')` 整串一个 token,搜"猫"不命中)→ 稀疏对中文几乎无效,故 M1 退 dense-only。**要做**:在 MAGI 的 Postgres 装中文分词扩展(`zhparser` 或 `pg_jieba`,改 Dockerfile)→ 建中文 text search config → 把 055 触发器的 `to_tsvector('simple',…)` 换成该 config → 调 RRF 权重 + 测试。**注意会动到 MAGI 整库**(现有 fragments 也用 `'simple'`),需跟 MAGI owner 协调。**何时做**:当 dense 召回被发现"精确词/人名/ID 搜不准"时。M1 已留 `search_vector` 列 + 触发器钩子,届时只换分词 config,不动表结构。
-- **backfill 端点:** moot —— `embed_text_sync` 内部 hash-fallback 从不返 None,embedding 永不 NULL,无可回灌。若将来改 write 为"embed 真失败则存 NULL"才需要。
-- **测试跑迁移(防 model↔迁移漂移):** 现状 M1 测试用 `create_all`(模型),未跑 055 迁移 → 触发器/server_default/约束未被端点测试覆盖。补一个跑 `alembic upgrade head` 的冒烟测试或让集成测试基于迁移建表。
-- **status CHECK 约束(DB 层防御):** 现 status 校验在 API 层(Pydantic Literal);可加 DB CHECK 作纵深防御(非必需,无可观测 bug)。
+> **基调:** M1-M3+P5 已上线。原本节列为「证据驱动、不前置」;用户知情后选择**全建 + 质量优先**(见 ADR)。诚实弱点:sentiment 近期纯数据沉淀;零数据下 reflection 节流阈值起步保守。
+> **跨 repo 协调(同 M1 三条):** MAGI 侧从 `origin/main` 起**新** dev 分支(**别**用 `MAGI-System-deploy`,那是 :8001 稳定实例源,锁 main;**别**碰另一会话的 `MAGI-System` 工作树)。迁移接在 055 之后(`alembic heads` 验单 head)。只新增/改 agent_memory 自己的 model+router+迁移,**不碰** `fragments`/`config.py`/`retrieval.py`/`reflection.py`。
+
+### M4 MAGI 侧(Python/pytest,先做先合)
+- **M4a 迁移 056**(纯 additive):`agent_memory_fragment` 加 `kind TEXT NOT NULL DEFAULT 'fact'`(CHECK `fact|insight`)、`source_fragment_ids BIGINT[]`、`sentiment TEXT`(CHECK `positive|negative|neutral|mixed`)、`promoted_at TIMESTAMPTZ`;并补 `status` DB CHECK(`pending|approved|rejected`,= B7)。model 同步。验收:迁移 up/down 干净、默认值对、CHECK 拒非法值。
+- **M4b write 端点扩参**(additive):接受可选 `kind`/`source_fragment_ids`/`sentiment`。验收:写 insight(带 sources+sentiment)持久化正确;旧调用(不带)行为不变。
+- **M4c 中文 sparse(jieba)**:requirements 加 `jieba`;迁移 057 drop 本表 tsvector trigger;write 端 `' '.join(jieba.cut(text))` → app 层算 `to_tsvector('simple', segmented)` 写 `search_vector`;search 端 dense cosine + 分词后 query 的 `ts_rank_cd` + RRF 融合。验收:中文精确词(dense 漏的)经 sparse 命中;RRF 同时含 dense+sparse 命中。
+- **M4d search 排除已升格 + hybrid 收口**:search `WHERE promoted_at IS NULL`(已升格的在原生 always-on,不双重浮现);确认 `recall`/主动召回/reconcile 近邻搜走同一 RRF。验收:升格后该条不再被 search 返。
+
+### M4 agent 侧(TS/vitest)
+- **M4e write client + distill sentiment**:`writeAgentMemory` 加 `kind`/`sourceFragmentIds`/`sentiment`;distill 输出 schema 加 `sentiment`(逐条标签)。验收:蒸馏出的 fact 带 sentiment 写入。
+- **M4f reflection→insight**(`memoryReflect.ts`):`list` 拉 owner approved 事实 → 节流(自上条 insight 新增事实数≥阈值)→ LLM 合成(输入宽窗口)→ `writeAgentMemory(kind='insight', source_fragment_ids)`;接在 `runLifecycle.softComplete`(episodic 之后,fail-open,owner 锁 run-owner)。验收:攒够事实后产 insight 且带 source_fragment_ids;未够阈值不产;fail-open。
+- **M4g 主动召回**:`resolveMemoriesForContext` 处注入 `<proactive_memory>` 块(private+group 一处覆盖),query=当前用户消息、top-K=3、relevance 阈值、排除已升格、紧超时、fail-open、门控 `magiSystemEnabled`。验收:相关 approved 事实自动入 context(无需 agent 调工具);MAGI 慢/挂跳过不阻塞;已升格不重复注入。
+- **M4h 升格通道**:MAGI 加 `promote` 端点(置 `promoted_at`,owner+token);agent api `/api/agent-memory/promote`(owner=JWT)→ 原生 `createMemoryFragment(scope=user, source=import, status=active)` + 调 MAGI 置 `promoted_at`(守 char 预算、幂等)。验收:点升格 → 原生出现该 fragment、MAGI 置 promoted_at、重复点幂等。
+- **M4i mobile 面板**:`BrainEpisodicMemoryScreen` 显示 `sentiment` + 区分 `kind=insight`(标识 + source 数)+ approved 项「升格到核心」按钮(已升格隐藏)。验收:Expo 目测(用户侧)。
+
+### M4-H 加固(纯 TDD,穿插)
+- **B6 测试跑真实迁移**:MAGI agent_memory 测试基于 `alembic upgrade head`(非 `create_all`),覆盖触发器/server_default/CHECK。
+- **B7 status DB CHECK**:并入 M4a 迁移 056。
+- **B8 跨 repo 契约测试**:agent 侧 `searchAgentMemory/writeAgentMemory/invalidateAgentMemory/listAgentMemory/decideAgentMemory` 打真实(起一次性 MAGI)或录制响应,校验字段解析,防 JSON 契约漂移。
+
+每切片:TDD 红→绿→重构 → `/code-review` 修验证为真的洞 → commit。
+
+### 历史:已交付(M1-M3 + P5,2026-06-07 全 merged + 生产实证)
+- **backfill 端点:** moot —— `embed_text_sync` hash-fallback 从不返 None,embedding 永不 NULL。
+- 其余 M1-M3+P5 详见本仓 memory `agent-memory-build-progress`。

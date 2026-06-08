@@ -50,6 +50,8 @@ export type BrainStackParamList = {
   BrainAgentTaskDetail: { runId: string };
   /** M1e Task 12: Agent 默认 provider+model 选择 */
   BrainAgentDefaultModel: undefined;
+  /** M5-S1: 自蒸馏建议技能评审 */
+  BrainSkillReview: undefined;
   SettingsMemory: {
     scope?: 'user' | 'topic' | 'session';
     groupId?: string;

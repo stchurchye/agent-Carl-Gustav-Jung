@@ -8,7 +8,7 @@ import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
 import { api } from '../../lib/api';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainSessionSearch'>;
 
@@ -46,7 +46,7 @@ export function BrainSessionSearchScreen(_props: Props) {
           value={query}
           onChangeText={setQuery}
           placeholder={zh.brain.states.searchPlaceholder}
-          placeholderTextColor={evaBrain.textDim}
+          placeholderTextColor={brainTokens.textDim}
           returnKeyType="search"
           onSubmitEditing={() => void search()}
         />
@@ -82,27 +82,27 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderWidth: 1,
-    borderColor: evaBrain.borderSubtle,
+    borderColor: brainTokens.borderSubtle,
     borderRadius: 4,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 15,
   },
   searchBtn: {
     justifyContent: 'center',
     paddingHorizontal: 14,
-    backgroundColor: evaBrain.accentDim,
+    backgroundColor: brainTokens.accentDim,
     borderRadius: 4,
   },
   searchBtnText: {
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontWeight: '600',
   },
   empty: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     textAlign: 'center',
     marginTop: 24,
   },
@@ -110,19 +110,19 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 8,
     padding: 12,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
   },
   hitMeta: {
     fontSize: 11,
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     marginBottom: 6,
   },
   hitBody: {
     fontSize: 13,
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     lineHeight: 18,
   },
 });

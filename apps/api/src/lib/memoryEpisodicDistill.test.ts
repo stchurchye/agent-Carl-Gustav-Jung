@@ -42,6 +42,31 @@ describe('distillEpisodicMemories', () => {
   it('returns [] on non-JSON / garbage LLM output (fail-safe)', async () => {
     expect(await distillEpisodicMemories(fakeLlm('抱歉我不能输出 JSON'), 't')).toEqual([]);
   });
+
+  it('M4e: parses optional sentiment label per fact', async () => {
+    const facts = await distillEpisodicMemories(
+      fakeLlm('{"facts":[{"text":"用户搞定了上线","confidence":0.8,"sentiment":"positive"}]}'),
+      't',
+    );
+    expect(facts).toEqual([
+      { text: '用户搞定了上线', confidence: 0.8, sentiment: 'positive' },
+    ]);
+  });
+
+  it('M4e: omits sentiment when missing or invalid (toEqual ignores undefined)', async () => {
+    const facts = await distillEpisodicMemories(
+      fakeLlm(
+        '{"facts":[{"text":"无情感","confidence":0.6},{"text":"非法情感","confidence":0.6,"sentiment":"愤怒"}]}',
+      ),
+      't',
+    );
+    expect(facts).toEqual([
+      { text: '无情感', confidence: 0.6 },
+      { text: '非法情感', confidence: 0.6 },
+    ]);
+    expect(facts[0].sentiment).toBeUndefined();
+    expect(facts[1].sentiment).toBeUndefined();
+  });
 });
 
 describe('persistEpisodicMemories', () => {
@@ -69,6 +94,19 @@ describe('persistEpisodicMemories', () => {
     );
     expect(writeMem).toHaveBeenCalledWith(
       expect.objectContaining({ text: '低置信事实', status: 'pending' }),
+      undefined,
+    );
+  });
+
+  it('M4e: forwards sentiment to writeAgentMemory', async () => {
+    writeMem.mockResolvedValue({ id: 1 });
+    await persistEpisodicMemories(
+      'userA',
+      [{ text: '上线成功', confidence: 0.9, sentiment: 'positive' }],
+      { sourceRunId: 'run-1' },
+    );
+    expect(writeMem).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '上线成功', sentiment: 'positive' }),
       undefined,
     );
   });

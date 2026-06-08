@@ -11,6 +11,7 @@ import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
 import { api } from '../../lib/api';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainLlmLogDetail'>;
 
@@ -71,7 +72,7 @@ export function BrainLlmLogDetailScreen({ navigation, route }: Props) {
           <BrainJsonBlock data={data.rawJson} title="原始 rawJson" />
         </>
       ) : (
-        <Text style={{ color: '#8a8278', textAlign: 'center', marginTop: 24 }}>
+        <Text style={{ color: brainTokens.textMuted, textAlign: 'center', marginTop: 24 }}>
           {zh.brain.states.empty}
         </Text>
       )}

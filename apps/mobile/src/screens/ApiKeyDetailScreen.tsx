@@ -18,7 +18,7 @@ import { apiErrorText } from '../lib/apiError';
 import { apiKeyKindConfig, loadApiKeyStatus } from '../lib/apiKeyKind';
 import { zh } from '../locales/zh-CN';
 import type { BrainStackParamList } from '../navigation/types';
-import { evaBrain } from '../theme/evaBrain';
+import { brainTokens } from '../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'ApiKeyDetail'>;
 
@@ -173,14 +173,14 @@ export function ApiKeyDetailScreen({ route, navigation }: Props) {
           <TextInput
             style={styles.input}
             placeholder={cfg.placeholder}
-            placeholderTextColor={evaBrain.textDim}
+            placeholderTextColor={brainTokens.textDim}
             value={input}
             onChangeText={onChangeText}
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="off"
             textContentType="password"
-            selectionColor={evaBrain.accent}
+            selectionColor={brainTokens.accent}
           />
         </View>
 
@@ -196,7 +196,7 @@ export function ApiKeyDetailScreen({ route, navigation }: Props) {
             disabled={saving || verifying}
           >
             {saving ? (
-              <ActivityIndicator color={evaBrain.bg} />
+              <ActivityIndicator color={brainTokens.bg} />
             ) : (
               <Text style={styles.btnPrimaryText}>{cfg.saveLabel}</Text>
             )}
@@ -212,7 +212,7 @@ export function ApiKeyDetailScreen({ route, navigation }: Props) {
             disabled={verifying || saving || !configured}
           >
             {verifying ? (
-              <ActivityIndicator color={evaBrain.accent} />
+              <ActivityIndicator color={brainTokens.accent} />
             ) : (
               <Text style={styles.btnSecondaryText}>{cfg.verifyLabel}</Text>
             )}
@@ -240,9 +240,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     padding: 14,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
     borderRadius: 4,
   },
   statusRow: {
@@ -255,23 +255,23 @@ const styles = StyleSheet.create({
     height: 9,
     borderRadius: 5,
   },
-  statusDotOn: { backgroundColor: evaBrain.accent },
-  statusDotOff: { backgroundColor: evaBrain.textDim },
+  statusDotOn: { backgroundColor: brainTokens.accent },
+  statusDotOff: { backgroundColor: brainTokens.textDim },
   statusTitle: {
-    color: evaBrain.accentBright,
+    color: brainTokens.accentBright,
     fontSize: 14,
     fontWeight: '700',
   },
   statusSub: {
     marginTop: 8,
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 13,
     lineHeight: 18,
   },
   hint: {
     marginHorizontal: 16,
     marginBottom: 12,
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 13,
     lineHeight: 20,
   },
@@ -279,13 +279,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 14,
-    backgroundColor: evaBrain.bgElevated,
+    backgroundColor: brainTokens.bgElevated,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
     borderRadius: 4,
   },
   inputLabel: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 11,
     fontWeight: '700',
     marginBottom: 10,
@@ -294,13 +294,13 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: evaBrain.bg,
+    backgroundColor: brainTokens.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.borderSubtle,
+    borderColor: brainTokens.borderSubtle,
     borderRadius: 4,
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 15,
-    fontFamily: evaBrain.mono,
+    fontFamily: brainTokens.mono,
   },
   actions: {
     flexDirection: 'row',
@@ -316,22 +316,22 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   btnPrimary: {
-    backgroundColor: evaBrain.accent,
-    borderColor: evaBrain.accentBright,
+    backgroundColor: brainTokens.accent,
+    borderColor: brainTokens.accentBright,
   },
   btnSecondary: {
-    backgroundColor: evaBrain.bgCard,
-    borderColor: evaBrain.accent,
+    backgroundColor: brainTokens.bgCard,
+    borderColor: brainTokens.accent,
   },
   btnDisabled: { opacity: 0.45 },
   btnPressed: { opacity: 0.85 },
   btnPrimaryText: {
-    color: evaBrain.bg,
+    color: brainTokens.bg,
     fontSize: 15,
     fontWeight: '700',
   },
   btnSecondaryText: {
-    color: evaBrain.accentBright,
+    color: brainTokens.accentBright,
     fontSize: 15,
     fontWeight: '600',
   },
@@ -342,13 +342,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   clearText: {
-    color: evaBrain.error,
+    color: brainTokens.error,
     fontSize: 14,
   },
   footnote: {
     marginTop: 8,
     marginHorizontal: 16,
-    color: evaBrain.textDim,
+    color: brainTokens.textDim,
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',
