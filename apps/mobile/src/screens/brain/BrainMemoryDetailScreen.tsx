@@ -12,6 +12,7 @@ import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
 import { api } from '../../lib/api';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
+import { evaBrain } from '../../theme/evaBrain';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainMemoryDetail'>;
 
@@ -65,7 +66,7 @@ export function BrainMemoryDetailScreen({ navigation, route }: Props) {
           <BrainJsonBlock data={fragment} />
           <Text
             style={{
-              color: '#ff8c1a',
+              color: evaBrain.accent,
               fontSize: 13,
               fontWeight: '700',
               marginHorizontal: 16,
@@ -76,7 +77,7 @@ export function BrainMemoryDetailScreen({ navigation, route }: Props) {
             {zh.brain.versionHistory}
           </Text>
           {versions.length === 0 ? (
-            <Text style={{ color: '#8a8278', textAlign: 'center' }}>{zh.brain.versionsEmpty}</Text>
+            <Text style={{ color: evaBrain.textMuted, textAlign: 'center' }}>{zh.brain.versionsEmpty}</Text>
           ) : (
             versions.map((v) => (
               <BrainDataCard
@@ -93,7 +94,7 @@ export function BrainMemoryDetailScreen({ navigation, route }: Props) {
           )}
         </>
       ) : (
-        <Text style={{ color: '#8a8278', textAlign: 'center', marginTop: 24 }}>
+        <Text style={{ color: evaBrain.textMuted, textAlign: 'center', marginTop: 24 }}>
           {zh.brain.states.empty}
         </Text>
       )}
