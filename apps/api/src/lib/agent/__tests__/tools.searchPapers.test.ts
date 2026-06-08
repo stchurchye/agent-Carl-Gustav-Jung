@@ -41,6 +41,10 @@ describe('search_papers tool', () => {
   it('OpenAlex happy path → ok:true with mapped papers', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       expect(url).toContain('api.openalex.org/works');
+      // 精确检索修复:限定标题+摘要 filter + 按相关性排序(而非宽泛 ?search=)
+      expect(url).toContain('title_and_abstract.search'); // filter key(冒号后编码,只断言键)
+      expect(url).toContain('relevance_score'); // sort=relevance_score:desc
+      expect(url).not.toContain('?search='); // 旧宽泛查法已弃
       return new Response(JSON.stringify({ results: [openAlexHit] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

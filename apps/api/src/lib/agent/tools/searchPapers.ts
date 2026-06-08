@@ -93,8 +93,16 @@ async function queryOpenAlex(
   topK: number,
   signal: AbortSignal,
 ): Promise<Paper[]> {
-  const params = new URLSearchParams({ search: query, 'per-page': String(topK) });
-  if (yearFrom) params.set('filter', `from_publication_date:${yearFrom}-01-01`);
+  // 用 title_and_abstract.search(只在标题+摘要里匹配)而非宽泛 search=(含全文+所有字段)。
+  // 宽泛 search 对长自然语句 + 多义词(archetype/shadow)会被跨领域高频词冲淹,召不准;
+  // 限定标题+摘要 + 按 relevance_score 排,niche 主题(如荣格)精确率显著提升(实测 3/5 vs 1/5)。
+  const filters = [`title_and_abstract.search:${query}`];
+  if (yearFrom) filters.push(`from_publication_date:${yearFrom}-01-01`);
+  const params = new URLSearchParams({
+    filter: filters.join(','),
+    'per-page': String(topK),
+    sort: 'relevance_score:desc',
+  });
   const url = `https://api.openalex.org/works?${params}`;
   const res = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
@@ -126,7 +134,8 @@ async function queryCrossRef(
 export const searchPapersTool: ToolDef<SearchPapersInput, SearchPapersOutput> = {
   name: 'search_papers',
   description:
-    'Search academic papers (OpenAlex primary: 250M works; CrossRef fallback). Use for theory names ("prospect theory"), author+topic, "is there empirical evidence for X" questions. Prefer over search_web for academic claims.',
+    'Search academic papers (OpenAlex title+abstract; CrossRef fallback). Use for theory names ("prospect theory"), author+topic, "is there empirical evidence for X". ' +
+    'IMPORTANT: use 2-4 SPECIFIC terms (e.g. "Jungian archetype", "Kahneman prospect theory"), NOT long natural-language sentences — generic words (empirical/evidence/theory/research) dilute relevance and pull in off-domain papers. Prefer over search_web for academic claims.',
   inputSchema: {
     type: 'object',
     required: ['query'],
