@@ -17,7 +17,12 @@ const chat = vi.fn();
 const llm = { providerId: 'deepseek', modelId: 'deepseek-v4-pro', chat } as unknown as LlmChatClient;
 const signal = new AbortController().signal;
 
-function step(kind: AgentStep['kind'], toolName: string | null, output: unknown): AgentStep {
+function step(
+  kind: AgentStep['kind'],
+  toolName: string | null,
+  output: unknown,
+  error: string | null = null,
+): AgentStep {
   return {
     id: `s-${Math.random()}`,
     runId: 'run-1',
@@ -29,7 +34,7 @@ function step(kind: AgentStep['kind'], toolName: string | null, output: unknown)
     output,
     tokens: 0,
     durationMs: 0,
-    error: null,
+    error, // 软失败:runExecute 记 tool_call 时把 softError 落到 step.error
     byUserId: null,
     createdAt: new Date(),
   };
@@ -105,10 +110,11 @@ describe('distillSkillFromRun', () => {
     expect(upsert).not.toHaveBeenCalled();
   });
 
-  it('gate: soft-failed tool_call (output.ok===false) does not count toward the threshold', async () => {
+  it('gate: soft-failed tool_call (step.error 非空) does not count toward the threshold', async () => {
+    // production:软失败的 tool_call 把 softError 落到 step.error(tool 的 ok 嵌在 output.result.ok)。
     const steps = [
-      step('tool_call', 'web_search', { ok: true }),
-      step('tool_call', 'fetch_url', { ok: false, error: '404' }),
+      step('tool_call', 'web_search', { result: { ok: true } }),
+      step('tool_call', 'fetch_url', { result: { ok: false } }, 'soft: 404'),
     ];
     await distillSkillFromRun(params({ steps }));
     expect(chat).not.toHaveBeenCalled();
