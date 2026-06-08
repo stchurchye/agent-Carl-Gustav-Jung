@@ -15,7 +15,7 @@ import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
 import { api } from '../../lib/api';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainLongMemory'>;
 
@@ -126,16 +126,16 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: evaBrain.borderSubtle,
+    borderColor: brainTokens.borderSubtle,
   },
   chipActive: {
-    borderColor: evaBrain.accent,
-    backgroundColor: 'rgba(255, 140, 26, 0.15)',
+    borderColor: brainTokens.accent,
+    backgroundColor: 'rgba(224, 123, 0, 0.15)',
   },
-  chipText: { color: evaBrain.textMuted, fontSize: 12 },
-  chipTextActive: { color: evaBrain.accent },
+  chipText: { color: brainTokens.textMuted, fontSize: 12 },
+  chipTextActive: { color: brainTokens.accent },
   section: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 13,
     fontWeight: '700',
     marginHorizontal: 16,

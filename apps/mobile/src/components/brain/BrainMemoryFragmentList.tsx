@@ -4,7 +4,7 @@ import { api } from '../../lib/api';
 import { apiErrorText } from '../../lib/apiError';
 import { labelMemoryCategory, labelMemoryScope } from '../../brain/brainLabels';
 import { zh } from '../../locales/zh-CN';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 function categoryBadge(item: MemoryFragment): string | undefined {
   if (item.scope !== 'user') return undefined;
@@ -124,33 +124,33 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 12, gap: 10 },
   empty: {
     textAlign: 'center',
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     marginTop: 16,
     marginBottom: 8,
     fontSize: 14,
   },
   card: {
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
     padding: 12,
   },
   badge: {
     fontSize: 11,
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     marginBottom: 6,
     fontWeight: '600',
   },
   title: {
     fontSize: 15,
     fontWeight: '600',
-    color: evaBrain.text,
+    color: brainTokens.text,
     marginBottom: 4,
   },
   body: {
     fontSize: 13,
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     lineHeight: 18,
   },
   actions: {
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   },
   action: {
     fontSize: 13,
-    color: evaBrain.accentBright,
+    color: brainTokens.accentBright,
   },
-  actionDanger: { color: evaBrain.error },
+  actionDanger: { color: brainTokens.error },
 });

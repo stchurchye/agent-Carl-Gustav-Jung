@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { zh } from '../../locales/zh-CN';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = {
   label: string;
@@ -39,23 +39,23 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   label: {
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 12,
     flex: 1,
   },
   num: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 11,
   },
   track: {
     height: 6,
-    backgroundColor: evaBrain.bgElevated,
+    backgroundColor: brainTokens.bgElevated,
     borderRadius: 3,
     overflow: 'hidden',
   },
   fill: {
     height: '100%',
-    backgroundColor: evaBrain.accent,
+    backgroundColor: brainTokens.accent,
     borderRadius: 3,
   },
 });

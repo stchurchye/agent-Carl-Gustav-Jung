@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { BrainLogicHint } from '../../brain/logicHints';
 import { zh } from '../../locales/zh-CN';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = {
   hint: BrainLogicHint;
@@ -32,25 +32,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 12,
     borderLeftWidth: 3,
-    borderLeftColor: evaBrain.accent,
-    backgroundColor: evaBrain.bgCard,
+    borderLeftColor: brainTokens.accent,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 4,
   },
   title: {
-    color: evaBrain.accentBright,
+    color: brainTokens.accentBright,
     fontSize: 14,
     fontWeight: '700',
     marginBottom: 10,
   },
   row: { marginBottom: 8 },
   label: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 3,
   },
   value: {
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 14,
     lineHeight: 21,
   },

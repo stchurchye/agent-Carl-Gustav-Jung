@@ -9,7 +9,7 @@ import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
 import { api } from '../../lib/api';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainMemoryReview'>;
 
@@ -60,7 +60,7 @@ export function BrainMemoryReviewScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   intro: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 13,
     lineHeight: 20,
     paddingHorizontal: 16,

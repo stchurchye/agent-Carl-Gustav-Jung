@@ -16,7 +16,7 @@ import { BrainMetricBar } from '../../components/brain/BrainMetricBar';
 import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainHermes'>;
 
@@ -98,11 +98,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   prefsLinkText: {
-    color: evaBrain.info,
+    color: brainTokens.info,
     fontSize: 14,
   },
   pipelineTitle: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 13,
     fontWeight: '700',
     marginHorizontal: 16,
@@ -110,10 +110,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   pipeline: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 12,
     lineHeight: 20,
     marginHorizontal: 16,
-    fontFamily: evaBrain.mono,
+    fontFamily: brainTokens.mono,
   },
 });

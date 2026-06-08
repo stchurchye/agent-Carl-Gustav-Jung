@@ -28,7 +28,7 @@ import {
 import { getDeepSeekApiKey } from '../../lib/deepseekKey';
 import { getZenMuxApiKey } from '../../lib/zenmuxKey';
 import { navigateBrainTab } from '../../lib/navigateBrain';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 import type { BrainStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainAgentDefaultModel'>;
@@ -144,14 +144,14 @@ export function BrainAgentDefaultModelScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   intro: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 13,
     lineHeight: 20,
     marginHorizontal: 16,
     marginBottom: 4,
   },
   tempHint: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 12,
     lineHeight: 18,
     marginHorizontal: 16,
@@ -167,42 +167,42 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 10,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderWidth: 1,
-    borderColor: evaBrain.borderSubtle,
+    borderColor: brainTokens.borderSubtle,
   },
   rowSelected: {
-    borderColor: evaBrain.accent,
-    backgroundColor: evaBrain.bgElevated,
+    borderColor: brainTokens.accent,
+    backgroundColor: brainTokens.bgElevated,
   },
   rowMain: {
     flex: 1,
   },
   rowTitle: {
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 15,
     fontWeight: '600',
   },
   rowTitleDisabled: {
-    color: evaBrain.textDim,
+    color: brainTokens.textDim,
   },
   rowSubtitle: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 12,
     marginTop: 4,
   },
   rowSubtitleDisabled: {
-    color: evaBrain.textDim,
+    color: brainTokens.textDim,
   },
   tick: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 18,
     marginLeft: 12,
   },
   footnote: {
     marginTop: 16,
     marginHorizontal: 16,
-    color: evaBrain.textDim,
+    color: brainTokens.textDim,
     fontSize: 12,
     lineHeight: 18,
   },

@@ -8,7 +8,7 @@ import { BrainMetricBar } from '../../components/brain/BrainMetricBar';
 import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainMemoryHub'>;
 
@@ -107,7 +107,7 @@ export function BrainMemoryHubScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   metrics: { marginBottom: 4 },
   intro: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 13,
     lineHeight: 20,
     paddingHorizontal: 16,
@@ -124,20 +124,20 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   cellInner: {
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
     borderRadius: 4,
     padding: 14,
     minHeight: 72,
   },
   cellTitle: {
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 15,
     fontWeight: '600',
   },
   cellSub: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 11,
     marginTop: 6,
   },

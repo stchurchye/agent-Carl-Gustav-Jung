@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listAgentRuns } from '../../features/agent/agentApi';
 import type { AgentRun, AgentRunStatus } from '../../features/agent/types';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainAgentTasks'>;
 
@@ -50,7 +50,7 @@ function statusColor(s: AgentRunStatus): string {
   if (s === 'completed') return '#0a6';
   if (s === 'failed' || s === 'budget_exhausted') return '#c33';
   if (s === 'cancelled') return '#999';
-  return evaBrain.accent;
+  return brainTokens.accent;
 }
 
 function formatCny(n?: number): string {
@@ -163,7 +163,7 @@ export function BrainAgentTasksScreen({ navigation }: Props) {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={
           loading
-            ? <View style={styles.empty}><ActivityIndicator color={evaBrain.accent} /></View>
+            ? <View style={styles.empty}><ActivityIndicator color={brainTokens.accent} /></View>
             : <Text style={styles.emptyText}>暂无任务</Text>
         }
         ListFooterComponent={hasMore ? <Text style={styles.footerHint}>仅显示最近 100 条</Text> : null}
@@ -201,7 +201,7 @@ export function BrainAgentTasksScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: evaBrain.bg },
+  page: { flex: 1, backgroundColor: brainTokens.bg },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -209,43 +209,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  back: { color: evaBrain.accent, fontSize: 14 },
-  title: { color: evaBrain.text, fontSize: 18, fontWeight: '600' },
+  back: { color: brainTokens.accent, fontSize: 14 },
+  title: { color: brainTokens.text, fontSize: 18, fontWeight: '600' },
   banner: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: evaBrain.borderSubtle,
+    borderBottomColor: brainTokens.borderSubtle,
   },
-  bannerText: { fontSize: 13, fontWeight: '600', color: evaBrain.text },
-  bannerHint: { fontSize: 10, color: evaBrain.textDim, marginTop: 2 },
+  bannerText: { fontSize: 13, fontWeight: '600', color: brainTokens.text },
+  bannerHint: { fontSize: 10, color: brainTokens.textDim, marginTop: 2 },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 8 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     marginRight: 6,
     marginBottom: 6,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 12,
   },
-  chipActive: { backgroundColor: evaBrain.accent },
-  chipText: { fontSize: 12, color: evaBrain.accent },
+  chipActive: { backgroundColor: brainTokens.accent },
+  chipText: { fontSize: 12, color: brainTokens.accent },
   chipTextActive: { color: '#fff', fontWeight: '600' },
   row: {
     marginHorizontal: 12,
     marginVertical: 4,
     padding: 12,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 8,
   },
   rowTop: { flexDirection: 'row', alignItems: 'center' },
   statusBadge: { fontSize: 12, fontWeight: '600' },
-  relTime: { fontSize: 10, color: evaBrain.textDim, marginLeft: 'auto' },
+  relTime: { fontSize: 10, color: brainTokens.textDim, marginLeft: 'auto' },
   expiresBadge: { fontSize: 10, color: '#a60' },
-  inputText: { fontSize: 13, color: evaBrain.text, marginTop: 4 },
-  metaLine: { fontSize: 11, color: evaBrain.textDim, marginTop: 4 },
+  inputText: { fontSize: 13, color: brainTokens.text, marginTop: 4 },
+  metaLine: { fontSize: 11, color: brainTokens.textDim, marginTop: 4 },
   empty: { padding: 40, alignItems: 'center' },
-  emptyText: { color: evaBrain.textDim, textAlign: 'center', padding: 40 },
-  footerHint: { textAlign: 'center', color: evaBrain.textDim, fontSize: 11, paddingVertical: 12 },
+  emptyText: { color: brainTokens.textDim, textAlign: 'center', padding: 40 },
+  footerHint: { textAlign: 'center', color: brainTokens.textDim, fontSize: 11, paddingVertical: 12 },
 });

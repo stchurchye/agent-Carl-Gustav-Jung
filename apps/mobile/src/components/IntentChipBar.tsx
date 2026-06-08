@@ -14,8 +14,28 @@ import type {
   MemoryTargetCandidate,
 } from '@xzz/shared';
 import { intentHintMessage } from '../lib/intentFlow';
-import { evaBrain } from '../theme/evaBrain';
 import { zh } from '../locales/zh-CN';
+
+/**
+ * 意图条聊天屏专属**亮色 chip 令牌**(P1.3)。
+ * 不复用 brain 遗存暗系:浮层走干净白底 + 微信分隔灰 + 品牌橙弱底强调;
+ * agent_run 用微信蓝(#576B95)区分,而非刺眼霓虹紫。退役 EVA 亮橙(255,140,26)不再出现。
+ */
+const intentChip = {
+  panelBg: '#FFFFFF',
+  border: '#E5E5E5',
+  borderSubtle: 'rgba(229, 229, 229, 0.6)',
+  accent: '#E07B00', // 品牌橙(白底可读)
+  accentTintSoft: 'rgba(224, 123, 0, 0.06)', // 推荐行弱底
+  accentTintStrong: 'rgba(224, 123, 0, 0.12)', // 推荐 badge 底
+  accentPressed: 'rgba(224, 123, 0, 0.08)', // 按压态
+  textPrimary: '#191919',
+  textSecondary: '#888888',
+  textTertiary: '#B2B2B2',
+  agentAccent: '#576B95', // agent_run 用微信蓝区分
+  agentTint: 'rgba(87, 107, 149, 0.12)',
+  mono: 'Menlo',
+} as const;
 
 type Props = {
   analyze: IntentAnalyzeResult;
@@ -212,14 +232,15 @@ export function IntentChipBar({
 const FLOAT_INSET = 20;
 const PANEL_RADIUS = 16;
 
+// 亮色浮层用克制阴影(原 0.42 黑阴影为暗主题调,白底上过重)。
 const panelShadow = Platform.select({
   ios: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.42,
-    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
   },
-  android: { elevation: 10 },
+  android: { elevation: 4 },
   default: {},
 });
 
@@ -231,10 +252,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   panel: {
-    backgroundColor: evaBrain.bgElevated,
+    backgroundColor: intentChip.panelBg,
     borderRadius: PANEL_RADIUS,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: intentChip.border,
     overflow: 'hidden',
     ...panelShadow,
   },
@@ -244,14 +265,14 @@ const styles = StyleSheet.create({
     left: PANEL_RADIUS,
     right: PANEL_RADIUS,
     height: 2,
-    backgroundColor: evaBrain.accent,
+    backgroundColor: intentChip.accent,
     opacity: 0.5,
     borderBottomLeftRadius: 1,
     borderBottomRightRadius: 1,
   },
   hint: {
     fontSize: 12,
-    color: evaBrain.accentBright,
+    color: intentChip.accent,
     marginTop: 10,
     marginBottom: 4,
     paddingHorizontal: 14,
@@ -261,7 +282,7 @@ const styles = StyleSheet.create({
     maxHeight: 260,
   },
   optionPressed: {
-    backgroundColor: 'rgba(255, 140, 26, 0.08)',
+    backgroundColor: intentChip.accentPressed,
   },
   optionRow: {
     flexDirection: 'row',
@@ -271,20 +292,20 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   optionRowRecommended: {
-    backgroundColor: 'rgba(255, 140, 26, 0.06)',
+    backgroundColor: intentChip.accentTintSoft,
     borderLeftWidth: 2,
-    borderLeftColor: evaBrain.accentBright,
+    borderLeftColor: intentChip.accent,
     paddingLeft: 8,
   },
   optionIndex: {
     width: 28,
     fontSize: 12,
-    fontFamily: evaBrain.mono,
-    color: evaBrain.textDim,
+    fontFamily: intentChip.mono,
+    color: intentChip.textTertiary,
     lineHeight: 18,
   },
   optionIndexHot: {
-    color: evaBrain.accent,
+    color: intentChip.accent,
   },
   optionIndexSpacer: {
     width: 28,
@@ -302,15 +323,15 @@ const styles = StyleSheet.create({
   optionLabel: {
     flexShrink: 1,
     fontSize: 14,
-    color: evaBrain.text,
+    color: intentChip.textPrimary,
     fontWeight: '600',
     lineHeight: 19,
   },
   optionLabelHot: {
-    color: evaBrain.accentBright,
+    color: intentChip.accent,
   },
   optionLabelMuted: {
-    color: evaBrain.textMuted,
+    color: intentChip.textSecondary,
     fontWeight: '500',
   },
   optionBadge: {
@@ -318,37 +339,37 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     borderRadius: 2,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.accent,
-    backgroundColor: 'rgba(255, 140, 26, 0.12)',
+    borderColor: intentChip.accent,
+    backgroundColor: intentChip.accentTintStrong,
   },
   optionBadgeText: {
     fontSize: 10,
-    color: evaBrain.accentBright,
+    color: intentChip.accent,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
   optionBadgeAgent: {
-    borderColor: '#5a6cff',
-    backgroundColor: 'rgba(90, 108, 255, 0.12)',
+    borderColor: intentChip.agentAccent,
+    backgroundColor: intentChip.agentTint,
   },
   optionBadgeAgentText: {
-    color: '#5a6cff',
+    color: intentChip.agentAccent,
   },
   optionDesc: {
     marginTop: 2,
     fontSize: 11,
-    color: evaBrain.textMuted,
+    color: intentChip.textSecondary,
     lineHeight: 15,
   },
   optionChevron: {
     marginLeft: 4,
     fontSize: 18,
-    color: evaBrain.textDim,
+    color: intentChip.textTertiary,
     fontWeight: '300',
   },
   separator: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: evaBrain.borderSubtle,
+    backgroundColor: intentChip.borderSubtle,
     marginLeft: 38,
   },
 });

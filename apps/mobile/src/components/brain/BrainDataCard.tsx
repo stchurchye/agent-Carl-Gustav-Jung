@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Field = { label: string; value: string };
 
@@ -31,13 +31,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 10,
     padding: 12,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
   },
   cardTitle: {
-    color: evaBrain.accentBright,
+    color: brainTokens.accentBright,
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 10,
@@ -46,18 +46,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   label: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 11,
     marginBottom: 2,
   },
   value: {
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 13,
     lineHeight: 18,
   },
   footer: {
     marginTop: 4,
-    color: evaBrain.textDim,
+    color: brainTokens.textDim,
     fontSize: 11,
   },
 });
