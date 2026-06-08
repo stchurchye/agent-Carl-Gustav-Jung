@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
   },
   chipActive: {
     borderColor: brainTokens.accent,
-    backgroundColor: 'rgba(255, 140, 26, 0.15)',
+    backgroundColor: 'rgba(224, 123, 0, 0.15)',
   },
   chipText: { color: brainTokens.textMuted, fontSize: 12 },
   chipTextActive: { color: brainTokens.accent },
