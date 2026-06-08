@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { AGENT_LLM_MODEL_OPTIONS, type AgentLlmModelOption } from '@xzz/shared';
 import type { MissingKeys } from './useAgentModelPicker';
+import { colors } from '../../theme/colors';
 
 type Props = {
   visible: boolean;
@@ -113,10 +114,10 @@ export function AgentModelPickerSheet({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: colors.backdrop,
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     paddingHorizontal: 16,
@@ -126,7 +127,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    backgroundColor: '#d0d0d0',
+    backgroundColor: colors.border,
     borderRadius: 2,
     alignSelf: 'center',
     marginTop: 8,
@@ -140,7 +141,7 @@ const styles = StyleSheet.create({
   },
   vendorLabel: {
     fontSize: 12,
-    color: '#888',
+    color: colors.textMuted,
     fontWeight: '600',
     marginTop: 12,
     marginBottom: 4,
@@ -154,32 +155,32 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   rowSelected: {
-    backgroundColor: '#eef4ff',
+    backgroundColor: colors.selectedBg,
   },
   rowInner: {
     flex: 1,
   },
   rowLabel: {
     fontSize: 15,
-    color: '#111',
+    color: colors.text,
   },
   rowHint: {
     fontSize: 12,
-    color: '#888',
+    color: colors.textMuted,
     marginTop: 2,
   },
   rowDisabled: {
-    color: '#bbb',
+    color: colors.textTertiary,
   },
   closeBtn: {
     marginTop: 16,
     paddingVertical: 12,
-    backgroundColor: '#f4f4f4',
+    backgroundColor: colors.fill,
     borderRadius: 10,
     alignItems: 'center',
   },
   closeBtnText: {
     fontSize: 15,
-    color: '#333',
+    color: colors.text,
   },
 });
