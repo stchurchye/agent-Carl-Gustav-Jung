@@ -23,6 +23,9 @@ it('status/action text colors stay readable on their light backgrounds (AA 4.5:1
     ['link', colors.link, white],
     ['link', colors.link, colors.successBg],
     ['link', colors.link, colors.fill],
+    // link 也用作填充按钮底(AskUser 提交 / Steer):守白字落 link 底的可读性,
+    // 否则将来为链接文字调浅 link 会静默破坏按钮可读性。
+    ['link-button(white-on-link)', colors.onPrimary, colors.link],
     ['info', colors.info, colors.infoBg],
     ['warning', colors.warning, colors.warningBg],
     ['danger', colors.danger, colors.errorBg],

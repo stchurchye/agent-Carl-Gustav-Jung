@@ -28,7 +28,6 @@ export const colors = {
   accent: sunrise.coral,
 
   // —— P0.1 状态/语义令牌(agent 屏散色收敛;全部复用品牌调色板)——
-  textStrong: wechat.textPrimary, // 加重主文字(收敛 #1a1a1a/#111/#333)
   textTertiary: wechat.textTertiary, // 弱/禁用文字(收敛 #bbb)
   link: '#2e7d5b', // 可点动作/链接:浅底可读的深品牌绿(原 #0a6 绿/#0a66c2 蓝;比 lily.leaf 深以保 4.5:1)
   fill: '#f4f4f4', // 中性填充:按压/禁用/代码块底
