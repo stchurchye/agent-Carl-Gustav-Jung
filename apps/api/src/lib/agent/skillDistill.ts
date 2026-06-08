@@ -39,13 +39,16 @@ type DistilledSkill = { title: string; content: string };
 const MAX_TITLE = 80;
 const MAX_CONTENT = 2000;
 
-/** 数成功的 tool_call：软失败(output.ok===false)不算；硬失败是独立的 tool_error kind，天然不计。 */
+/**
+ * 数成功的 tool_call：软失败不算;硬失败是独立的 tool_error kind,天然不计。
+ * 软失败的权威信号是 step.error 非空(runExecute 记 tool_call 时把 softError 落到 step.error,
+ * tool 的 ok 实际嵌在 output.result.ok,不在 output.ok)。
+ */
 function countSuccessfulToolCalls(steps: AgentStep[]): number {
   let n = 0;
   for (const s of steps) {
     if (s.kind !== 'tool_call') continue;
-    const ok = (s.output as { ok?: unknown } | null)?.ok;
-    if (ok === false) continue;
+    if (s.error != null) continue; // 软失败
     n += 1;
   }
   return n;
@@ -67,7 +70,7 @@ function toolSequence(steps: AgentStep[]): string {
   const names: string[] = [];
   for (const s of steps) {
     if (s.kind !== 'tool_call' || !s.toolName) continue;
-    if ((s.output as { ok?: unknown } | null)?.ok === false) continue;
+    if (s.error != null) continue; // 软失败(step.error 是权威信号)
     names.push(s.toolName);
   }
   return names.join(' → ');

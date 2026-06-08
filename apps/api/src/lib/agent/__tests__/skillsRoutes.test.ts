@@ -7,6 +7,7 @@ import { signAccessToken } from '../../auth.js';
 import type { AppVariables } from '../../../types.js';
 import { randomUUID } from 'crypto';
 import { ensureUser, ensureGroup } from './_groupFixture.js';
+import { upsertSkill, getSkill } from '../topicSkills.js';
 
 /**
  * 端到端路由测试：/api/agent/skills CRUD。
@@ -127,6 +128,41 @@ describe('agent /skills routes', () => {
       }),
     );
     expect((await getRes.json()).data.skills.length).toBe(0);
+  });
+
+  it('PATCH 保留 auto_distilled 的 source/sourceRunId(启用建议技能不抹来源)', async () => {
+    const u = await ensureUser('rt-src');
+    const token = await tokenFor(u.id, u.username, u.displayName);
+    const app = await makeApp();
+    // 直接造一条自蒸馏建议技能(enabled=false)
+    const created = await upsertSkill({
+      scope: 'user',
+      ownerId: u.id,
+      groupId: null,
+      topicId: null,
+      title: '建议技能',
+      content: '这类任务的做法……',
+      enabled: false,
+      updatedByUserId: u.id,
+      source: 'auto_distilled',
+      sourceRunId: 'run-xyz',
+    });
+
+    // 经路由 PATCH 启用(M5-S1 核心流程)
+    const patchRes = await app.fetch(
+      new Request(`http://test/api/agent/skills/${created.id}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+    );
+    expect(patchRes.status).toBe(200);
+
+    // 来源未被 upsert ON CONFLICT 抹成 null(否则评审屏 filter 会让它消失 + 破坏幂等)
+    const after = await getSkill(created.id);
+    expect(after?.enabled).toBe(true);
+    expect(after?.source).toBe('auto_distilled');
+    expect(after?.sourceRunId).toBe('run-xyz');
   });
 
   it('non-member cannot POST group-scope skill', async () => {

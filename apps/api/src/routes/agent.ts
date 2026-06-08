@@ -607,6 +607,10 @@ agentRouter.patch('/skills/:id', async (c) => {
       content: (body.content as string | undefined)?.trim() || existing.content,
       enabled: typeof body.enabled === 'boolean' ? body.enabled : existing.enabled,
       updatedByUserId: userId,
+      // 保留来源:否则 upsert ON CONFLICT 会把 auto_distilled 的 source/source_run_id 抹成 null
+      // → 启用建议技能后从评审屏消失 + 破坏 hasDistilledSkillForRun 幂等(crash 重蒸馏)。
+      source: existing.source,
+      sourceRunId: existing.sourceRunId,
     });
     return c.json({ ok: true, data: { skill }, requestId: c.get('requestId') });
   } catch (e) {
