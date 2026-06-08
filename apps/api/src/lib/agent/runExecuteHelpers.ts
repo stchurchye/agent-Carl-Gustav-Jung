@@ -157,8 +157,13 @@ export async function recordReclaimIfNeeded(
   // M1e task 6：approval_deny 在 approvalMode='never' 路径会推进 plan 指针（worker 跳过该
   // step 不调 tool），所以也应该算作 advancing。否则 worker A 写完 deny 崩溃后，worker B
   // 会 spurious-emit 一条 reclaim step，看起来像 B 在重写历史。
+  // M3-S0：subagent_tool_denied(白名单护栏跳过该 step)同样推进 plan 指针,一并计入。
   const dbAdvancing = allStepsForReclaim.filter(
-    (s) => s.kind === 'tool_call' || s.kind === 'observe' || s.kind === 'approval_deny',
+    (s) =>
+      s.kind === 'tool_call' ||
+      s.kind === 'observe' ||
+      s.kind === 'approval_deny' ||
+      s.kind === 'subagent_tool_denied',
   ).length;
   if (dbAdvancing <= run.usage.steps) {
     return { run, completedCount: run.usage.steps };

@@ -39,6 +39,7 @@ import {
 import { resolveLlmClient } from './runLlmClient.js';
 import { reflectGoalCompletion } from './reflection.js';
 import { pickFallbackFinalContent } from './runReply.js';
+import { SUBAGENT_TOOL_WHITELIST } from './subagentTools.js';
 import {
   resolveToolCallKey,
   applyReplanningIfNeeded,
@@ -179,6 +180,10 @@ export async function executeRun(runId: string): Promise<void> {
     // 让 approve 后 re-pickup 时跳过 approval gate 一次。
     let pendingGrantBypass = await detectPendingGrantBypass(runId);
 
+    // M3-S0：本轮是否有 step 被子 agent 工具白名单护栏拦截。用于收尾时区分
+    // 「整条 plan 越权、零工作」与「正常完成」—— 前者不应向父 run 报 completed。
+    let subagentToolDenied = false;
+
     for (let i = completedCount; i < plan.steps.length; i++) {
       // === M7 P1：检查未消化追问 → 触发 replan，让 worker re-pickup 走 applyReplanningIfNeeded ===
       // 仅 SELECT 2 列，<1ms（R12）。inputText 永不改写（ADR-M7-13），追问只进 merged_inputs。
@@ -223,6 +228,34 @@ export async function executeRun(runId: string): Promise<void> {
 
       const planStep = plan.steps[i];
       const tool = toolRegistry.require(planStep.toolName);
+
+      // === M3-S0 subagent tool whitelist (exec-time hard guard) ===
+      // 白名单此前只在 planner-time 裁剪工具；但续跑(continuation-replan)、steer、
+      // 缓存 plan 等路径能复用未经裁剪的 plan step,绕过 planner 让子 run 执行白名单外
+      // 工具(含副作用的 run_python / deep_research)。这里在 handler 调用前的唯一咽喉
+      // 处再校验一次:子 run(parentRunId 非空)只能跑白名单内工具,否则记一条
+      // subagent_tool_denied step 并跳过。
+      //
+      // 关键:用专用 kind 'subagent_tool_denied' 而非复用 'approval_deny'。
+      // 复用会让 applyReplanningIfNeeded(line 68/101)在该子 run 后续进入
+      // replanning(steer / merge_trigger / critique)时把这条护栏拦截误判成
+      // denyIsNewest,调 generatePlanForApprovalDeny 生成 echo 替代 plan,
+      // 把「安全越权拦截」混淆成「用户拒绝审批,换个方案」。
+      if (run.parentRunId && !SUBAGENT_TOOL_WHITELIST.has(tool.name)) {
+        await recordStep({
+          runId,
+          kind: 'subagent_tool_denied',
+          toolName: tool.name,
+          input: planStep.input,
+          error: 'subagent tool not in whitelist (M3-S0 exec-time guard)',
+        });
+        subagentToolDenied = true;
+        // 跳过本步:usage.steps+1 让 for 推进。
+        const usage = incrementUsage(run, { steps: 1 });
+        run = (await store.updateAgentRun(runId, { usage }))!;
+        continue;
+      }
+      // === End M3-S0 subagent tool whitelist ===
 
       // === Approval gate (ADR-1) ===
       if (tool.approvalMode === 'never') {
@@ -644,6 +677,20 @@ export async function executeRun(runId: string): Promise<void> {
     await store.updateAgentRun(runId, { contextCheckpoint: finalCheckpoint });
     // 同步本地 run，让下游 softComplete→buildFinalContent→buildReplyMessages 读到最新 checkpoint。
     run.contextCheckpoint = finalCheckpoint;
+
+    // M3-S0：整条 plan 被白名单护栏拦截、零工作的子 run 不能向父 run 报
+    // 'completed'——否则父 agent 拿到「子任务成功完成」的误导信号,而实际什么都
+    // 没干、越权尝试也没被向上 surface。仅当本轮确有 step 被护栏拦截、且整 run
+    // 零成功步(successCount===0:既无成功 tool_call 也无 observe 缓存命中)时硬失败。
+    // 有成功步则正常收尾(部分越权被挡、其余有产出的子 run 仍算完成)。
+    if (subagentToolDenied && successCount === 0) {
+      await softComplete(
+        run,
+        'failed',
+        'subagent: all plan steps blocked by tool whitelist (M3-S0 guard)',
+      );
+      return;
+    }
 
     // M1c：终稿在 softComplete 里走 buildFinalContent（含 LLM 终稿）；
     // 这里仍记一条 reply step，但内容直接用 fallback 概要——
