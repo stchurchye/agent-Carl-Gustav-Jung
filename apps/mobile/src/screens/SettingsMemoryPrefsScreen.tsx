@@ -1,6 +1,4 @@
-import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -8,9 +6,7 @@ import {
   MEMORY_USER_PROFILE_CHAR_LIMIT,
 } from '@xzz/shared';
 import { WeChatChatHeader } from '../components/WeChatChatHeader';
-import { api } from '../lib/api';
-import { apiErrorText } from '../lib/apiError';
-import { appAlert } from '../lib/appAlert';
+import { useMemoryPrefs } from '../lib/useMemoryPrefs';
 import type { GroupStackParamList } from '../navigation/types';
 import { colors, typography } from '../theme/colors';
 import { wechatChatStyles } from '../theme/wechatChat';
@@ -20,39 +16,7 @@ type Props = NativeStackScreenProps<GroupStackParamList, 'SettingsMemoryPrefs'>;
 
 export function SettingsMemoryPrefsScreen(_props: Props) {
   const insets = useSafeAreaInsets();
-  const [enabled, setEnabled] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.getMemorySettings();
-      setEnabled(res.data.autoExtractEnabled);
-    } catch {
-      setEnabled(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
-
-  const onToggle = (value: boolean) => {
-    setEnabled(value);
-    setSaving(true);
-    void api
-      .patchMemorySettings({ autoExtractEnabled: value })
-      .catch((e) => {
-        appAlert('保存失败', apiErrorText(e).message);
-        void load();
-      })
-      .finally(() => setSaving(false));
-  };
+  const { enabled, loading, saving, onToggle } = useMemoryPrefs();
 
   return (
     <View style={wechatChatStyles.page}>
