@@ -8,7 +8,7 @@ import { useBrainSnapshot } from '../../brain/useBrainSnapshot';
 import { API_KEY_KINDS, loadApiKeyStatus } from '../../lib/apiKeyKind';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainHub'>;
 
@@ -123,12 +123,12 @@ export function BrainHubScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: evaBrain.bg },
+  page: { flex: 1, backgroundColor: brainTokens.bg },
   hero: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: evaBrain.borderSubtle,
+    borderBottomColor: brainTokens.borderSubtle,
   },
   heroRow: {
     flexDirection: 'row',
@@ -145,12 +145,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   heroTitle: {
-    color: evaBrain.accentBright,
+    color: brainTokens.accentBright,
     fontSize: 22,
     fontWeight: '800',
   },
   heroSub: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 13,
     marginTop: 4,
   },
@@ -163,12 +163,12 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: evaBrain.accent,
+    backgroundColor: brainTokens.accent,
     marginRight: 6,
   },
-  statusText: { color: evaBrain.accent, fontSize: 12 },
+  statusText: { color: brainTokens.accent, fontSize: 12 },
   intro: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 13,
     lineHeight: 20,
     paddingHorizontal: 16,
@@ -185,20 +185,20 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   cellInner: {
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
     borderRadius: 4,
     padding: 14,
     minHeight: 72,
   },
   cellTitle: {
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 15,
     fontWeight: '600',
   },
   cellSub: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 11,
     marginTop: 6,
   },

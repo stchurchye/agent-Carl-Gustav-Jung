@@ -23,7 +23,7 @@ import { BrainAgentTasksScreen } from '../screens/brain/BrainAgentTasksScreen';
 import { BrainAgentTaskDetailScreen } from '../screens/brain/BrainAgentTaskDetailScreen';
 import { BrainAgentDefaultModelScreen } from '../screens/brain/BrainAgentDefaultModelScreen';
 import { SettingsDocumentsScreen } from '../screens/SettingsDocumentsScreen';
-import { evaBrain } from '../theme/evaBrain';
+import { brainTokens } from '../theme/brainTokens';
 
 const Stack = createNativeStackNavigator<BrainStackParamList>();
 
@@ -33,7 +33,7 @@ export function BrainStack() {
       initialRouteName="BrainHub"
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: evaBrain.bg },
+        contentStyle: { backgroundColor: brainTokens.bg },
       }}
     >
       <Stack.Screen name="BrainHub" component={BrainHubScreen} />

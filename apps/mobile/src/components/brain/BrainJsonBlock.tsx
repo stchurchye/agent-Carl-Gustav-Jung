@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { appAlert } from '../../lib/appAlert';
 import { zh } from '../../locales/zh-CN';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = {
   data: unknown;
@@ -37,10 +37,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 12,
     padding: 10,
-    backgroundColor: evaBrain.bgElevated,
+    backgroundColor: brainTokens.bgElevated,
     borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.borderSubtle,
+    borderColor: brainTokens.borderSubtle,
   },
   head: {
     flexDirection: 'row',
@@ -49,18 +49,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   title: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 12,
     fontWeight: '600',
   },
   copy: {
-    color: evaBrain.info,
+    color: brainTokens.info,
     fontSize: 12,
   },
   body: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 11,
-    fontFamily: evaBrain.mono,
+    fontFamily: brainTokens.mono,
     lineHeight: 16,
   },
 });

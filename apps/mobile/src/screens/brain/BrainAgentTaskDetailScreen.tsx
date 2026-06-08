@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgentRunCard } from '../../features/agent/AgentRunCard';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainAgentTaskDetail'>;
 
@@ -35,7 +35,7 @@ export function BrainAgentTaskDetailScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: evaBrain.bg },
+  page: { flex: 1, backgroundColor: brainTokens.bg },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -43,6 +43,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  back: { color: evaBrain.accent, fontSize: 14 },
-  title: { color: evaBrain.text, fontSize: 18, fontWeight: '600' },
+  back: { color: brainTokens.accent, fontSize: 14 },
+  title: { color: brainTokens.text, fontSize: 18, fontWeight: '600' },
 });

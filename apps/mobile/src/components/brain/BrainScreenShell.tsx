@@ -10,7 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BrainLogicHint } from '../../brain/logicHints';
 import { zh } from '../../locales/zh-CN';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 import { BrainLogicBanner } from './BrainLogicBanner';
 
 type Props = {
@@ -59,7 +59,7 @@ export function BrainScreenShell({
       <BrainLogicBanner hint={hint} />
 
       {loading ? (
-        <ActivityIndicator color={evaBrain.accent} style={styles.loader} />
+        <ActivityIndicator color={brainTokens.accent} style={styles.loader} />
       ) : error ? (
         <Text style={styles.error}>{error}</Text>
       ) : (
@@ -77,7 +77,7 @@ export function BrainScreenShell({
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: evaBrain.bg,
+    backgroundColor: brainTokens.bg,
   },
   header: {
     flexDirection: 'row',
@@ -85,17 +85,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: evaBrain.borderSubtle,
+    borderBottomColor: brainTokens.borderSubtle,
   },
   backBtn: {
     width: 56,
   },
   backText: {
-    color: evaBrain.accent,
+    color: brainTokens.accent,
     fontSize: 15,
   },
   reload: {
-    color: evaBrain.info,
+    color: brainTokens.info,
     fontSize: 13,
     width: 56,
     textAlign: 'right',
@@ -103,13 +103,13 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    color: evaBrain.text,
+    color: brainTokens.text,
     fontSize: 17,
     fontWeight: '700',
   },
   loader: { marginTop: 40 },
   error: {
-    color: evaBrain.error,
+    color: brainTokens.error,
     textAlign: 'center',
     marginTop: 24,
     paddingHorizontal: 16,

@@ -11,7 +11,7 @@ import type { ApiKeyKind } from '../../lib/apiKeyKind';
 import { apiKeyKindConfig } from '../../lib/apiKeyKind';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainHomeKeys'>;
 
@@ -85,7 +85,7 @@ export function BrainHomeKeysScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   intro: {
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     fontSize: 13,
     lineHeight: 20,
     marginHorizontal: 16,
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   footnote: {
     marginTop: 16,
     marginHorizontal: 16,
-    color: evaBrain.textDim,
+    color: brainTokens.textDim,
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',

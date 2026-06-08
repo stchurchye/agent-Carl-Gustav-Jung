@@ -13,7 +13,7 @@ import { apiErrorText } from '../../lib/apiError';
 import { appAlert } from '../../lib/appAlert';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
-import { evaBrain } from '../../theme/evaBrain';
+import { brainTokens } from '../../theme/brainTokens';
 
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainMemoryPrefs'>;
 
@@ -66,14 +66,14 @@ export function BrainMemoryPrefsScreen(_props: Props) {
           <Text style={styles.hint}>{zh.me.memoryAutoExtractHint}</Text>
         </View>
         {loading ? (
-          <ActivityIndicator color={evaBrain.accent} />
+          <ActivityIndicator color={brainTokens.accent} />
         ) : (
           <Switch
             value={enabled}
             onValueChange={onToggle}
             disabled={saving}
-            trackColor={{ false: evaBrain.bgElevated, true: evaBrain.accentDim }}
-            thumbColor={enabled ? evaBrain.accentBright : evaBrain.textMuted}
+            trackColor={{ false: brainTokens.bgElevated, true: brainTokens.accentDim }}
+            thumbColor={enabled ? brainTokens.accentBright : brainTokens.textMuted}
           />
         )}
       </View>
@@ -91,29 +91,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: 12,
     padding: 16,
-    backgroundColor: evaBrain.bgCard,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: evaBrain.border,
+    borderColor: brainTokens.border,
     gap: 12,
   },
   textCol: { flex: 1 },
   label: {
     fontSize: 15,
     fontWeight: '600',
-    color: evaBrain.text,
+    color: brainTokens.text,
   },
   hint: {
     marginTop: 6,
     fontSize: 13,
-    color: evaBrain.textMuted,
+    color: brainTokens.textMuted,
     lineHeight: 18,
   },
   limits: {
     marginTop: 16,
     marginHorizontal: 16,
     fontSize: 12,
-    color: evaBrain.textDim,
+    color: brainTokens.textDim,
     lineHeight: 18,
   },
 });
