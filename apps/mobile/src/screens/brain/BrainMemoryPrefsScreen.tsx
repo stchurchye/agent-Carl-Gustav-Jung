@@ -1,6 +1,4 @@
-import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Switch, Text, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   MEMORY_PROJECT_NOTE_CHAR_LIMIT,
@@ -8,9 +6,7 @@ import {
 } from '@xzz/shared';
 import { brainLogicHints } from '../../brain/logicHints';
 import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
-import { api } from '../../lib/api';
-import { apiErrorText } from '../../lib/apiError';
-import { appAlert } from '../../lib/appAlert';
+import { useMemoryPrefs } from '../../lib/useMemoryPrefs';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
 import { brainTokens } from '../../theme/brainTokens';
@@ -18,39 +14,7 @@ import { brainTokens } from '../../theme/brainTokens';
 type Props = NativeStackScreenProps<BrainStackParamList, 'BrainMemoryPrefs'>;
 
 export function BrainMemoryPrefsScreen(_props: Props) {
-  const [enabled, setEnabled] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.getMemorySettings();
-      setEnabled(res.data.autoExtractEnabled);
-    } catch {
-      setEnabled(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
-
-  const onToggle = (value: boolean) => {
-    setEnabled(value);
-    setSaving(true);
-    void api
-      .patchMemorySettings({ autoExtractEnabled: value })
-      .catch((e) => {
-        appAlert('保存失败', apiErrorText(e).message);
-        void load();
-      })
-      .finally(() => setSaving(false));
-  };
+  const { enabled, loading, saving, onToggle, reload } = useMemoryPrefs();
 
   return (
     <BrainScreenShell
@@ -58,7 +22,7 @@ export function BrainMemoryPrefsScreen(_props: Props) {
       hint={brainLogicHints.memoryPrefs}
       onBack={() => _props.navigation.goBack()}
       loading={loading}
-      onReload={() => void load()}
+      onReload={() => void reload()}
     >
       <View style={styles.row}>
         <View style={styles.textCol}>

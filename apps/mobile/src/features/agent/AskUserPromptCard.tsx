@@ -17,6 +17,7 @@ import { useAgentRunPoll } from './hooks/useAgentRunPoll';
 import { resumeAgentRun } from './agentApi';
 import { useAuth } from '../../components/AuthGate';
 import { appAlert } from '../../lib/appAlert';
+import { colors } from '../../theme/colors';
 
 export type AskUserPromptCardProps = {
   runId: string;
@@ -71,9 +72,9 @@ export function AskUserPromptCard(props: AskUserPromptCardProps) {
   };
 
   return (
-    <View style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, marginVertical: 6 }}>
+    <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, marginVertical: 6 }}>
       <Text style={{ fontSize: 14, marginBottom: 6 }}>{question}</Text>
-      <Text style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>
+      <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 6 }}>
         {openedForAll
           ? '任意群成员可回答'
           : startedAtMs
@@ -86,15 +87,15 @@ export function AskUserPromptCard(props: AskUserPromptCardProps) {
             value={input}
             onChangeText={setInput}
             placeholder="输入你的回答…"
-            style={{ flex: 1, borderWidth: 1, borderColor: '#eee', borderRadius: 6, padding: 6 }}
+            style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 6, padding: 6 }}
             editable={!submitting}
           />
           <TouchableOpacity
             onPress={onSubmit}
             disabled={submitting || input.trim().length === 0}
-            style={{ marginLeft: 8, padding: 6, backgroundColor: '#0a66c2', borderRadius: 6 }}
+            style={{ marginLeft: 8, padding: 6, backgroundColor: colors.link, borderRadius: 6 }}
           >
-            <Text style={{ color: '#fff' }}>{submitting ? '提交中' : '提交'}</Text>
+            <Text style={{ color: colors.onPrimary }}>{submitting ? '提交中' : '提交'}</Text>
           </TouchableOpacity>
         </View>
       ) : null}

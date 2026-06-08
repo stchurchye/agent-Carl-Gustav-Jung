@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, TextInput, TouchableOpacity, Text } from 'react-native';
+import { colors } from '../../theme/colors';
 
 type Props = {
   onSubmit: (text: string) => void;
@@ -21,11 +22,11 @@ export function AgentSteerInput({ onSubmit, disabled, placeholder }: Props) {
         style={{
           flex: 1,
           borderWidth: 1,
-          borderColor: '#ccc',
+          borderColor: colors.border,
           paddingHorizontal: 8,
           paddingVertical: 6,
           borderRadius: 6,
-          backgroundColor: disabled ? '#f4f4f4' : '#fff',
+          backgroundColor: disabled ? colors.fill : colors.surface,
         }}
       />
       <TouchableOpacity
@@ -39,11 +40,11 @@ export function AgentSteerInput({ onSubmit, disabled, placeholder }: Props) {
           marginLeft: 6,
           paddingHorizontal: 12,
           paddingVertical: 8,
-          backgroundColor: canSubmit ? '#456' : '#aab',
+          backgroundColor: canSubmit ? colors.link : colors.textTertiary,
           borderRadius: 6,
         }}
       >
-        <Text style={{ color: '#fff' }}>steer</Text>
+        <Text style={{ color: colors.onPrimary }}>steer</Text>
       </TouchableOpacity>
     </View>
   );

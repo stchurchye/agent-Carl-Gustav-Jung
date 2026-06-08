@@ -2,6 +2,7 @@ import React from 'react';
 import { ScrollView, View, Text, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { navigateBrainTab } from '../../lib/navigateBrain';
+import { colors } from '../../theme/colors';
 import type { AgentRun, AgentStep } from './types';
 import AskUserPrompt from '../../components/AskUserPrompt';
 import DeepResearchReport from '../../components/DeepResearchReport';
@@ -51,20 +52,20 @@ function DiagramStepCard({ step }: { step: AgentStep }) {
       style={{
         marginTop: 4,
         padding: 8,
-        backgroundColor: '#f0f7ff',
+        backgroundColor: colors.infoBg,
         borderRadius: 6,
         borderWidth: 1,
-        borderColor: '#cde',
+        borderColor: colors.border,
       }}
     >
-      <Text style={{ fontSize: 12, fontWeight: '600', color: '#336' }}>
+      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>
         📊 {result.title || '图表'}
       </Text>
-      <Text style={{ fontSize: 10, color: '#669', marginTop: 2 }}>
+      <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 2 }}>
         id: {result.diagramId}
       </Text>
       {result.validationWarnings.length > 0 ? (
-        <Text style={{ fontSize: 10, color: '#a60', marginTop: 2 }}>
+        <Text style={{ fontSize: 10, color: colors.warning, marginTop: 2 }}>
           ⚠ {result.validationWarnings[0]}
         </Text>
       ) : null}
@@ -91,7 +92,7 @@ export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
             {s.toolName ? ` · ${s.toolName}` : ''}
           </Text>
           {s.error ? (
-            <Text style={{ fontSize: 11, color: '#c33', marginTop: 2 }}>{s.error}</Text>
+            <Text style={{ fontSize: 11, color: colors.danger, marginTop: 2 }}>{s.error}</Text>
           ) : null}
           {s.toolName === 'render_diagram' && s.kind === 'tool_call' ? (
             <DiagramStepCard step={s} />
@@ -145,7 +146,7 @@ export function AgentStepList({ steps, run, resumeRun, onRefresh }: Props) {
                         })
                       }
                     >
-                      <Text style={{ color: '#0a66c2', fontSize: 12, marginTop: 4 }}>
+                      <Text style={{ color: colors.link, fontSize: 12, marginTop: 4 }}>
                         研究子任务（→ 查看详情）
                       </Text>
                     </TouchableOpacity>
