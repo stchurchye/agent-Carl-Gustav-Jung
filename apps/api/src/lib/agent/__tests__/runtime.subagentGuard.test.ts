@@ -8,6 +8,7 @@ import { createAgentRun, executeRun } from '../runtime.js';
 import { getAgentRun, listSteps, updateAgentRun } from '../store.js';
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
 import { registerDatetimeNow } from '../tools/datetimeNow.js';
+import { registerRenderDiagram } from '../tools/renderDiagram.js';
 import { SUBAGENT_TOOL_WHITELIST } from '../subagentTools.js';
 import { applyReplanningIfNeeded } from '../runExecuteHelpers.js';
 import { recordStep } from '../stepRecorder.js';
@@ -282,5 +283,45 @@ describe('M3-S0 subagent tool whitelist exec-time guard', () => {
           ),
       ),
     ).toBe(false);
+  });
+
+  it('M3-S1: 子 run role=analyst → analyst 专属工具(render_diagram)放行；role=researcher → 同工具被拦', async () => {
+    registerRenderDiagram();
+    const user = await ensureUser('roleguard');
+    const session = await createChatSession(user.id, 'roleguard');
+    const { run: parent } = await createAgentRun({
+      ownerId: user.id, channel: 'private', sessionId: session.id,
+      inputText: 'parent', apiKey: 'fake', apiKeySource: 'server',
+    });
+    const diagramPlan = (): Plan => ({
+      intentSummary: 'diagram',
+      steps: [{ toolName: 'render_diagram', input: { mermaid: 'graph TD; A-->B', title: 't' }, reason: 'r', todoId: 't1' }],
+      todos: [{ id: 't1', text: 'd', status: 'pending', stepRefs: [] }],
+      finalReplyHint: 'done', reasoning: null, version: 1,
+    });
+
+    // role=researcher：render_diagram 不在子集 → exec 守卫拦截。
+    const { run: childR } = await createAgentRun({
+      ownerId: user.id, channel: 'private', sessionId: session.id,
+      inputText: 'r', apiKey: 'fake', apiKeySource: 'server',
+      parentRunId: parent.id, role: 'researcher',
+    });
+    await updateAgentRun(childR.id, { plan: diagramPlan(), todos: diagramPlan().todos, status: 'running' });
+    await executeRun(childR.id);
+    const rSteps = await listSteps(childR.id);
+    expect(rSteps.some((s) => s.kind === 'subagent_tool_denied' && s.toolName === 'render_diagram')).toBe(true);
+    expect(rSteps.some((s) => s.kind === 'tool_call' && s.toolName === 'render_diagram')).toBe(false);
+
+    // role=analyst：render_diagram 在子集 → 放行(有 tool_call,无 denied)。
+    const { run: childA } = await createAgentRun({
+      ownerId: user.id, channel: 'private', sessionId: session.id,
+      inputText: 'a', apiKey: 'fake', apiKeySource: 'server',
+      parentRunId: parent.id, role: 'analyst',
+    });
+    await updateAgentRun(childA.id, { plan: diagramPlan(), todos: diagramPlan().todos, status: 'running' });
+    await executeRun(childA.id);
+    const aSteps = await listSteps(childA.id);
+    expect(aSteps.some((s) => s.kind === 'subagent_tool_denied' && s.toolName === 'render_diagram')).toBe(false);
+    expect(aSteps.some((s) => s.kind === 'tool_call' && s.toolName === 'render_diagram')).toBe(true);
   });
 });

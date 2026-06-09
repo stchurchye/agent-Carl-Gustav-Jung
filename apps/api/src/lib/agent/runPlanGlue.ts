@@ -235,6 +235,8 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
         ? run.contextCheckpoint
         : null,
       isSubagent: !!run.parentRunId,
+      role: run.role, // M3-S1：子 agent 按 role 取工具子集
+
       mergedInputs: run.mergedInputs ?? [], // M7 P1a
     });
   } catch (e) {

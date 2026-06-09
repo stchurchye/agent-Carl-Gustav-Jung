@@ -3,7 +3,7 @@ import { sanitizeMergedUsername } from './types.js';
 import { toolRegistry, type ToolDef } from './toolRegistry.js';
 import type { LlmChatClient, LlmChatMessage } from '../llm/types.js';
 import type { AgentContextSnapshot } from './contextAdapter.js';
-import { SUBAGENT_TOOL_WHITELIST } from './subagentTools.js';
+import { subagentToolsForRole } from './subagentTools.js';
 
 const CN_NUM: Record<string, number> = {
   一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5,
@@ -132,8 +132,9 @@ export async function generatePlanWithLlm(
   input: LlmPlannerInput,
 ): Promise<Plan> {
   const allTools = toolRegistry.list();
+  // M3-S1：子 agent 按 role 取工具子集(generalist=researcher 只读;analyst 含 run_python/render_diagram)。
   const tools = input.isSubagent
-    ? allTools.filter((t) => SUBAGENT_TOOL_WHITELIST.has(t.name))
+    ? allTools.filter((t) => subagentToolsForRole(input.role).has(t.name))
     : allTools;
   const systemPrompt = buildPlannerSystemPrompt(tools);
   const userPrompt = buildPlannerUserPrompt(input);

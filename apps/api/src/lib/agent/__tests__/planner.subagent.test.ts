@@ -24,6 +24,39 @@ describe('subagent tool whitelist', () => {
   });
 });
 
+describe('M3-S1 subagentToolsForRole (按角色的工具子集)', () => {
+  it('researcher / generalist = 只读检索集(无 run_python / render_diagram)', async () => {
+    const { subagentToolsForRole } = await import('../subagentTools.js');
+    for (const role of ['researcher', 'generalist'] as const) {
+      expect(subagentToolsForRole(role).has('search_papers')).toBe(true);
+      expect(subagentToolsForRole(role).has('magi_system_read')).toBe(true);
+      expect(subagentToolsForRole(role).has('run_python')).toBe(false);
+      expect(subagentToolsForRole(role).has('render_diagram')).toBe(false);
+    }
+  });
+
+  it('analyst = researcher + run_python + render_diagram，但仍禁递归/暂停', async () => {
+    const { subagentToolsForRole } = await import('../subagentTools.js');
+    const analyst = subagentToolsForRole('analyst');
+    expect(analyst.has('search_papers')).toBe(true); // 继承 researcher
+    expect(analyst.has('run_python')).toBe(true);
+    expect(analyst.has('render_diagram')).toBe(true);
+    // 递归 / 暂停 / 写工具仍禁(任何角色都不给)
+    expect(analyst.has('deep_research')).toBe(false);
+    expect(analyst.has('spawn_subagent')).toBe(false);
+    expect(analyst.has('ask_user')).toBe(false);
+    expect(analyst.has('magi_content_ingest')).toBe(false);
+  });
+
+  it('unknown / undefined role → generalist(最安全只读集)', async () => {
+    const { subagentToolsForRole } = await import('../subagentTools.js');
+    expect(subagentToolsForRole(undefined).has('run_python')).toBe(false);
+    expect(subagentToolsForRole(null).has('run_python')).toBe(false);
+    expect(subagentToolsForRole('bogus_role').has('run_python')).toBe(false);
+    expect(subagentToolsForRole('bogus_role').has('search_papers')).toBe(true);
+  });
+});
+
 describe('planner: subagent tool whitelist integration', () => {
   it('LlmPlannerInput accepts isSubagent flag', async () => {
     const { generatePlanWithLlm } = await import('../planner.js');

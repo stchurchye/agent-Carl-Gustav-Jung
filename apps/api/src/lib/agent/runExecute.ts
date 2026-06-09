@@ -39,7 +39,7 @@ import {
 import { resolveLlmClient } from './runLlmClient.js';
 import { reflectGoalCompletion } from './reflection.js';
 import { pickFallbackFinalContent } from './runReply.js';
-import { SUBAGENT_TOOL_WHITELIST } from './subagentTools.js';
+import { subagentToolsForRole } from './subagentTools.js';
 import {
   resolveToolCallKey,
   applyReplanningIfNeeded,
@@ -240,7 +240,7 @@ export async function executeRun(runId: string): Promise<void> {
       // 复用会让 applyReplanningIfNeeded 在该子 run 后续进入 replanning(steer / merge_trigger /
       // critique)时把这条护栏拦截误判成 denyIsNewest,走 deny 重规划分支(记 directive「用户拒绝了
       // 工具 X」+ 清 plan → LLM 重规划),把「安全越权拦截」混淆成「用户拒绝审批,换个方案」。
-      if (run.parentRunId && !SUBAGENT_TOOL_WHITELIST.has(tool.name)) {
+      if (run.parentRunId && !subagentToolsForRole(run.role).has(tool.name)) {
         await recordStep({
           runId,
           kind: 'subagent_tool_denied',

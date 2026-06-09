@@ -1,7 +1,6 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
 import * as store from '../store.js';
-import { createAgentRun, cancelRun } from '../runLifecycle.js';
-import { dispatchChildRun } from '../childExecutor.js';
+import { runChildSubagent, type SubagentCitation } from '../spawnSubagent.js';
 
 type DeepResearchInput = {
   question: string;
@@ -11,15 +10,11 @@ type DeepResearchInput = {
 type DeepResearchOutput = {
   ok: boolean;
   report: string;
-  citations: Array<{ kind: string; id: string; label?: string }>;
+  citations: SubagentCitation[];
   stepsUsed: number;
   childRunId: string;
   error?: string;
 };
-
-const POLL_INTERVAL_MS = 500;
-const MAX_WAIT_MS = 5 * 60_000;
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'budget_exhausted']);
 
 export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = {
   name: 'deep_research',
@@ -42,19 +37,13 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
     failureHint:
       'deep_research 失败：子 agent 超时/工具不可用/子任务范围太大。可改用 search_papers + fetch_url 串行，或缩小问题范围重试。',
   },
+  // M3-S1：deep_research = spawn_subagent(role='researcher') 的便捷形态；spawn 逻辑共用 runChildSubagent。
   async handler(input, ctx) {
-    // 防递归：父 run 本身就是子 run
     const parentRun = await store.getAgentRun(ctx.runId);
     if (!parentRun) {
-      return {
-        ok: false,
-        report: '',
-        citations: [],
-        stepsUsed: 0,
-        childRunId: '',
-        error: 'parent run not found',
-      };
+      return { ok: false, report: '', citations: [], stepsUsed: 0, childRunId: '', error: 'parent run not found' };
     }
+    // 防递归：父 run 本身就是子 run。
     if (parentRun.parentRunId) {
       return {
         ok: false,
@@ -65,103 +54,15 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
         error: 'deep_research cannot be nested (run is already a sub-agent)',
       };
     }
-
     const maxSteps = Math.max(1, Math.min(input.maxSteps ?? 5, 8));
-
     try {
-      // 1. 创建子 run（parentRunId 指向父 run，budget 限制）。
-      // M7 T7：父是群聊 → 子也落到同 group/topic，走无 invoker 的子卡片占位。
-      const isParentGroup =
-        parentRun.channel === 'group' && !!parentRun.groupId && !!parentRun.topicId;
-      const childResult = await createAgentRun({
-        ownerId: parentRun.ownerId,
-        channel: isParentGroup ? 'group' : 'private',
-        groupId: isParentGroup ? parentRun.groupId! : undefined,
-        topicId: isParentGroup ? parentRun.topicId! : undefined,
-        inputText: input.question,
-        apiKey: '',
-        apiKeySource: parentRun.apiKeySource,
-        providerId: parentRun.providerId,
-        modelId: parentRun.modelId,
-        parentRunId: parentRun.id,
-        budget: { maxSteps, maxSeconds: 120, maxTokens: 50_000 },
-        surfaceMode: isParentGroup ? 'child_card' : 'default',
+      return await runChildSubagent({
+        parentRun,
+        task: input.question,
+        role: 'researcher',
+        maxSteps,
+        signal: ctx.signal,
       });
-      const childRunId = childResult.run.id;
-
-      // M3 hotfix: 子 run 继承父 run 的加密 LLM 密钥（user-key 场景）。
-      // createAgentRun 只接受明文 apiKey，子 run 创建时传空串，LLM client
-      // 会退回 server key。用 DB-level SQL COPY 把父 run 的加密 key 直接
-      // 写入子 run，密文不经过 Node 进程，最安全。
-      await store.copyLlmKeysFromParent(childRunId, parentRun.id);
-
-      // 2. 父取消 → 子取消（用 cancelRun 确保同时 abort 子 run 的活跃 controller）
-      const onAbort = () => {
-        void cancelRun(childRunId, parentRun.ownerId);
-      };
-      ctx.signal.addEventListener('abort', onAbort, { once: true });
-
-      // 3. 派子 run 入独立 child executor
-      await dispatchChildRun(childRunId);
-
-      // 4. 轮询直到子 run 达到终态
-      const startedAt = Date.now();
-      let childRun = childResult.run;
-      while (Date.now() - startedAt < MAX_WAIT_MS) {
-        await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL_MS));
-        if (ctx.signal.aborted) {
-          ctx.signal.removeEventListener('abort', onAbort);
-          const err = new Error('aborted');
-          err.name = 'AbortError';
-          throw err;
-        }
-        const reloaded = await store.getAgentRun(childRunId);
-        if (!reloaded) break;
-        childRun = reloaded;
-        if (TERMINAL_STATUSES.has(reloaded.status)) break;
-      }
-      ctx.signal.removeEventListener('abort', onAbort);
-
-      if (childRun.status !== 'completed') {
-        return {
-          ok: false,
-          report: '',
-          citations: [],
-          stepsUsed: childRun.usage.steps,
-          childRunId,
-          error: `child run ended with status: ${childRun.status}`,
-        };
-      }
-
-      // 5. 聚合子 run 结果
-      const steps = await store.listSteps(childRunId);
-      // M3 hotfix: softComplete 对子 run（无 resultMessageId）会追加一条
-      // synthesized=true 的 reply step，包含 LLM 合成内容。
-      // 优先取 synthesized 版本；fallback 到首条 reply；再 fallback 到最后一步。
-      const synthesizedReply = [...steps]
-        .reverse()
-        .find(
-          (s) =>
-            s.kind === 'reply' &&
-            (s.output as { synthesized?: boolean } | undefined)?.synthesized,
-        );
-      const replyStep =
-        synthesizedReply ??
-        ([...steps].reverse().find((s) => s.kind === 'reply') ?? steps[steps.length - 1]);
-      const report: string =
-        (replyStep?.output as { content?: string; text?: string } | undefined)?.content ??
-        (replyStep?.output as { content?: string; text?: string } | undefined)?.text ??
-        '(子 agent 未生成文字报告)';
-
-      const citations: DeepResearchOutput['citations'] = [];
-      for (const s of steps) {
-        const ref = (s.output as { ref?: unknown } | undefined)?.ref;
-        if (ref && typeof ref === 'object' && (ref as Record<string, unknown>).kind) {
-          citations.push(ref as DeepResearchOutput['citations'][number]);
-        }
-      }
-
-      return { ok: true, report, citations, stepsUsed: childRun.usage.steps, childRunId };
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') throw e;
       return {
