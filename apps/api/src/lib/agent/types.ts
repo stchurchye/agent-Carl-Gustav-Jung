@@ -145,6 +145,18 @@ export type AgentRun = {
   mergedInputsConsumedCount: number;
   /** S1：累积式结构化 checkpoint（context compaction）。null = 还没产生。 */
   contextCheckpoint: AgentCheckpoint | null;
+  /**
+   * M1c：持久 steer 改向指令。steer 时写入,buildInitialPlan 每次重规划都作 replanDirective
+   * 注入(最高优先级),直到下次 steer 覆盖 —— 使改向跨后续 continuation replan 不丢。
+   * null = 未被 steer 过。deny 改向用 [[deniedTools]] 列(下),不写此字段。
+   */
+  steerDirective: string | null;
+  /**
+   * M1c：被用户拒绝的工具名列表(持久)。deny 时 append,buildInitialPlan 每次重规划都把
+   * 「不要调用 X」注入 planner —— 使被拒工具跨后续 continuation replan 不被重新规划(与
+   * steerDirective 对称)。空数组 = 无被拒工具。
+   */
+  deniedTools: string[];
   /** M7：queued 状态下记录的初始位次（UI hint，非真源）。 */
   queuePosition: number | null;
   /** M7：ask_user 群聊期待谁答（默认 = ownerId）。 */
@@ -176,8 +188,8 @@ export type StepKind =
   | 'approval_deny'
   // M3-S0：子 agent 越权工具被 exec-time 白名单护栏拦截。专用 kind（不复用
   // 'approval_deny'）—— 护栏是「策略越权拦截」，与「用户拒绝审批」语义不同。
-  // 复用 approval_deny 会被 applyReplanningIfNeeded 误判成 denyIsNewest，
-  // 触发 generatePlanForApprovalDeny 生成 echo 替代 plan（把安全拦截混淆成换方案）。
+  // 复用 approval_deny 会被 applyReplanningIfNeeded 误判成 denyIsNewest，触发 deny 重规划分支
+  // （记 directive「用户拒绝了工具 X，改用替代」+ 清 plan → LLM 把安全拦截误当换方案）。
   | 'subagent_tool_denied'
   | 'approval_timeout'
   | 'cancel'

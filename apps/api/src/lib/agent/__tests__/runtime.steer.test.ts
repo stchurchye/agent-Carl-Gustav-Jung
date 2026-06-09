@@ -68,10 +68,12 @@ describe('runtime steer e2e (T11)', () => {
 
     const mid = await store.getAgentRun(run.id);
     expect(mid?.status).toBe('replanning');
-    expect(mid?.plan?.version).toBe(2);
-    expect(mid?.plan?.steps.length).toBe(2);
+    // M1c：steer 清 plan；新 plan 由 worker re-pickup 时 buildInitialPlan 重生成
+    // （测试环境无 LLM → echo from directive「改成跑两步」→ 2 步，等价旧 M1b 行为）。
+    expect(mid?.plan).toBeNull();
 
-    // 模拟 worker re-pickup → 走 replanning 分支 → 跑新 plan 2 steps
+    // 模拟 worker re-pickup → 走 replanning 分支(steerIsNewest 记 directive + 清 plan)
+    // → buildInitialPlan echo-from-directive 重生成 2 步 plan → 跑完
     await executeRun(run.id);
     const final = await store.getAgentRun(run.id);
     expect(final?.status).toBe('completed');

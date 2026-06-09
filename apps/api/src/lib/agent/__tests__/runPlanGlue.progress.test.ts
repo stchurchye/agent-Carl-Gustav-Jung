@@ -76,6 +76,48 @@ describe('buildProgressSummary 脱敏（送 planner 投影必须刮密钥）', (
   });
 });
 
+describe('readStashedReplanDirective (M1c steer/deny → LLM 重规划)', () => {
+  const mkReplan = (reason: string, directive?: string) => ({
+    id: 's', runId: 'r', idx: 1, kind: 'replan' as const,
+    toolName: null, toolCallKey: null, input: null,
+    output: { reason, ...(directive !== undefined ? { directive } : {}) },
+    tokens: 0, durationMs: 0, error: null, byUserId: null, createdAt: new Date(),
+  });
+
+  it('最近 replan 是 steer → 返回 {reason:steer, directive}', async () => {
+    const { readStashedReplanDirective } = await import('../runPlanGlue.js');
+    expect(readStashedReplanDirective([mkReplan('steer', '改讲共时性')])).toEqual({
+      reason: 'steer',
+      directive: '改讲共时性',
+    });
+  });
+
+  it('最近 replan 是 approval_deny → 返回 {reason:approval_deny, directive}', async () => {
+    const { readStashedReplanDirective } = await import('../runPlanGlue.js');
+    expect(readStashedReplanDirective([mkReplan('approval_deny', '换工具')])).toEqual({
+      reason: 'approval_deny',
+      directive: '换工具',
+    });
+  });
+
+  it('最近 replan 是 continuation/critique → undefined（不污染续跑/critique）', async () => {
+    const { readStashedReplanDirective } = await import('../runPlanGlue.js');
+    expect(readStashedReplanDirective([mkReplan('continuation')])).toBeUndefined();
+    expect(readStashedReplanDirective([mkReplan('critique_or_unspecified')])).toBeUndefined();
+  });
+
+  it('只认最近一条 replan：旧 steer 之后又有 continuation → undefined（旧 directive 不复用）', async () => {
+    const { readStashedReplanDirective } = await import('../runPlanGlue.js');
+    const steps = [mkReplan('steer', '旧改向'), mkReplan('continuation')];
+    expect(readStashedReplanDirective(steps)).toBeUndefined();
+  });
+
+  it('空 directive → undefined', async () => {
+    const { readStashedReplanDirective } = await import('../runPlanGlue.js');
+    expect(readStashedReplanDirective([mkReplan('steer', '')])).toBeUndefined();
+  });
+});
+
 describe('buildInitialPlan: 续跑重建带「进展摘要」(issue 0001 B2+B3)', () => {
   const ORIGINAL_VITEST = process.env.VITEST;
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
@@ -161,5 +203,149 @@ describe('buildInitialPlan: 续跑重建带「进展摘要」(issue 0001 B2+B3)'
     expect(userMsg).toMatch(/DONE-TODO-ONE/);
     // 带上成功步骤的观察（observe-then-act）
     expect(userMsg).toMatch(/OBS-T1-MARKER/);
+  });
+
+  it('M1c: steer replan → planner prompt 含「用户中途指令」段 + directive 内容（真改向，非 echo 桩）', async () => {
+    const capture = installPlannerCaptureFetch('steered plan');
+
+    const { createUser, createChatSession } = await import('../../../store/pg.js');
+    const { hashPassword } = await import('../../auth.js');
+    const user = await createUser({
+      username: 'steer-' + randomUUID().slice(0, 6),
+      passwordHash: await hashPassword('xxxxxxxx'),
+      displayName: 'steer',
+    });
+    const sess = await createChatSession(user.id, 'steer');
+    const { createAgentRun } = await import('../runtime.js');
+    const { run } = await createAgentRun({
+      ownerId: user.id,
+      channel: 'private',
+      sessionId: sess.id,
+      inputText: '详细讲讲荣格的个体化过程',
+      apiKey: 'sk-fake',
+      apiKeySource: 'server',
+    });
+
+    // M1c：steer 把改向写进持久 run.steerDirective 字段（buildInitialPlan 据此注入 planner）。
+    const { updateAgentRun, getAgentRun } = await import('../store.js');
+    await updateAgentRun(run.id, {
+      steerDirective: '别讲个体化了，重点改讲共时性 SYNCHRONICITY-MARKER',
+      status: 'replanning',
+      plan: null,
+      todos: [],
+    });
+
+    const dbRun = await getAgentRun(run.id);
+    const { buildInitialPlan } = await import('../runPlanGlue.js');
+    await buildInitialPlan(dbRun!);
+
+    const last = capture.getLast();
+    expect(last).not.toBeNull();
+    const userMsg = last!.messages.find((m) => m.role === 'user')?.content ?? '';
+    // directive 段存在（最高优先级），且带 steer 指令内容 —— 证明 LLM planner 真收到改向指令
+    expect(userMsg).toMatch(/用户中途指令/);
+    expect(userMsg).toMatch(/SYNCHRONICITY-MARKER/);
+  });
+
+  it('M1c: steer directive 持久 —— 最近 replan 是 continuation 时，run.steerDirective 仍注入（修漂回原主题）', async () => {
+    const capture = installPlannerCaptureFetch('persisted steer plan');
+
+    const { createUser, createChatSession } = await import('../../../store/pg.js');
+    const { hashPassword } = await import('../../auth.js');
+    const user = await createUser({
+      username: 'psteer-' + randomUUID().slice(0, 6),
+      passwordHash: await hashPassword('xxxxxxxx'),
+      displayName: 'psteer',
+    });
+    const sess = await createChatSession(user.id, 'psteer');
+    const { createAgentRun } = await import('../runtime.js');
+    const { run } = await createAgentRun({
+      ownerId: user.id,
+      channel: 'private',
+      sessionId: sess.id,
+      inputText: '详细讲讲荣格的个体化过程',
+      apiKey: 'sk-fake',
+      apiKeySource: 'server',
+    });
+
+    // 关键场景：steer 已写持久字段，其后又发生 continuation replan（最近一条 replan = continuation）。
+    // 旧实现(只读最近 replan 的 stash directive) 在此会丢 steer → 漂回原主题；持久字段应仍注入。
+    const { recordStep } = await import('../stepRecorder.js');
+    await recordStep({
+      runId: run.id,
+      kind: 'replan',
+      output: { reason: 'continuation', progress: '已完成的 todo：\n- 读了共时性资料' },
+    });
+    const { updateAgentRun, getAgentRun } = await import('../store.js');
+    await updateAgentRun(run.id, {
+      steerDirective: '别讲个体化了，改讲共时性 PERSIST-MARKER',
+      status: 'replanning',
+      plan: null,
+      todos: [],
+    });
+
+    const dbRun = await getAgentRun(run.id);
+    expect(dbRun?.steerDirective).toBe('别讲个体化了，改讲共时性 PERSIST-MARKER');
+    const { buildInitialPlan } = await import('../runPlanGlue.js');
+    await buildInitialPlan(dbRun!);
+
+    const last = capture.getLast();
+    expect(last).not.toBeNull();
+    const userMsg = last!.messages.find((m) => m.role === 'user')?.content ?? '';
+    // 即便最近 replan 是 continuation（stash 读不到 steer），持久字段仍把改向指令注入 planner。
+    expect(userMsg).toMatch(/用户中途指令/);
+    expect(userMsg).toMatch(/PERSIST-MARKER/);
+  });
+
+  it('M1c: deny 持久 —— deniedTools 跨 continuation replan 仍把「不要调用 X」注入 planner（修被拒工具复现）', async () => {
+    const capture = installPlannerCaptureFetch('deny alt plan');
+
+    const { createUser, createChatSession } = await import('../../../store/pg.js');
+    const { hashPassword } = await import('../../auth.js');
+    const user = await createUser({
+      username: 'deny-' + randomUUID().slice(0, 6),
+      passwordHash: await hashPassword('xxxxxxxx'),
+      displayName: 'deny',
+    });
+    const sess = await createChatSession(user.id, 'deny');
+    const { createAgentRun } = await import('../runtime.js');
+    const { run } = await createAgentRun({
+      ownerId: user.id,
+      channel: 'private',
+      sessionId: sess.id,
+      inputText: '帮我把这页归档进知识库',
+      apiKey: 'sk-fake',
+      apiKeySource: 'server',
+    });
+
+    // 关键场景：deny 已 append 持久 deniedTools，其后又发生 continuation replan（最近 replan = continuation）。
+    // 旧实现(deny 走 transient stash) 在此会丢被拒工具约束 → LLM 可重规划它；持久列应仍注入。
+    const { recordStep } = await import('../stepRecorder.js');
+    await recordStep({
+      runId: run.id,
+      kind: 'replan',
+      output: { reason: 'continuation', progress: '已完成的 todo：\n- 抓取了页面内容' },
+    });
+    const { updateAgentRun, getAgentRun } = await import('../store.js');
+    await updateAgentRun(run.id, {
+      deniedTools: ['magi_content_ingest_DENYTOOL'],
+      status: 'replanning',
+      plan: null,
+      todos: [],
+    });
+
+    const dbRun = await getAgentRun(run.id);
+    expect(dbRun?.deniedTools).toContain('magi_content_ingest_DENYTOOL');
+    const { buildInitialPlan } = await import('../runPlanGlue.js');
+    await buildInitialPlan(dbRun!);
+
+    const last = capture.getLast();
+    expect(last).not.toBeNull();
+    const userMsg = last!.messages.find((m) => m.role === 'user')?.content ?? '';
+    // 即便最近 replan 是 continuation，持久 deniedTools 仍把「不要调用 X」注入 planner（被拒工具不复现）。
+    expect(userMsg).toMatch(/用户中途指令/);
+    expect(userMsg).toMatch(/magi_content_ingest_DENYTOOL/);
+    expect(userMsg).toMatch(/不要调用/);
+    expect(userMsg).toMatch(/归档/); // 原任务仍在（deny 是约束不替代任务）
   });
 });

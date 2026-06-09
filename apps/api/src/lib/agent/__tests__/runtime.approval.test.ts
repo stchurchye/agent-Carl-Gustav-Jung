@@ -117,8 +117,15 @@ describe('runtime approval e2e (T4)', () => {
     await executeRun(runId);
     const final = await store.getAgentRun(runId);
     expect(final?.status).toBe('completed');
-    // generatePlanForApprovalDeny 生成的 intentSummary 含 [after deny:...]
-    expect(final?.plan?.intentSummary).toMatch(/after deny/);
+    // M1c：deny → 记 replan{reason:approval_deny,directive(含被拒工具)} + 清 plan，让 buildInitialPlan
+    // 据 directive 走 LLM 改用替代方案（替代旧 M1b echo 桩的 [after deny] intentSummary）。
+    const replan = (await store.listSteps(runId)).find(
+      (s) =>
+        s.kind === 'replan' &&
+        (s.output as { reason?: string } | null)?.reason === 'approval_deny',
+    );
+    expect(replan).toBeDefined();
+    expect((replan!.output as { directive?: string }).directive).toMatch(/risky_echo/);
   });
 
   it('timeout-low auto-grants → run resumes & completes', async () => {
