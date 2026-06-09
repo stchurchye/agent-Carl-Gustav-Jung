@@ -25,6 +25,7 @@ import { startAgentWorker } from './lib/agent/worker.js';
 import { registerEchoSleep } from './lib/agent/tools/echoSleep.js';
 import { registerRiskyEcho } from './lib/agent/tools/riskyEcho.js';
 import { registerAgentTools } from './lib/agent/registerAgentTools.js';
+import { registerMcpServersFromEnv } from './lib/agent/mcp/registerFromConfig.js';
 import { registerLogHook } from './lib/agent/logHook.js';
 import { llmLogsRouter } from './routes/llmLogs.js';
 import { mediaRouter } from './routes/media.js';
@@ -118,6 +119,16 @@ async function main() {
   }
   // M1c：注册真实工具集（magi、web、doc）
   registerAgentTools();
+  // M4 config 接线：按 env MCP_SERVERS 注册外部 MCP server(stdio/http)的工具。
+  // fire-and-forget + 每 server fail-open + 超时 —— 不阻塞 serve、慢/坏 server 不拖累启动。
+  void registerMcpServersFromEnv()
+    .then((rs) => {
+      const ok = rs.filter((r) => !r.error);
+      if (rs.length > 0) {
+        log('info', 'mcp.registered', { servers: rs.length, ok: ok.length, tools: ok.reduce((n, r) => n + r.tools, 0) });
+      }
+    })
+    .catch((e) => log('warn', 'mcp.register_failed', { error: e instanceof Error ? e.message : String(e) }));
   registerLogHook();
   startAgentWorker({ concurrency: 1, intervalMs: 2_000 });
   const port = Number(process.env.PORT ?? XZZ_API_PORT);
