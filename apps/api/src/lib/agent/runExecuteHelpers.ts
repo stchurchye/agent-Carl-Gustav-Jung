@@ -11,7 +11,6 @@
  * - detectPendingGrantBypass：approve 后 re-pickup 跳过 approval gate 一次
  */
 import * as store from './store.js';
-import { generatePlanForApprovalDeny } from './planner.js';
 import { recordStep } from './stepRecorder.js';
 import type { ToolDef } from './toolRegistry.js';
 import type { AgentRun, PlanStep } from './types.js';
@@ -43,29 +42,32 @@ export function resolveToolCallKey(
 /**
  * Replanning 分支：steer / approval_deny / critique 三种触发后由 worker re-pickup 进入这里。
  *
- * 三条路径：
- * - approval_deny: 这里调 `generatePlanForApprovalDeny` 选替代方案
- * - steer: steerRun 已经把新 plan 写入 db，这里不动 plan，只 reset usage
- * - critique（M1f polish #1 finish close-loop）: 把旧 plan 清成 null。
- *   executeRun 的 `if (!run.plan)` 会重跑 `buildInitialPlan` → 它会调
- *   `buildPreviousFailureSummary` 把已落地的 failed step 摘要喂给 planner LLM
- *   → 拿到纠正后的 plan。整段链路：soft-fail → step.error → isToolFailure
- *   → critique shouldReplan → status=replanning → 本函数清 plan → buildInitialPlan
- *   → previousFailure 入 prompt → corrected plan。
+ * 统一路径（M1c：steer/deny 已从 echo 桩升级为 LLM-driven，与 critique 同构）：
+ * - steer / approval_deny: 记一条 replan{reason, directive}（steer=用户改向指令；deny=被拒工具）
+ *   并把 plan 清成 null。
+ * - critique（M1f polish #1）/ continuation / merge_trigger: 同样把 plan 清成 null
+ *   （continuation/merge 的 replan step 已自带，本函数只清 plan 不重复 record）。
  *
- *   设计说明：critique-replan 时整个 plan 都丢掉，而不是 patch 某一步。
- *   理由：soft-fail 通常意味着整体策略不行，不是单步错。LLM 更擅长"给定失败
- *   的尝试，重新设计"，而不是"给定一个失败 step，找替代 step 把旧 plan 串起来"。
+ * 三者都靠 executeRun 的 `if (!run.plan)` 重跑 `buildInitialPlan` → 它从最近一条 replan step 读
+ *   directive(readStashedReplanDirective) / progress(readStashedContinuationProgress) / 从 DB failed
+ *   step 拼 previousFailure，一并喂 planner LLM → 拿到改向/避开被拒工具/纠正后的 plan。
  *
- * M1b 简化：replanning 后重置 usage.steps=0 → 让 for 循环从新 plan 第 0 步起。
- * 防止无限 replan 由 plan.version 自带（同 instruction 多次 steer 不会变化 → 测试不会撞死循环）。
+ *   设计说明：replan 时整个 plan 都丢掉、由 LLM 重新设计，而不是 patch 某一步。
+ *   理由：steer/deny/soft-fail 通常意味着整体策略要变，LLM 更擅长"给定上下文重新设计"。
+ *
+ * replanning 后重置 usage.steps=0 → 让 for 循环从新 plan 第 0 步起。
  */
 export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> {
   if (run.status !== 'replanning') return run;
 
   const steps = await store.listSteps(run.id);
   const lastSteer = [...steps].reverse().find((s) => s.kind === 'steer');
-  const lastDeny = [...steps].reverse().find((s) => s.kind === 'approval_deny');
+  // M1c：只认「真 deny」—— approval.ts denyRun(用户拒绝 / timeout 自动 deny)带 output{reason,by}；
+  // 排除 exec-time approvalMode='never' 安全拦截 skip（只带 error、无 output、run 继续不进 replanning）。
+  // 否则 critique replan 时残留的 'never' 拦截会被误当用户拒绝、伪造「用户拒绝工具 X」directive。(code-review #4)
+  const lastDeny = [...steps]
+    .reverse()
+    .find((s) => s.kind === 'approval_deny' && s.output != null);
   let next = run;
 
   const denyIsNewest =
@@ -98,18 +100,41 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
       plan: null,
       todos: [],
     }))!;
-  } else if (denyIsNewest) {
-    const newPlan = generatePlanForApprovalDeny(
-      run.plan!,
-      lastDeny!.toolName ?? 'unknown',
-      run.inputText,
-    );
-    await recordStep({ runId: run.id, kind: 'replan', output: newPlan });
+  } else if (steerIsNewest) {
+    // M1c：steer → 清 plan，让 executeRun 走 buildInitialPlan 用 LLM 真重规划。
+    // 改向指令的**权威源是持久字段 run.steerDirective**(steerRun 写入,跨后续 continuation replan
+    // 不丢；buildInitialPlan 据此注入 planner)。这条 replan step **仅作审计**(记触发改向的指令 + reason)，
+    // buildInitialPlan 对 steer 不读 stash directive。替代旧 M1b echo 桩 generatePlanForSteer。
+    // 不记 prevPlanVersion —— steerRun 已先清 plan，此处 run.plan 恒 null（记了也只是 null，误导审计）。
+    const directive =
+      (lastSteer!.input as { instruction?: string } | null)?.instruction ?? '';
+    await recordStep({
+      runId: run.id,
+      kind: 'replan',
+      output: { reason: 'steer', directive },
+    });
     next = (await store.updateAgentRun(run.id, {
-      plan: newPlan,
-      todos: newPlan.todos,
+      plan: null,
+      todos: [],
     }))!;
-  } else if (!steerIsNewest) {
+  } else if (denyIsNewest) {
+    // M1c：deny → append 被拒工具到持久 run.deniedTools(去重) + 清 plan，让 buildInitialPlan 每次
+    // 重规划都注入「不要调用 X」（持久,跨后续 continuation replan 不丢；权威源是该列，非 stash）。
+    // replan step 的 directive 仅作审计。替代旧 M1b echo 桩 generatePlanForApprovalDeny。
+    const deniedTool = lastDeny!.toolName ?? 'unknown';
+    const directive = `用户拒绝了工具 \`${deniedTool}\`。请改用其他工具或方式达成原任务目标，不要再调用该工具。`;
+    const deniedTools = Array.from(new Set([...(run.deniedTools ?? []), deniedTool]));
+    await recordStep({
+      runId: run.id,
+      kind: 'replan',
+      output: { reason: 'approval_deny', directive, deniedTool },
+    });
+    next = (await store.updateAgentRun(run.id, {
+      plan: null,
+      todos: [],
+      deniedTools,
+    }))!;
+  } else {
     // critique 触发（或其他非 steer / 非 deny 的 replan 源）→ 清 plan，
     // 让 executeRun 走 buildInitialPlan 重生成；previousFailure 由
     // buildPreviousFailureSummary 从 DB 取最近 failed step 拼出。
@@ -127,7 +152,6 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
       todos: [],
     }))!;
   }
-  // steerIsNewest 分支：steerRun 已写新 plan，这里什么也不做（保留 next = run）
 
   const resetUsage = { ...next.usage, steps: 0 };
   return (await store.updateAgentRun(run.id, {

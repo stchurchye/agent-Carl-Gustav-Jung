@@ -117,8 +117,15 @@ describe('runtime approval e2e (T4)', () => {
     await executeRun(runId);
     const final = await store.getAgentRun(runId);
     expect(final?.status).toBe('completed');
-    // generatePlanForApprovalDeny 生成的 intentSummary 含 [after deny:...]
-    expect(final?.plan?.intentSummary).toMatch(/after deny/);
+    // M1c：deny → 记 replan{reason:approval_deny,directive(含被拒工具)} + 清 plan，让 buildInitialPlan
+    // 据 directive 走 LLM 改用替代方案（替代旧 M1b echo 桩的 [after deny] intentSummary）。
+    const replan = (await store.listSteps(runId)).find(
+      (s) =>
+        s.kind === 'replan' &&
+        (s.output as { reason?: string } | null)?.reason === 'approval_deny',
+    );
+    expect(replan).toBeDefined();
+    expect((replan!.output as { directive?: string }).directive).toMatch(/risky_echo/);
   });
 
   it('timeout-low auto-grants → run resumes & completes', async () => {
@@ -163,5 +170,29 @@ describe('runtime approval e2e (T4)', () => {
 
     await executeRun(runId);
     expect((await store.getAgentRun(runId))?.status).toBe('completed');
+  });
+
+  it('M1c: 被拒工具执行期硬门 —— deniedTools 里的工具被跳过(不执行)，记 approval_deny 无 output', async () => {
+    const u = await ensureUser('dtg');
+    const s = await createChatSession(u.id, 'dtg');
+    // echo_after_sleep 是 auto 工具：无硬门会真执行；标记为本 run 已拒后应被跳过。
+    const runId = await mkRunWithPlan(u.id, s.id, 'echo_after_sleep', 2);
+    await store.updateAgentRun(runId, { deniedTools: ['echo_after_sleep'] });
+
+    await executeRun(runId);
+
+    const steps = await store.listSteps(runId);
+    // 被拒工具没真执行（无 tool_call），被硬门跳过。
+    expect(
+      steps.some((st) => st.kind === 'tool_call' && st.toolName === 'echo_after_sleep'),
+    ).toBe(false);
+    const skips = steps.filter(
+      (st) => st.kind === 'approval_deny' && st.toolName === 'echo_after_sleep',
+    );
+    expect(skips.length).toBe(2); // 2 步都被硬门跳过
+    expect(skips[0].error).toMatch(/exec-time guard/);
+    // exec-time 跳过无 output → applyReplanningIfNeeded 的 lastDeny(output!=null) 排除，
+    // 不会被误当「新的用户拒绝」再触发 deny 重规划。
+    expect(skips[0].output).toBeNull();
   });
 });

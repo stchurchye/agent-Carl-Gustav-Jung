@@ -237,10 +237,9 @@ export async function executeRun(runId: string): Promise<void> {
       // subagent_tool_denied step 并跳过。
       //
       // 关键:用专用 kind 'subagent_tool_denied' 而非复用 'approval_deny'。
-      // 复用会让 applyReplanningIfNeeded(line 68/101)在该子 run 后续进入
-      // replanning(steer / merge_trigger / critique)时把这条护栏拦截误判成
-      // denyIsNewest,调 generatePlanForApprovalDeny 生成 echo 替代 plan,
-      // 把「安全越权拦截」混淆成「用户拒绝审批,换个方案」。
+      // 复用会让 applyReplanningIfNeeded 在该子 run 后续进入 replanning(steer / merge_trigger /
+      // critique)时把这条护栏拦截误判成 denyIsNewest,走 deny 重规划分支(记 directive「用户拒绝了
+      // 工具 X」+ 清 plan → LLM 重规划),把「安全越权拦截」混淆成「用户拒绝审批,换个方案」。
       if (run.parentRunId && !SUBAGENT_TOOL_WHITELIST.has(tool.name)) {
         await recordStep({
           runId,
@@ -256,6 +255,27 @@ export async function executeRun(runId: string): Promise<void> {
         continue;
       }
       // === End M3-S0 subagent tool whitelist ===
+
+      // === M1c：被拒工具执行期硬门 ===
+      // run.deniedTools 是软 prompt 约束（planner 被告知「不要调用 X」）；若 LLM 无视、plan 里
+      // 仍排了 X，这里在 handler 调用前**硬拦**：跳过该步（像 approvalMode='never'），免得它再次
+      // 撞 approvalMode='ask' 审批门 → 60s 自动 deny → 重规划循环。记 approval_deny + error、
+      // **无 output** —— 与 'never' 跳过同形，被 applyReplanningIfNeeded 的 lastDeny(output!=null)
+      // 排除，不会被误当「新的用户拒绝」再触发 deny 分支。
+      if ((run.deniedTools ?? []).includes(tool.name)) {
+        await recordStep({
+          runId,
+          kind: 'approval_deny',
+          toolName: tool.name,
+          input: planStep.input,
+          error: 'denied tool (exec-time guard: user denied this tool earlier in the run)',
+        });
+        // 跳过本步：usage.steps+1 让 for 推进。
+        const usage = incrementUsage(run, { steps: 1 });
+        run = (await store.updateAgentRun(runId, { usage }))!;
+        continue;
+      }
+      // === End 被拒工具硬门 ===
 
       // === Approval gate (ADR-1) ===
       if (tool.approvalMode === 'never') {

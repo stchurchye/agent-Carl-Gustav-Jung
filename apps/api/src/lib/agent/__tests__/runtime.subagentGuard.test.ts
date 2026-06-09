@@ -253,9 +253,8 @@ describe('M3-S0 subagent tool whitelist exec-time guard', () => {
     ).toBe(true);
 
     // 2) 模拟外部触发把该子 run 推回 replanning(plan 仍是原 plan),再过
-    //    applyReplanningIfNeeded —— 若护栏复用了 approval_deny,这里会被
-    //    denyIsNewest 命中,调 generatePlanForApprovalDeny 生成
-    //    intentSummary='[after deny:...] 改用替代方案' 的 echo 替代 plan。
+    //    applyReplanningIfNeeded —— 若护栏复用了 approval_deny,这里会被 denyIsNewest 命中,
+    //    走 deny 重规划分支(记 directive「用户拒绝了工具 X」+ 清 plan → LLM 误当换方案)。
     const replanning = (await updateAgentRun(child.id, {
       plan: origPlan,
       status: 'replanning',

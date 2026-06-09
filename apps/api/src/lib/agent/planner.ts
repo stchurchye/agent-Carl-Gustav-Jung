@@ -52,39 +52,11 @@ export function generatePlanForEcho(text: string): Plan {
   };
 }
 
-/**
- * M1b-2 steer 重规划。M1b 简化版：抽 instruction 里的步数生成新 echo 计划。
- * 接口与 M1c 的 LLM-driven planner 对齐：(prevPlan, instruction, alreadyCompletedSteps) → Plan。
- */
-export function generatePlanForSteer(
-  prevPlan: Plan,
-  instruction: string,
-  _alreadyCompletedSteps: number,
-): Plan {
-  const next = generatePlanForEcho(instruction);
-  return {
-    ...next,
-    intentSummary: `[steer] ${instruction}`,
-    version: prevPlan.version + 1,
-  };
-}
-
-/**
- * M1b-2 deny 重规划。简化为 echo 1 步占位；M1c 接 LLM 时会带 deniedTool + inputText
- * 让 planner 选替代方案。
- */
-export function generatePlanForApprovalDeny(
-  prevPlan: Plan,
-  deniedTool: string,
-  inputText: string,
-): Plan {
-  const next = generatePlanForEcho(inputText || '继续');
-  return {
-    ...next,
-    intentSummary: `[after deny:${deniedTool}] 改用替代方案`,
-    version: prevPlan.version + 1,
-  };
-}
+// M1c：steer / approval_deny 重规划已从「M1b echo 桩」升级为 LLM-driven。
+// 旧 generatePlanForSteer / generatePlanForApprovalDeny 已删 —— 现走
+// applyReplanningIfNeeded 记 directive(steer 指令 / 被拒工具) + 清 plan → buildInitialPlan
+// 把 directive 作为 replanDirective 喂 generatePlanWithLlm（最高优先级），让 planner 真改向 / 选替代。
+// echo 计划仅作 buildInitialPlan 的无-LLM / 测试环境 fallback（generatePlanForEcho 保留）。
 
 // =====================================================================
 // M1c: LLM planner
@@ -127,6 +99,12 @@ export type LlmPlannerInput = {
    * 注：nextStep 只是给 planner 的建议；是否收尾仍由 loop-end 的 reflection 单点裁决。
    */
   checkpoint?: AgentCheckpoint | null;
+  /**
+   * M1c steer/deny 重规划指令（替代旧 M1b echo 桩）。非空时 buildPlannerUserPrompt 渲染
+   * 「# 用户中途指令（最高优先级）」段：steer = 用户改向要求；deny = 某工具被拒、改用替代。
+   * 这是**用户/系统驱动的强制改向**，优先级高于原 inputText 的方向。
+   */
+  replanDirective?: string;
 };
 
 /**
@@ -272,7 +250,12 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
       ? `\n\n# 后续追问（合并自其他成员，需在新 plan 中一并回应）\n` +
         merged.map((m, i) => `${i + 1}. @${sanitizeMergedUsername(m.byUsername)} (${m.at}): ${m.text}`).join('\n')
       : '';
-  return `# 用户请求\n${input.inputText}${mergedSection}${summary}${failure}${progress}`;
+  // M1c steer/deny 重规划：用户/系统中途强制改向。优先级**高于**原 inputText 方向——
+  // 与之冲突的原计划应放弃，据此重新规划剩余步骤。
+  const directive = input.replanDirective
+    ? `\n\n# 用户中途指令（最高优先级，必须遵循）\n${input.replanDirective}\n请据此重新规划剩余步骤；与此冲突的原计划方向应放弃。`
+    : '';
+  return `# 用户请求\n${input.inputText}${directive}${mergedSection}${summary}${failure}${progress}`;
 }
 
 /**

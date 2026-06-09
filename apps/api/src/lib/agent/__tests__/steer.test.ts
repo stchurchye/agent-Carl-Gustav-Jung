@@ -36,7 +36,7 @@ describe('steerRun', () => {
     runControllers.clear();
   });
 
-  it('accepted: plan version bumps, status → replanning, steer step written', async () => {
+  it('accepted: clears plan + status → replanning, steer step records instruction (M1c LLM replan deferred to worker)', async () => {
     const u = await ensureUser('s1');
     const run = await mkRunningWithPlan(u.id);
     const res = await steerRun({
@@ -47,10 +47,14 @@ describe('steerRun', () => {
     expect(res.accepted).toBe(true);
     const after = await store.getAgentRun(run.id);
     expect(after?.status).toBe('replanning');
-    expect(after?.plan?.version).toBe(2);
-    expect(after?.plan?.steps.length).toBe(2);
+    // M1c：steer 不再同步生成 echo plan；清 plan 让 worker re-pickup 走 LLM 真重规划。
+    expect(after?.plan).toBeNull();
+    // M1c：持久改向字段写入 —— 跨后续 continuation replan 不丢。
+    expect(after?.steerDirective).toBe('改成跑两步');
     const steps = await store.listSteps(run.id);
-    expect(steps.some((s) => s.kind === 'steer')).toBe(true);
+    const steerStep = steps.find((s) => s.kind === 'steer');
+    expect(steerStep).toBeDefined();
+    expect((steerStep?.input as { instruction?: string })?.instruction).toBe('改成跑两步');
   });
 
   it('aborts the active controller if present', async () => {

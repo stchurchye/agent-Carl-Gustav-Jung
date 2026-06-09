@@ -109,9 +109,34 @@ export function readStashedContinuationProgress(
     const s = steps[i];
     if (s.kind !== 'replan') continue;
     const out = s.output as { reason?: unknown; progress?: unknown } | null;
-    if (out?.reason !== 'continuation') continue;
+    // 只认**最近一条** replan：若它不是 continuation（如更新的 steer/deny replan）→ undefined，
+    // 别越过它去取更旧 continuation 的 progress（否则 stale progress 污染 steer/deny 重规划）。
+    // 与 readStashedReplanDirective / latestReplanIsContinuation 的「最近一条」语义对齐。
+    if (out?.reason !== 'continuation') return undefined;
     return typeof out.progress === 'string' && out.progress.length > 0
       ? out.progress
+      : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * M1c steer/deny → LLM 重规划：从最近一条 replan step 读 steer/deny 的 directive。
+ * applyReplanningIfNeeded 在 steer/deny 触发时 record `{reason:'steer'|'approval_deny', directive}`
+ * 并清 plan；buildInitialPlan 据此把 directive 喂给 planner（替代旧 M1b echo 桩）。
+ *
+ * 只认**最近一条 replan**：若它是 steer/deny → 返 directive；是 continuation/critique → undefined
+ * （避免历史里残留的旧 steer/deny directive 污染后续续跑/critique 重规划）。
+ */
+export function readStashedReplanDirective(
+  steps: AgentStep[],
+): { reason: 'steer' | 'approval_deny'; directive: string } | undefined {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps[i].kind !== 'replan') continue;
+    const out = steps[i].output as { reason?: unknown; directive?: unknown } | null;
+    if (out?.reason !== 'steer' && out?.reason !== 'approval_deny') return undefined;
+    return typeof out.directive === 'string' && out.directive.length > 0
+      ? { reason: out.reason, directive: out.directive }
       : undefined;
   }
   return undefined;
@@ -126,6 +151,25 @@ export function readStashedContinuationProgress(
  */
 export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
   const text = run.inputText ?? '';
+  // M1c steer/deny directive：最近一条 replan 若是 steer/deny，取其 directive(强制改向/避开被拒工具)。
+  // 测试环境 / 无 LLM key 时 echo fallback 用 directive 文本(≈ 旧 M1b echo 桩,保留可测性);
+  // 有 LLM 时作为 replanDirective 进 planner prompt(最高优先级)。allSteps 一次取、下面复用。
+  const allSteps = await listSteps(run.id);
+  // stashed 仅用于 previousFailure 抑制（判断最近一条 replan 是否 steer/deny 触发）；
+  // directive 内容不从此读 —— steer/deny 都已持久化到 run 级列。
+  const stashed = readStashedReplanDirective(allSteps);
+  // M1c：steer 改向 = 持久 run.steerDirective；deny 避坑 = 持久 run.deniedTools。两者都跨后续
+  // continuation replan 不丢（权威源是 run 级列）。并存时合并注入（改的目标 + 避开被拒工具）。
+  const persistentSteer = run.steerDirective ?? undefined;
+  const deniedTools = run.deniedTools ?? [];
+  const deniedConstraint = deniedTools.length
+    ? `不要调用以下已被用户拒绝的工具：${deniedTools.map((t) => '`' + t + '`').join('、')}。改用其他工具或方式达成原任务目标。`
+    : undefined;
+  const replanDirective =
+    [persistentSteer, deniedConstraint].filter(Boolean).join('\n\n') || undefined;
+  // echo fallback(无 LLM / 测试)：steer = 新方向 → echo 从 directive；deny/无 → 原 inputText
+  // （deny 是约束、不替代原任务）。
+  const echoText = persistentSteer ?? text;
   const isTestEnv =
     process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
   // issue 0004：关键词 echo-fallback 只在显式 dev flag(AGENT_ECHO_KEYWORD=1)下生效。
@@ -134,12 +178,12 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
   const devEchoKeyword = process.env.AGENT_ECHO_KEYWORD === '1';
   const looksLikeEcho = devEchoKeyword && /echo/i.test(text);
   if (isTestEnv || looksLikeEcho) {
-    return generatePlanForEcho(text);
+    return generatePlanForEcho(echoText);
   }
   const llm = await resolveLlmClient(run);
   if (!llm) {
     // resolveLlmClient 已 emit NO_API_KEY notice
-    return generatePlanForEcho(text);
+    return generatePlanForEcho(echoText);
   }
   try {
     // snapshotForAgent 仍然要一个 DeepSeek key 做摘要（独立链路，不属于 LlmChatClient 抽象）。
@@ -164,8 +208,14 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
     // 行为完全等价 M1f 之前；replan 场景才会真正起作用。
     // 不区分 run.status：applyReplanningIfNeeded 已经把 status 改回 'running'，
     // 这里没法靠 status 判断；改成"有 failed step 就传"，语义更稳。
-    const stepsForPrompt = await listSteps(run.id);
-    const previousFailure = buildPreviousFailureSummary(stepsForPrompt);
+    const stepsForPrompt = allSteps;
+    // M1c：只在**紧接的 steer replan** 抑制 previousFailure —— steer 改向**放弃原任务**，旧任务
+    // 的失败是噪声。deny 不抑制：deny 是约束、**原任务仍在**，任务上的真失败 critique/replan 仍需要。
+    // 持久 steer 单独存在的后续 replan（stash 已被 continuation/critique 覆盖）也带 previousFailure。
+    const previousFailure =
+      stashed?.reason === 'steer'
+        ? undefined
+        : buildPreviousFailureSummary(stepsForPrompt);
     // issue 0001 B2+B3（review #2+#4 修复）：进展摘要在续跑触发时(todos 还在)就算好、
     // 塞进 continuation replan step。这里从最近一条 continuation replan 读 —— 既扛过
     // applyReplanningIfNeeded 清空 run.todos（否则"已完成 todo"段永远空），又只有续跑
@@ -178,6 +228,7 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       signal,
       previousFailure,
       progress,
+      replanDirective, // M1c：steer/deny 强制改向指令(最高优先级)
       // S3：只在续跑(continuation)时注入 checkpoint 的「自动续跑中」框架；steer/merge/
       // approval_deny 等 replan 不注入，避免给用户新指令套上陈旧"不要问是否继续"框架。
       checkpoint: latestReplanIsContinuation(stepsForPrompt)
@@ -207,6 +258,8 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       message: 'AI 规划暂时不可用，已退回到 echo 计划。建议稍后重试或检查 DeepSeek key 配置。',
       context: { error: errMsg },
     });
-    return generatePlanForEcho(text);
+    // M1c：LLM 失败时 echo fallback 也用 echoText(steer 走 directive)，否则 steer 改向会被静默丢、
+    // 退回原 inputText 跑老目标（且 plan 非空不再重进 replanning，用户的中途改向永久丢失）。
+    return generatePlanForEcho(echoText);
   }
 }

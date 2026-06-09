@@ -1,5 +1,4 @@
 import * as store from './store.js';
-import { generatePlanForSteer } from './planner.js';
 import { recordStep } from './stepRecorder.js';
 import { runControllers } from './runtimeRegistry.js';
 
@@ -17,10 +16,12 @@ export type SteerResult = {
 /**
  * 用户中途 steer（spec §15.2）。
  *
- * 1) 校验 run 非终态，且 plan 已存在
- * 2) 生成新 plan（version+1）写入
- * 3) status → 'replanning'，lastHeartbeatAt=null 让 worker 优先 pickup
- * 4) 写一条 steer step，记 byUserId + instruction + newPlanVersion
+ * 1) 校验 run 非终态，且 plan 已存在（确保有进行中的任务可改向）
+ * 2) M1c：清 plan + status → 'replanning'（不再同步生成 echo plan）。worker re-pickup 时
+ *    applyReplanningIfNeeded 把本 step 的 instruction 记成 directive，buildInitialPlan 用 LLM
+ *    据此真重规划（替代旧 M1b echo 桩 generatePlanForSteer —— 它 accepted 却不改向）。
+ * 3) lastHeartbeatAt=null 让 worker 优先 pickup
+ * 4) 写一条 steer step，记 byUserId + instruction
  * 5) 如果本进程当前在跑（runControllers 命中），abort 当前 AbortController
  *    → executeRun 在 abort 检查处会读 db status='replanning' 抛 AgentCancelled('steer')
  *    → runtime catch 'steer' 不 softFail，直接 return；worker 下次 pickup 进 replanning 分支
@@ -38,22 +39,22 @@ export async function steerRun(input: SteerInput): Promise<SteerResult> {
   }
   if (!run.plan) return { accepted: false, reason: 'no_plan' };
 
-  const newPlan = generatePlanForSteer(
-    run.plan,
-    input.instruction,
-    run.usage.steps,
-  );
+  // M1c：清 plan + 置 replanning（不再在此同步生成 echo plan）。worker re-pickup 时
+  // applyReplanningIfNeeded 据本 steer step 的 instruction 记 directive，buildInitialPlan 走 LLM 重规划。
   await store.updateAgentRun(input.runId, {
-    plan: newPlan,
-    todos: newPlan.todos,
+    plan: null,
+    todos: [],
     status: 'replanning',
     lastHeartbeatAt: null,
+    // M1c：持久改向 —— 写 run 级字段，buildInitialPlan 每次重规划都注入，跨后续 continuation
+    // replan 不丢（下次 steer 覆盖）。否则 directive 只在紧接的那条 replan 生效、之后漂回原主题。
+    steerDirective: input.instruction,
   });
   await recordStep({
     runId: input.runId,
     kind: 'steer',
     byUserId: input.byUserId,
-    input: { instruction: input.instruction, newPlanVersion: newPlan.version },
+    input: { instruction: input.instruction },
   });
 
   const controller = runControllers.get(input.runId);

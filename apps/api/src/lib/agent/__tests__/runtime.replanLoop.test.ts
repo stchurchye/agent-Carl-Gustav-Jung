@@ -121,7 +121,7 @@ describe('applyReplanningIfNeeded: critique branch clears plan (M1f polish #1 fi
     expect(out.prevPlanVersion).toBe(1);
   });
 
-  it('steer-driven (lastSteer 是最新 trigger) → plan 不动 (steerRun 已写新 plan)', async () => {
+  it('steer-driven (lastSteer 是最新 trigger) → M1c: 清 plan + 记 replan{reason:steer,directive}', async () => {
     const user = await ensureUser('steer');
     const sess = await createChatSession(user.id, 'steer');
     const { run } = await createAgentRun({
@@ -153,16 +153,20 @@ describe('applyReplanningIfNeeded: critique branch clears plan (M1f polish #1 fi
     const stale = (await getAgentRun(run.id))!;
     const updated = await applyReplanningIfNeeded(stale);
 
-    expect(updated.plan?.intentSummary).toBe('steered');
-    expect(updated.plan?.steps.length).toBe(2);
+    // M1c：steer 分支不再 no-op；清 plan 让 buildInitialPlan 走 LLM 真重规划。
+    expect(updated.plan).toBeNull();
     expect(updated.status).toBe('running');
 
-    // 不应写 replan step —— steerRun 自己负责写 steer step，这里不重复
+    // 写一条 replan{reason:'steer', directive=steer 指令}，供 buildInitialPlan/readStashedReplanDirective 读。
     const steps = await listSteps(run.id);
-    expect(steps.filter((s) => s.kind === 'replan')).toEqual([]);
+    const replan = steps.find((s) => s.kind === 'replan');
+    expect(replan).toBeDefined();
+    const out = replan!.output as { reason?: string; directive?: string };
+    expect(out.reason).toBe('steer');
+    expect(out.directive).toBe('do thing');
   });
 
-  it('deny-driven (lastDeny 是最新 trigger) → 走 generatePlanForApprovalDeny (existing 行为)', async () => {
+  it('deny-driven (lastDeny 是最新 trigger) → M1c: 清 plan + 记 replan{reason:approval_deny,directive}', async () => {
     const user = await ensureUser('deny');
     const sess = await createChatSession(user.id, 'deny');
     const { run } = await createAgentRun({
@@ -191,13 +195,20 @@ describe('applyReplanningIfNeeded: critique branch clears plan (M1f polish #1 fi
     const stale = (await getAgentRun(run.id))!;
     const updated = await applyReplanningIfNeeded(stale);
 
-    expect(updated.plan).not.toBeNull();
-    expect(updated.plan!.intentSummary).toMatch(/after deny:some_tool/);
+    // M1c：deny 不再用 echo 桩；清 plan 让 buildInitialPlan 走 LLM 重规划。
+    expect(updated.plan).toBeNull();
     expect(updated.status).toBe('running');
+    // M1c：被拒工具 append 到持久 run.deniedTools —— 跨后续 continuation replan 不丢。
+    expect(updated.deniedTools).toContain('some_tool');
 
+    // 写一条 replan{reason:approval_deny, directive(含被拒工具), deniedTool} 供审计。
     const steps = await listSteps(run.id);
     const replanStep = steps.find((s) => s.kind === 'replan');
     expect(replanStep).toBeDefined();
+    const out = replanStep!.output as { reason?: string; directive?: string; deniedTool?: string };
+    expect(out.reason).toBe('approval_deny');
+    expect(out.deniedTool).toBe('some_tool');
+    expect(out.directive).toMatch(/some_tool/);
   });
 
   // End-to-end: 2 连续 soft-fail 触发 critique → re-pickup 时 plan 被清 + 重新
