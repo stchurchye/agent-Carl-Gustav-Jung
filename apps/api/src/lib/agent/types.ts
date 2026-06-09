@@ -24,6 +24,17 @@ export type AgentRunStatus =
   | 'cancelled'
   | 'budget_exhausted';
 
+/**
+ * run 终态集合 —— 单一真相源。store(merge 守卫)/ spawnSubagent(子 run 轮询)等共用,
+ * 避免各自一份 Set 漂移(新增终态时漏改一处 → 轮询空转到超时)。string 类型便于 .has(任意状态)。
+ */
+export const TERMINAL_RUN_STATUSES: ReadonlySet<string> = new Set<string>([
+  'completed',
+  'failed',
+  'cancelled',
+  'budget_exhausted',
+]);
+
 export type AgentChannel = 'private' | 'group';
 
 export type CancelReason = 'user' | 'steer' | 'budget' | 'crash_reclaim' | 'user_timeout';
