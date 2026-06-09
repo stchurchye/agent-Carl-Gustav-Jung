@@ -1,8 +1,9 @@
 /**
  * MCP（Model Context Protocol）适配层最小骨架。
  *
- * M1c 只定义 client 协议接口，不接任何真实远端；
- * M1d / M1e 再接 SSE / WebSocket transport。
+ * M1c 定义 client 协议接口；M1d 接 stdio transport(stdioTransport.ts)；
+ * M4 接 Streamable HTTP/SSE transport(httpTransport.ts)。两种都实现 McpClient,
+ * 经 registerMcpServer 把远端工具 import 成本地 ToolDef。(WebSocket 暂不需要。)
  *
  * 设计目标：
  * - registerMcpServer(client) 把远端工具一次性 import 成本地 ToolDef
