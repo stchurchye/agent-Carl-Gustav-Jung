@@ -45,6 +45,15 @@ export function BrainMemoryHubScreen({ navigation }: Props) {
         return zh.brain.memorySearchHint;
       case 'memoryReview':
         return zh.brain.countItems(snapshot.reviewCount);
+      case 'skillReview':
+        // M5 polish：待评审建议技能数 → 让自蒸馏技能在 hub 可见、可驱动评审。
+        return snapshot.pendingSkillCount > 0
+          ? zh.brain.pendingItems(snapshot.pendingSkillCount)
+          : zh.brain.skillReviewHint;
+      case 'memoryEpisodic':
+        return snapshot.pendingEpisodicCount > 0
+          ? zh.brain.pendingItems(snapshot.pendingEpisodicCount)
+          : '';
       case 'memoryPrefs':
       case 'catHealth':
         return snapshot.autoExtractEnabled

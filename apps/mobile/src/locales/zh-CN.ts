@@ -463,6 +463,8 @@ export const zh = {
     customized: '已定制',
     default: '默认',
     countItems: (n: number) => `${n} 条`,
+    pendingItems: (n: number) => `${n} 条待审`,
+    skillReviewHint: '自蒸馏建议技能',
     countCalls: (n: number) => `${n} 次`,
     charsUsed: (used: number, limit: number) => `${used} / ${limit} 字`,
     personaPage: {
