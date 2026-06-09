@@ -7,7 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import * as store from '../lib/agent/store.js';
 import { cancelRun, createAgentRun, resumeAgentRun } from '../lib/agent/runtime.js';
-import type { AgentRun, AgentRunStatus } from '../lib/agent/types.js';
+import { TERMINAL_RUN_STATUSES, type AgentRun, type AgentRunStatus } from '../lib/agent/types.js';
 import * as topicSkills from '../lib/agent/topicSkills.js';
 import {
   emitNotice,
@@ -249,8 +249,7 @@ agentRouter.get('/runs/:id/long-poll', async (c) => {
   }
 
   // Terminal → immediate batch
-  const terminalSet = ['completed', 'failed', 'cancelled', 'budget_exhausted'];
-  if (terminalSet.includes(run.status)) {
+  if (TERMINAL_RUN_STATUSES.has(run.status)) {
     return toNdjsonResponse([await buildBatchLine()]);
   }
 
