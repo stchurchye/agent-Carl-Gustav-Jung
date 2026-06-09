@@ -7,13 +7,17 @@ import {
   isPersonaCustomized,
 } from '@xzz/shared';
 import type { MemoryCategory, MemoryFragment } from '@xzz/shared';
-import { api } from '../lib/api';
+import { api, type TopicSkill, type AgentMemoryItem } from '../lib/api';
 
 export type BrainSnapshot = {
   personaCustomized: boolean;
   longMemoryCount: number;
   shortMemoryCount: number;
   reviewCount: number;
+  /** M5 polish：待评审的自蒸馏建议技能数(enabled=false)——hub 卡片 badge,驱动评审闭环。 */
+  pendingSkillCount: number;
+  /** M5 polish：待审情景记忆数(status=pending)——hub 卡片 badge。 */
+  pendingEpisodicCount: number;
   llmLogCount: number;
   autoExtractEnabled: boolean;
   profileChars: number;
@@ -39,7 +43,7 @@ export function useBrainSnapshot() {
     setLoading(true);
     setError(null);
     try {
-      const [personaRes, longRes, sessionRes, topicRes, reviewRes, logsRes, settingsRes] =
+      const [personaRes, longRes, sessionRes, topicRes, reviewRes, logsRes, settingsRes, skillsRes, episodicPendingRes] =
         await Promise.all([
           api.getPersona().catch(() => null),
           api.listMemories({ scope: 'user', includeSuppressed: true }).catch(() => ({ data: [] })),
@@ -48,6 +52,9 @@ export function useBrainSnapshot() {
           api.listMemoryReview(50).catch(() => ({ data: [] })),
           api.listLlmLogs(30).catch(() => ({ data: [] })),
           api.getMemorySettings().catch(() => ({ data: { autoExtractEnabled: false } })),
+          // M5 polish：待审技能 / 待审情景记忆计数(各自 fail-open,不拖累整张快照)。
+          api.listSkills().catch(() => ({ data: { skills: [] as TopicSkill[] } })),
+          api.listAgentMemory('pending').catch(() => ({ data: { items: [] as AgentMemoryItem[] } })),
         ]);
 
       const long = longRes.data;
@@ -58,6 +65,8 @@ export function useBrainSnapshot() {
         longMemoryCount: long.length,
         shortMemoryCount: short.length,
         reviewCount: reviewRes.data.length,
+        pendingSkillCount: skillsRes.data.skills.filter((s) => !s.enabled).length,
+        pendingEpisodicCount: episodicPendingRes.data.items.length,
         llmLogCount: logsRes.data.length,
         autoExtractEnabled: settingsRes.data.autoExtractEnabled,
         profileChars: sumByCategory(long, 'user_profile'),
