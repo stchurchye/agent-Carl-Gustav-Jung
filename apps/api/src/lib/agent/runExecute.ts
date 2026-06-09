@@ -256,6 +256,27 @@ export async function executeRun(runId: string): Promise<void> {
       }
       // === End M3-S0 subagent tool whitelist ===
 
+      // === M1c：被拒工具执行期硬门 ===
+      // run.deniedTools 是软 prompt 约束（planner 被告知「不要调用 X」）；若 LLM 无视、plan 里
+      // 仍排了 X，这里在 handler 调用前**硬拦**：跳过该步（像 approvalMode='never'），免得它再次
+      // 撞 approvalMode='ask' 审批门 → 60s 自动 deny → 重规划循环。记 approval_deny + error、
+      // **无 output** —— 与 'never' 跳过同形，被 applyReplanningIfNeeded 的 lastDeny(output!=null)
+      // 排除，不会被误当「新的用户拒绝」再触发 deny 分支。
+      if ((run.deniedTools ?? []).includes(tool.name)) {
+        await recordStep({
+          runId,
+          kind: 'approval_deny',
+          toolName: tool.name,
+          input: planStep.input,
+          error: 'denied tool (exec-time guard: user denied this tool earlier in the run)',
+        });
+        // 跳过本步：usage.steps+1 让 for 推进。
+        const usage = incrementUsage(run, { steps: 1 });
+        run = (await store.updateAgentRun(runId, { usage }))!;
+        continue;
+      }
+      // === End 被拒工具硬门 ===
+
       // === Approval gate (ADR-1) ===
       if (tool.approvalMode === 'never') {
         await recordStep({
