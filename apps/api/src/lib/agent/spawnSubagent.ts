@@ -7,7 +7,7 @@
  * 子 run 的可用工具由 run.role 决定(planner 裁剪 + runExecute exec 守卫,见 subagentTools.ts)。
  * 递归(deep_research/spawn_subagent)、暂停(ask_user)不在任何角色子集 → 子 agent 无法再派子 agent。
  */
-import type { AgentRole, AgentRun } from './types.js';
+import { TERMINAL_RUN_STATUSES, type AgentRole, type AgentRun } from './types.js';
 import * as store from './store.js';
 import { createAgentRun, cancelRun } from './runLifecycle.js';
 import { dispatchChildRun } from './childExecutor.js';
@@ -25,7 +25,6 @@ export type RunChildSubagentResult = {
 
 const POLL_INTERVAL_MS = 500;
 const MAX_WAIT_MS = 5 * 60_000;
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'budget_exhausted']);
 
 function fail(error: string, childRunId = '', stepsUsed = 0): RunChildSubagentResult {
   return { ok: false, report: '', citations: [], stepsUsed, childRunId, error };
@@ -88,7 +87,7 @@ export async function runChildSubagent(params: {
       const reloaded = await store.getAgentRun(childRunId);
       if (!reloaded) break;
       childRun = reloaded;
-      if (TERMINAL_STATUSES.has(reloaded.status)) break;
+      if (TERMINAL_RUN_STATUSES.has(reloaded.status)) break;
     }
 
     if (childRun.status !== 'completed') {

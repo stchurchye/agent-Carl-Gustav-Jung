@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { PoolClient } from 'pg';
 import { getPool } from '../../db/client.js';
 import {
+  TERMINAL_RUN_STATUSES,
   type AgentCheckpoint,
   type AgentRun,
   type AgentRunStatus,
@@ -653,12 +654,6 @@ export async function countBlockingPlusQueuedOnTopic(
   return (rows[0]?.c as number | null) ?? 0;
 }
 
-const TERMINAL_STATUSES = new Set<string>([
-  'completed',
-  'failed',
-  'cancelled',
-  'budget_exhausted',
-]);
 
 /**
  * M7：merge target 已经 terminal 时抛此错；上层 retry-once 重判。
@@ -700,7 +695,7 @@ export async function applyMergeInTx(
       throw new MergeTargetTerminalError(targetRunId);
     }
     const status = lockRes.rows[0].status as string;
-    if (TERMINAL_STATUSES.has(status)) {
+    if (TERMINAL_RUN_STATUSES.has(status)) {
       if (ownClient) await c.query('ROLLBACK');
       throw new MergeTargetTerminalError(targetRunId);
     }
