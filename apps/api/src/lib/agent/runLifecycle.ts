@@ -15,6 +15,7 @@ import {
   DEFAULT_BUDGET,
   type AgentBudget,
   type AgentChannel,
+  type AgentRole,
   type AgentRun,
   type CancelReason,
   type RunArtifact,
@@ -54,8 +55,10 @@ export type CreateAgentRunInput = {
   modelId?: string;
   /** M2 Task 7A: per-service user-supplied API keys (E2B/FRED/Jina). Sealed before write. */
   userApiKeys?: Record<string, string>;
-  /** M3 Task 4：子 run 的父 run ID（deep_research spawn 时填）。null/undefined 表示顶层 run。 */
+  /** M3 Task 4：子 run 的父 run ID（deep_research / spawn_subagent spawn 时填）。null/undefined 表示顶层 run。 */
   parentRunId?: string | null;
+  /** M3-S1：子 agent 角色(决定工具子集)。默认 'generalist'(=researcher 只读集)。 */
+  role?: AgentRole;
   /** M7：T3 queue 分支专用，决定 INSERT 的初始 status。默认 'draft'。 */
   initialStatus?: 'draft' | 'queued';
   /** M7：queued 时记录入队 N。 */
@@ -122,7 +125,7 @@ export async function createAgentRun(
     groupId: input.groupId ?? null,
     topicId: input.topicId ?? null,
     intentTurnId: input.intentTurnId ?? null,
-    role: 'generalist',
+    role: input.role ?? 'generalist',
     status: input.initialStatus ?? 'draft',
     inputText: input.inputText,
     budget: input.budget ?? DEFAULT_BUDGET,

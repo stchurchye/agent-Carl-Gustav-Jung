@@ -1,4 +1,6 @@
-export type AgentRole = 'generalist';
+// M3-S1：子 agent 角色。每个角色有自己的工具子集（见 subagentTools.ts SUBAGENT_ROLE_TOOLS）。
+// generalist = 安全默认(= researcher 只读集);researcher = 文献/检索;analyst = researcher + 计算/画图。
+export type AgentRole = 'generalist' | 'researcher' | 'analyst';
 
 /**
  * Agent 任务状态。

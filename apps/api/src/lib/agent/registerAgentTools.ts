@@ -23,6 +23,7 @@ import { registerGetEconomicSeries } from './tools/getEconomicSeries.js';
 import { registerDocumentReader } from './tools/documentReader.js';
 import { registerAskUser } from './tools/askUser.js';
 import { registerDeepResearch } from './tools/deepResearch.js';
+import { registerSpawnSubagent } from './tools/spawnSubagentTool.js';
 import { registerYoutubeTranscript } from './tools/youtubeTranscript.js';
 import { registerRecallStep } from './tools/recallStep.js';
 import { registerRecallMemory } from './tools/recallMemory.js';
@@ -43,6 +44,7 @@ export function registerAgentTools(): void {
   registerDocumentReader();
   registerAskUser();
   registerDeepResearch();
+  registerSpawnSubagent();
   registerYoutubeTranscript();
   registerRecallStep();
   registerRecallMemory();
