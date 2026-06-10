@@ -100,6 +100,12 @@ export type LlmPlannerInput = {
    */
   checkpoint?: AgentCheckpoint | null;
   /**
+   * P0-S5:checkpoint 的注入框架。true(缺省,向后兼容)= 自动续跑框架(「不要问是否继续」);
+   * false = steer/deny/critique/merge 等非续跑重规划 → 中性「已有任务进展(供参考)」框架,
+   * 避免给用户新指令套上陈旧续跑话术。
+   */
+  checkpointIsContinuation?: boolean;
+  /**
    * M1c steer/deny 重规划指令（替代旧 M1b echo 桩）。非空时 buildPlannerUserPrompt 渲染
    * 「# 用户中途指令（最高优先级）」段：steer = 用户改向要求；deny = 某工具被拒、改用替代。
    * 这是**用户/系统驱动的强制改向**，优先级高于原 inputText 的方向。
@@ -272,7 +278,9 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   // issue 0001 B2+B3：无 checkpoint（或 checkpoint 渲染为空——全 soft-fail 等边角）时退回
   // 续跑进展摘要。整体 review #5：checkpoint 渲染空串也要落到 progress 兜底，别让续跑
   // re-planner 拿不到任何先前上下文。
-  const cpRender = input.checkpoint ? renderCheckpointState(input.checkpoint) : '';
+  const cpRender = input.checkpoint
+    ? renderCheckpointState(input.checkpoint, input.checkpointIsContinuation ?? true)
+    : '';
   const progress =
     cpRender ||
     (input.progress
@@ -304,7 +312,7 @@ const CHECKPOINT_RENDER_MAX_CHARS = 10000;
 /** 近窗 digestTail 在 planner prompt 里的字节上限（digestTail 整体可达 32K）。 */
 const CHECKPOINT_RENDER_DIGEST_MAX_CHARS = 6000;
 
-function renderCheckpointState(cp: AgentCheckpoint): string {
+function renderCheckpointState(cp: AgentCheckpoint, isContinuation = true): string {
   // 全空（无发现、无待办）→ 不渲染"自动续跑中"框架，避免给裸目标 + "别问是否继续"的误导。
   if (cp.completed.length === 0 && cp.remainingPlan.length === 0) return '';
 
@@ -336,6 +344,14 @@ function renderCheckpointState(cp: AgentCheckpoint): string {
   const tail = cp.digestTail
     ? `\n\n最近步骤（逐字近窗，需更早细节可 recall_step(步骤号)）：\n${cp.digestTail.slice(0, CHECKPOINT_RENDER_DIGEST_MAX_CHARS)}`
     : '';
+  // P0-S5 双框架:续跑用「自动续跑中 + 不要问是否继续」;steer/deny/critique/merge 等
+  // 非续跑重规划用中性框架 —— 进展仅供参考、新指令优先,不复用续跑话术。
+  if (!isContinuation) {
+    return (
+      `\n\n# 已有任务进展（供参考）\n目标：${cp.goal}${done}${remaining}${tail}` +
+      `\n（以上为此前进展，仅供参考避免重做；请优先遵循新指令/最新方向规划剩余步骤。）`
+    );
+  }
   return (
     `\n\n# 任务状态（自动续跑中）\n目标：${cp.goal}${done}${remaining}${next}${tail}` +
     `\n（自动续跑仍在进行；请直接规划剩余步骤，不要问"是否继续"。）`
