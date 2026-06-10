@@ -191,6 +191,72 @@ describe('webSearch tool', () => {
     expect(out.note).toMatch(/换关键词/);
   });
 
+  // R3-1:queries[] 扇出 —— 一步并行发多查询(中英双语战法在单步内完成),
+  // handler 内 Promise.all,主循环零侵入;按 URL 去重合并,matchedQueries 标注来源。
+  it('R3-1:queries=[q1,q2] → 并行发 2 个请求,结果按 URL 去重合并并标 matchedQueries', async () => {
+    vi.stubEnv('TAVILY_API_KEY', 'tk');
+    const mockFetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const q = JSON.parse(init!.body as string).query as string;
+      const hits =
+        q === '荣格 共时性'
+          ? [
+              { title: '中文文', url: 'https://zh.example/1', content: 'c', score: 0.8 },
+              { title: '共享文', url: 'https://shared.example/x', content: 'c', score: 0.7 },
+            ]
+          : [
+              { title: 'EN doc', url: 'https://en.example/2', content: 'c', score: 0.9 },
+              { title: '共享文', url: 'https://shared.example/x', content: 'c', score: 0.75 },
+            ];
+      return new Response(JSON.stringify({ results: hits }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const out = await webSearchTool.handler(
+      { queries: ['荣格 共时性', 'Jung synchronicity'] },
+      fakeCtx,
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(out.ok).toBe(true);
+    const urls = out.results.map((r) => r.url);
+    expect(urls).toContain('https://zh.example/1');
+    expect(urls).toContain('https://en.example/2');
+    expect(urls.filter((u) => u === 'https://shared.example/x')).toHaveLength(1); // 跨查询去重
+    const shared = out.results.find((r) => r.url === 'https://shared.example/x');
+    expect(shared?.matchedQueries).toEqual(['荣格 共时性', 'Jung synchronicity']);
+  });
+
+  it('R3-1:queries 一路失败一路成功 → 成功结果保留,note 透出部分失败', async () => {
+    vi.stubEnv('TAVILY_API_KEY', 'tk');
+    let call = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        call++;
+        if (call === 1) return new Response('rate limited', { status: 429 });
+        return new Response(
+          JSON.stringify({ results: [{ title: 'T', url: 'https://ok', content: 'c', score: 0.8 }] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }),
+    );
+    const out = await webSearchTool.handler({ queries: ['q1', 'q2'] }, fakeCtx);
+    expect(out.ok).toBe(true);
+    expect(out.results).toHaveLength(1);
+    expect(out.note).toMatch(/1.*失败|部分/);
+  });
+
+  it('R3-1:幂等 key 对 queries 排序归一(顺序无关同 key);单 query 与 queries 单元素等价', () => {
+    const k1 = webSearchTool.computeIdempotencyKey!({ queries: ['b', 'a'] });
+    const k2 = webSearchTool.computeIdempotencyKey!({ queries: ['a', 'b'] });
+    expect(k1).toBe(k2);
+    const k3 = webSearchTool.computeIdempotencyKey!({ query: 'a' });
+    const k4 = webSearchTool.computeIdempotencyKey!({ queries: ['a'] });
+    expect(k3).toBe(k4);
+  });
+
   it('idempotency key normalizes query case + maxResults', () => {
     const k1 = webSearchTool.computeIdempotencyKey!({
       query: ' Foo Bar ',
