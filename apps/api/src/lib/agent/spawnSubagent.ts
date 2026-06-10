@@ -31,7 +31,8 @@ function fail(error: string, childRunId = '', stepsUsed = 0): RunChildSubagentRe
 }
 
 /**
- * 派一个子 agent 跑 `task`，等其终态，聚合报告。caller 负责防递归(检查 parentRun.parentRunId)。
+ * 派一个子 agent 跑 `task`，等其终态，聚合报告。防递归三道防线:工具 handler 检查 +
+ * 角色白名单不含 spawn 类 + **本函数入口的深度守卫**(P0-S8,兜上游漂移)。
  * AbortError 透传给 caller(让 runtime 看到 cancel)。其余失败返回 {ok:false,error}。
  */
 export async function runChildSubagent(params: {
@@ -42,6 +43,16 @@ export async function runChildSubagent(params: {
   signal: AbortSignal;
 }): Promise<RunChildSubagentResult> {
   const { parentRun, task, role, maxSteps, signal } = params;
+
+  // P0-S8 递归深度守卫(纵深):工具 handler 的 parentRunId 检查 + 角色白名单不含 spawn 类
+  // 是前两道防线;这里是 spawn 唯一咽喉的最后一道 —— 即便上游漂移(白名单误加/新调用方
+  // 忘检查),也不会建出孙 run。当前语义 = 最大深度 1 层(父→子);要放开多层时改为沿
+  // parentRunId 链数深度并设上限,而不是删掉本守卫。
+  if (parentRun.parentRunId) {
+    return fail(
+      `subagent depth cap: run ${parentRun.id} is already a sub-agent (nested spawn refused)`,
+    );
+  }
 
   // 群聊父 → 子也落同 group/topic，走无 invoker 的子卡片占位。
   const isParentGroup =
