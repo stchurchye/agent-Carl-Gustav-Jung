@@ -11,7 +11,12 @@ import { searchMemoryPools, renderMemoryHit } from '../memoryPools.js';
  * 知道"这条路是错的"正是防止重复走弯路的价值。
  */
 const PRIOR_TOP_K = 5;
-const PRIOR_MIN_SCORE = 0.6;
+/**
+ * K9c 活体标定:0.6 是从 proactive recall(短 fact)借的;findings 是较长 claim 文本,
+ * 真部署栈实测同主题查询 bge 分落在 0.56-0.61("我们之前查过禀赋效应吗"=0.56、
+ * "禀赋效应"=0.59)——0.6 会挡住正命中。降至 0.55,留长期观察(信噪比劣化再回调)。
+ */
+const PRIOR_MIN_SCORE = 0.55;
 const PRIOR_TIMEOUT_MS = 800;
 
 export async function resolvePriorResearch(

@@ -43,11 +43,14 @@ describe('resolvePriorResearch (K6:开局预取,站在之前研究的肩膀上)'
     expect(search.mock.calls[0]![5]).toEqual(['finding']);
   });
 
-  it('低分(<0.6)/空结果 → 空串零注入', async () => {
-    search.mockResolvedValue([hit(1, 0.4)] as never);
+  it('低分(<0.55)/空结果 → 空串零注入;0.56(实测同主题正命中区间)→ 注入', async () => {
+    // K9c 活体标定:同主题 finding 的 bge 分实测 0.56-0.61,0.6 门挡正命中 → 0.55
+    search.mockResolvedValue([hit(1, 0.5)] as never);
     expect(await resolvePriorResearch('userA', 'x', 'private', null)).toBe('');
     search.mockResolvedValue([]);
     expect(await resolvePriorResearch('userA', 'x', 'private', null)).toBe('');
+    search.mockResolvedValue([hit(1, 0.56)] as never);
+    expect(await resolvePriorResearch('userA', 'x', 'private', null)).toContain('<prior_research>');
   });
 
   it('refuted 条目带【已证伪】警示渲染(知道这条路是错的正是价值)', async () => {
