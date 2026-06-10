@@ -26,6 +26,7 @@ export type NoticeCode =
   | 'RETRY_DEDUPED'
   // LLM 失败
   | 'PLANNER_LLM_FALLBACK'
+  | 'PLANNER_UNKNOWN_TOOL' // issue 0005:重试一次后仍引用未注册工具 → run failed
   | 'REPLY_LLM_FALLBACK'
   // skill / 注入防御
   | 'SKILL_WARN_KEYWORD'

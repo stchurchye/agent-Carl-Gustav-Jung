@@ -128,6 +128,19 @@ export class PlannerJsonParseError extends Error {
   }
 }
 
+/**
+ * issue 0005(P0-S4):plan JSON 合法但引用了未注册(或角色子集外)的工具名。
+ * generatePlanWithLlm 对此**带原因重试一次**;二次仍未知才抛本错误 ——
+ * buildInitialPlan 收到后不再 echo 降级,记 system_error + notice 后透传,
+ * 由 executeRun 收尾 failed(不悬挂、错误可见)。
+ */
+export class PlannerUnknownToolError extends Error {
+  constructor(public readonly unknownTools: string[]) {
+    super(`planner referenced unknown tools: ${unknownTools.join(', ')}`);
+    this.name = 'PlannerUnknownToolError';
+  }
+}
+
 export async function generatePlanWithLlm(
   input: LlmPlannerInput,
 ): Promise<Plan> {
@@ -149,15 +162,36 @@ export async function generatePlanWithLlm(
     },
   ];
 
-  const result = await input.llm.chat(messages, {
+  const chatOpts = {
     temperature: 0.3,
     maxTokens: 1024,
     signal: input.signal,
-  });
+  };
+  const result = await input.llm.chat(messages, chatOpts);
 
-  const parsed = parsePlannerJson(result.content, tools);
-  if (!parsed) throw new PlannerJsonParseError(result.content);
-  return parsed;
+  let parsed = parsePlannerJsonDetailed(result.content, tools);
+  if (parsed.plan) return parsed.plan;
+  if (parsed.unknownTools.length === 0) {
+    throw new PlannerJsonParseError(result.content);
+  }
+
+  // issue 0005:LLM 幻造工具名 → 带原因**同一会话内重试一次**(原回答 + 纠错指令追加为新轮次),
+  // 让 planner 看到自己引用了哪些不存在的工具。只重试一次:防 LLM 反复幻觉时无限循环。
+  const retryNote = `上一版 plan 引用了不存在的工具:${parsed.unknownTools
+    .map((n) => '`' + n + '`')
+    .join('、')}。这些工具名不存在(或不在你的可用工具列表内),只能使用工具列表中列出的 name。请重新输出完整的严格 JSON plan,并确保每个 step.todoId 都能在 todos 数组里找到对应 id。`;
+  const retryMessages: LlmChatMessage[] = [
+    ...messages,
+    { role: 'assistant', content: result.content },
+    { role: 'user', content: retryNote },
+  ];
+  const retryResult = await input.llm.chat(retryMessages, chatOpts);
+  parsed = parsePlannerJsonDetailed(retryResult.content, tools);
+  if (parsed.plan) return parsed.plan;
+  if (parsed.unknownTools.length > 0) {
+    throw new PlannerUnknownToolError(parsed.unknownTools);
+  }
+  throw new PlannerJsonParseError(retryResult.content);
 }
 
 const PLANNER_INSTRUCTION = `你是任务规划器。读取用户的请求，挑选下列工具组成一个最小可行的 plan。
@@ -424,17 +458,32 @@ function stripTrailingCommas(body: string): string {
 }
 
 export function parsePlannerJson(raw: string, tools: ToolDef[]): Plan | null {
+  return parsePlannerJsonDetailed(raw, tools).plan;
+}
+
+/**
+ * issue 0005:parsePlannerJson 的细分版 —— 区分「JSON/结构坏」(unknownTools=[])与
+ * 「JSON 合法但引用了未注册/角色子集外的工具名」(unknownTools 点名,去重)。
+ * generatePlanWithLlm 据此决定:结构坏 → PlannerJsonParseError(原契约);
+ * 未知工具 → 带原因重试一次。
+ */
+export function parsePlannerJsonDetailed(
+  raw: string,
+  tools: ToolDef[],
+): { plan: Plan | null; unknownTools: string[] } {
+  // 每次新建对象:多个调用方共享同一 {plan,unknownTools} 引用会有被改写串味的风险。
+  const fail = () => ({ plan: null, unknownTools: [] as string[] });
   const obj = tryParseJson(raw);
-  if (!obj) return null;
+  if (!obj) return fail();
   const knownNames = new Set(tools.map((t) => t.name));
 
-  if (typeof obj.intentSummary !== 'string') return null;
-  if (!Array.isArray(obj.steps) || obj.steps.length === 0) return null;
-  if (!Array.isArray(obj.todos) || obj.todos.length === 0) return null;
+  if (typeof obj.intentSummary !== 'string') return fail();
+  if (!Array.isArray(obj.steps) || obj.steps.length === 0) return fail();
+  if (!Array.isArray(obj.todos) || obj.todos.length === 0) return fail();
 
   const todos: TodoItem[] = [];
   for (const raw of obj.todos as LooseTodo[]) {
-    if (typeof raw.id !== 'string' || typeof raw.text !== 'string') return null;
+    if (typeof raw.id !== 'string' || typeof raw.text !== 'string') return fail();
     todos.push({
       id: raw.id,
       text: raw.text,
@@ -445,11 +494,15 @@ export function parsePlannerJson(raw: string, tools: ToolDef[]): Plan | null {
   const todoIds = new Set(todos.map((t) => t.id));
 
   const steps: PlanStep[] = [];
+  const unknownTools: string[] = [];
   for (const raw of obj.steps as LooseStep[]) {
-    if (typeof raw.toolName !== 'string' || !knownNames.has(raw.toolName)) {
-      return null;
+    if (typeof raw.toolName !== 'string') return fail();
+    if (!knownNames.has(raw.toolName)) {
+      // 未知工具:继续扫完整个 steps,把所有幻造的工具名一次性点给 LLM 纠正。
+      if (!unknownTools.includes(raw.toolName)) unknownTools.push(raw.toolName);
+      continue;
     }
-    if (typeof raw.todoId !== 'string' || !todoIds.has(raw.todoId)) return null;
+    if (typeof raw.todoId !== 'string' || !todoIds.has(raw.todoId)) return fail();
     steps.push({
       toolName: raw.toolName,
       input: (raw.input ?? {}) as Record<string, unknown>,
@@ -457,15 +510,19 @@ export function parsePlannerJson(raw: string, tools: ToolDef[]): Plan | null {
       todoId: raw.todoId,
     });
   }
+  if (unknownTools.length > 0) return { plan: null, unknownTools };
 
   return {
-    intentSummary: obj.intentSummary,
-    steps,
-    todos,
-    finalReplyHint:
-      typeof obj.finalReplyHint === 'string' ? obj.finalReplyHint : '',
-    reasoning: null,
-    version: 1,
+    plan: {
+      intentSummary: obj.intentSummary,
+      steps,
+      todos,
+      finalReplyHint:
+        typeof obj.finalReplyHint === 'string' ? obj.finalReplyHint : '',
+      reasoning: null,
+      version: 1,
+    },
+    unknownTools: [],
   };
 }
 

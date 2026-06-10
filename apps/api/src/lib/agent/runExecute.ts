@@ -13,6 +13,7 @@
  */
 import { randomUUID } from 'crypto';
 import * as store from './store.js';
+import { PlannerUnknownToolError } from './planner.js';
 import {
   AgentBudgetExhausted,
   AgentCancelled,
@@ -227,7 +228,51 @@ export async function executeRun(runId: string): Promise<void> {
       checkBudget(run.budget, { ...run.usage, elapsedSeconds });
 
       const planStep = plan.steps[i];
-      const tool = toolRegistry.require(planStep.toolName);
+
+      // === issue 0005 exec 期:plan 含未注册 toolName ===
+      // parse 期(parsePlannerJsonDetailed)已拒未知工具,这里兜的是缓存/陈旧 plan
+      // 漏过校验的残余路径。不悬挂、不立即 failed:记 tool_error(让重规划 prompt 经
+      // buildPreviousFailureSummary 看到「工具 X 不存在」)+ replan 一次;
+      // 已经为未知工具 replan 过一次仍遇到 → 抛错由外层 catch 收尾 failed(error 点名工具)。
+      const tool = toolRegistry.get(planStep.toolName);
+      if (!tool) {
+        // 只取 replan 步(listStepsByKind 在 SQL 层过滤,免全量拉 output 大列);
+        // **按 toolName 计数**:每个未知工具各允许一次 replan 纠正,别的工具的历史
+        // 重试不连坐(review #3)。新 plan 经 parse 校验,不会无限循环。
+        const priorReplans = await store.listStepsByKind(runId, 'replan');
+        const priorUnknownReplans = priorReplans.filter((s) => {
+          const out = s.output as { reason?: string; toolName?: string } | null;
+          return out?.reason === 'unknown_tool' && out?.toolName === planStep.toolName;
+        }).length;
+        await recordStep({
+          runId,
+          kind: 'tool_error',
+          toolName: planStep.toolName,
+          input: planStep.input,
+          error: `unknown tool: \`${planStep.toolName}\` 不在工具注册表内,只能使用已注册工具`,
+        });
+        if (priorUnknownReplans >= 1) {
+          throw new Error(
+            `unknown tool in plan: ${planStep.toolName}(已为未知工具重规划一次,仍引用未注册工具,终止)`,
+          );
+        }
+        const fromStatus = run.status;
+        await recordStep({
+          runId,
+          kind: 'replan',
+          output: { reason: 'unknown_tool', toolName: planStep.toolName },
+        });
+        await store.updateAgentRun(runId, { status: 'replanning' });
+        const latest = (await store.getAgentRun(runId))!;
+        agentHookBus.emitEvent({
+          type: 'run.status_changed',
+          run: latest,
+          from: fromStatus,
+          to: 'replanning',
+        });
+        return;
+      }
+      // === End issue 0005 exec 期 ===
 
       // === M3-S0 subagent tool whitelist (exec-time hard guard) ===
       // 白名单此前只在 planner-time 裁剪工具；但续跑(continuation-replan)、steer、
@@ -730,7 +775,11 @@ export async function executeRun(runId: string): Promise<void> {
     } else if (e instanceof AgentBudgetExhausted) {
       await softComplete(latest, 'budget_exhausted', e.dimension);
     } else {
-      await recordStep({ runId, kind: 'system_error', error: String(e) });
+      // PlannerUnknownToolError:buildInitialPlan 已记过更详细的 system_error + notice,
+      // 这里不再补记第二条(review #4:同一失败双 system_error 污染审计)。
+      if (!(e instanceof PlannerUnknownToolError)) {
+        await recordStep({ runId, kind: 'system_error', error: String(e) });
+      }
       await softComplete(latest, 'failed', String(e).slice(0, 200));
     }
   } finally {
