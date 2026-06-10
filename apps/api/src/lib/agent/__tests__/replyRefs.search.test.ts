@@ -166,3 +166,32 @@ describe('P0-S7:runSummary refCount 含搜索 url ref(真并集,不双计)', () 
     expect(summary.refCount).toBe(2); // 修复前:citations 计 2 + extractRefs 计 2 = 4
   });
 });
+
+describe('xhigh 复审修复:低质结果不产生正式引用', () => {
+  it('quality=low_relevance → extractRefs 返回空(垃圾 URL 不进资源清单)', () => {
+    const refs = webSearchTool.replyMeta!.extractRefs!({
+      ok: true,
+      quality: 'low_relevance',
+      results: HITS.slice(0, 3),
+    });
+    expect(refs).toEqual([]);
+  });
+
+  it('quality=fallback_loose(宽匹配需核对)→ search_papers 同样不产引用', () => {
+    const refs = searchPapersTool.replyMeta!.extractRefs!({
+      ok: true,
+      quality: 'fallback_loose',
+      papers: [{ title: 'P1', url: 'https://doi.org/10.1/x' }],
+    });
+    expect(refs).toEqual([]);
+  });
+
+  it('quality=ok 或无 quality 字段(旧输出)→ 引用照常', () => {
+    expect(
+      webSearchTool.replyMeta!.extractRefs!({ ok: true, quality: 'ok', results: HITS.slice(0, 1) }),
+    ).toHaveLength(1);
+    expect(
+      webSearchTool.replyMeta!.extractRefs!({ ok: true, results: HITS.slice(0, 1) }),
+    ).toHaveLength(1);
+  });
+});

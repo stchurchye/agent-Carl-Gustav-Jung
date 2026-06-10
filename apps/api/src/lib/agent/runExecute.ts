@@ -623,11 +623,11 @@ export async function executeRun(runId: string): Promise<void> {
       // 防 refine↔垃圾结果死循环(与 unknown_tool 的"一次纠正"同精神)。
       const recentLowSignal = allSteps.slice(-4).filter(isLowSignalSearch).length;
       if (recentLowSignal >= 2) {
+        // review 修正:用结构化 gate 字段判定,不再 includes 文案(措辞变更/LLM 化不破坏门)。
         const alreadyRefined = allSteps.some(
           (s) =>
             s.kind === 'critique' &&
-            typeof (s.output as { reason?: unknown } | null)?.reason === 'string' &&
-            ((s.output as { reason: string }).reason.includes('改写查询')),
+            (s.output as { gate?: unknown } | null)?.gate === 'low_signal_search',
         );
         if (!alreadyRefined) {
           const c = runCritique({

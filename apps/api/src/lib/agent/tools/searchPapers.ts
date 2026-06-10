@@ -1,4 +1,5 @@
 import { SEARCH_REF_TOP_N, toolRegistry, type ToolDef } from '../toolRegistry.js';
+import type { SearchQuality } from '../types.js';
 
 type SearchPapersInput = {
   query: string;
@@ -26,7 +27,7 @@ type SearchPapersOutput = {
    * R1-2 质量信号(实测驱动):OpenAlex 严格匹配对烂 query 真返 0,随后 CrossRef
    * 宽匹配会凑出一批低相关论文且无信号 —— 大脑会当真。fallback_loose=结果需核对。
    */
-  quality?: 'ok' | 'fallback_loose' | 'empty';
+  quality?: SearchQuality;
   note?: string;
   error?: string;
 };
@@ -159,6 +160,9 @@ export const searchPapersTool: ToolDef<SearchPapersInput, SearchPapersOutput> = 
     summaryKind: 'list',
     // P0-S7:top-3 论文产 url ref(doi/openalex 链接),进终稿资源清单与 checkpoint。
     extractRefs: (output) => {
+      // xhigh 复审修复:fallback_loose(宽匹配未核对)/empty 不产生正式引用。
+      const quality = (output as { quality?: string } | null)?.quality;
+      if (quality && quality !== 'ok') return [];
       const papers = (output as { papers?: Paper[] } | null)?.papers ?? [];
       return papers
         .filter((p) => typeof p?.url === 'string' && p.url.length > 0)
@@ -236,6 +240,8 @@ export const getPaperCitationsTool: ToolDef<
     summaryKind: 'list',
     // P0-S7:被引/引用文献同样产 top-3 url ref。
     extractRefs: (output) => {
+      const quality = (output as { quality?: string } | null)?.quality;
+      if (quality && quality !== 'ok') return [];
       const citations = (output as { citations?: Paper[] } | null)?.citations ?? [];
       return citations
         .filter((p) => typeof p?.url === 'string' && p.url.length > 0)

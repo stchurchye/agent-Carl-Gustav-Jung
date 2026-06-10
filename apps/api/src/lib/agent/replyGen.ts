@@ -10,6 +10,8 @@ const REPLY_SYSTEM = `你是 agent 任务的收尾发言人。
 读取已完成的工具调用结果，用 1-3 段中文给用户回复：
 - 简要总结做了什么、得到什么
 - 外文(英文等)来源的内容一律转述为中文；专有名词、论文/文章标题可保留原文并随中文说明出现
+- 引用规则：来自某条资源的关键论断，在句末标注 [n]（n = 资源清单里的序号，如 [1]）；
+  没有用到的资源不要标注，也不要编造序号
 - 如果 user 段里"已写入资源"非空，明确告知每个资源的 label
 - 别复述全部 raw 数据，只给关键结论
 - 末尾不需要 emoji 或客套话`;
@@ -72,6 +74,25 @@ export function collectReplyRefs(
     }
   }
   return refs;
+}
+
+/**
+ * R4-2:按终稿正文的 [n] 引用标记过滤资源清单 —— 搜索产生的 url 资源只保留真被引用的,
+ * 防止"资源清单"被 top-3×N 步的搜索 ref 灌满。两道 fail-open 保险:
+ * - 正文无任何 [n] 标记(LLM 没照做/失败路径的 bracket 文案)→ 全保留;
+ * - 序号越界(prompt 用的清单与本列表对齐失效)→ 全保留,宁多勿错删。
+ * 产物类资源(document/diagram/magi_card)无条件保留 —— 导出的文档/图即使没被点名也是交付物。
+ */
+export function filterCitedRefs(finalContent: string, refs: ReplyRef[]): ReplyRef[] {
+  const cited = new Set<number>();
+  // (?!\() 排除 markdown 链接 [12](url) 的误匹配(review R 阶段 #1);\d{1,3} 覆盖到 999,
+  // 超出 refs.length 的解析结果由下面的越界 fail-open 接住。
+  for (const m of finalContent.matchAll(/\[(\d{1,3})\](?!\()/g)) {
+    cited.add(Number(m[1]));
+  }
+  if (cited.size === 0) return refs;
+  if ([...cited].some((n) => n < 1 || n > refs.length)) return refs;
+  return refs.filter((r, i) => r.kind !== 'url' || cited.has(i + 1));
 }
 
 /**
@@ -175,9 +196,13 @@ export function buildReplyMessages(params: {
       .join('\n');
     refs = collectReplyRefs(steps, toolMap);
   }
+  // R4-1:稳定序号 [1..N] —— REPLY_SYSTEM 要求正文引用时标 [n],收尾 filterCitedRefs
+  // 按同一序号过滤未被引用的 url 资源。
   const refLines = refs.length
     ? '\n\n已写入资源：\n' +
-      refs.map((r) => `- [${r.kind}] ${r.label ?? r.id} (id: ${r.id})`).join('\n')
+      refs
+        .map((r, i) => `- [${i + 1}] (${r.kind}) ${r.label ?? r.id} (id: ${r.id})`)
+        .join('\n')
     : '';
 
   // M7 P2：合并的追问 → 终稿需统一回应。

@@ -32,7 +32,7 @@ import { buildRunSummary } from './runSummary.js';
 import { killSandboxForRun } from './sandbox.js';
 import { sealUserApiKeys } from './userApiKeys.js';
 import { recordStep } from './stepRecorder.js';
-import { collectReplyRefs } from './replyGen.js';
+import { collectReplyRefs, filterCitedRefs } from './replyGen.js';
 import { toolRegistry } from './toolRegistry.js';
 import { runEpisodicMemory } from '../memoryEpisodicWire.js';
 
@@ -274,7 +274,8 @@ export async function softComplete(
 
   // M5A Task 1: Build artifact for all terminal states.
   // Uses same toolRegistry as generateFinalReply for consistent ref extraction.
-  const refs = collectReplyRefs(stepsForSummary, toolMap);
+  // R4-2:url 资源只保留终稿真引用([n])的;无标记/越界 fail-open 全保留;产物类恒保留。
+  const refs = filterCitedRefs(finalContent, collectReplyRefs(stepsForSummary, toolMap));
   const artifact: RunArtifact = {
     finalContent,
     refs,

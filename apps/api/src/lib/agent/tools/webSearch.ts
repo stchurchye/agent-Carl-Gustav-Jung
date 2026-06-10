@@ -1,4 +1,5 @@
 import { SEARCH_REF_TOP_N, toolRegistry, type ToolDef } from '../toolRegistry.js';
+import type { SearchQuality } from '../types.js';
 
 type WebSearchInput = {
   /** 单查询(与 queries 二选一,queries 优先)。 */
@@ -32,7 +33,7 @@ type WebSearchOutput = {
    * R1-2 质量信号(实测驱动):生造词/错词 query 实测不返 0 条,而是一批 score<0.2 的
    * 不相关垃圾 —— "搜错东西"比"搜不到"更隐蔽。机器可读,供 planner/refine 门消费。
    */
-  quality?: 'ok' | 'low_relevance' | 'empty';
+  quality?: SearchQuality;
   note?: string;
   error?: string;
 };
@@ -87,6 +88,10 @@ export const webSearchTool: ToolDef<WebSearchInput, WebSearchOutput> = {
     summaryKind: 'list',
     // P0-S7:top-3 结果产 url ref(进终稿"资源清单"与 checkpoint),限量防 ref 洪水。
     extractRefs: (output) => {
+      // xhigh 复审修复:低质输出(低相关垃圾/宽匹配未核对)不产生正式引用 ——
+      // ⚠ 警示只有大脑看见,引用层若不拦,垃圾 URL 仍会进资源清单与 [n] 引用。
+      const quality = (output as { quality?: string } | null)?.quality;
+      if (quality && quality !== 'ok') return [];
       const results = (output as { results?: WebSearchHit[] } | null)?.results ?? [];
       return results
         .filter((r) => typeof r?.url === 'string' && r.url.length > 0)
@@ -185,13 +190,22 @@ export const webSearchTool: ToolDef<WebSearchInput, WebSearchOutput> = {
         note: `${partialNote}结果相关度极低(最高 score=${Math.max(...scores).toFixed(2)}),很可能没搜到真正相关的内容——不要采信这些结果,换关键词或换语言重试。`,
       };
     }
+    // review 修正:混合质量 —— 有好结果时把 score<阈值 的垃圾条目滤掉(纯噪声,
+    // 实测好结果 >0.7、垃圾 <0.2,混入会让大脑当真),note 透出滤除数。
+    const kept = results.filter(
+      (r) => typeof r.score !== 'number' || r.score >= LOW_RELEVANCE_SCORE,
+    );
+    const dropped = results.length - kept.length;
+    const filterNote = dropped > 0 ? `已滤除 ${dropped} 条低相关(score<${LOW_RELEVANCE_SCORE})结果。` : '';
+
     // answer 仅单查询模式透传:扇出时各路 answer 各答各的 query,拼接是噪声。
     const answer = !isFanout ? succeeded[0].answer : undefined;
+    const note = `${partialNote}${filterNote}`;
     return {
       ok: true,
-      results,
+      results: kept,
       quality: 'ok' as const,
-      ...(partialNote ? { note: partialNote } : {}),
+      ...(note ? { note } : {}),
       ...(typeof answer === 'string' && answer.length > 0 ? { answer } : {}),
     };
   },

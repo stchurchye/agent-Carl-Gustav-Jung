@@ -89,7 +89,7 @@ describeDb('R2-3:低信号搜索 refine 门(端到端)', () => {
     const after = (await getAgentRun(run.id))!;
     expect(after.status).toBe('replanning');
     const critique = (await listSteps(run.id)).find(
-      (s) => s.kind === 'critique' && JSON.stringify(s.output).includes('改写查询'),
+      (s) => s.kind === 'critique' && (s.output as { gate?: string } | null)?.gate === 'low_signal_search',
     );
     expect(critique).toBeDefined();
   });
@@ -101,7 +101,7 @@ describeDb('R2-3:低信号搜索 refine 门(端到端)', () => {
       runId: run.id,
       idx,
       kind: 'critique',
-      output: { shouldReplan: true, reason: '连续搜索无有效结果…需改写查询(历史)' },
+      output: { shouldReplan: true, gate: 'low_signal_search', reason: '(历史 refine)' },
     });
 
     await executeRun(run.id);
@@ -109,7 +109,7 @@ describeDb('R2-3:低信号搜索 refine 门(端到端)', () => {
     const after = (await getAgentRun(run.id))!;
     expect(after.status).not.toBe('replanning'); // 不再二次 refine,走正常收尾路径
     const refineCritiques = (await listSteps(run.id)).filter(
-      (s) => s.kind === 'critique' && JSON.stringify(s.output).includes('改写查询'),
+      (s) => s.kind === 'critique' && (s.output as { gate?: string } | null)?.gate === 'low_signal_search',
     );
     expect(refineCritiques.length).toBe(1); // 只有预置那条
   });

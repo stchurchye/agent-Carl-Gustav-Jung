@@ -279,6 +279,13 @@ export type ReplyRef = {
  * S1（context compaction）：累积式结构化 checkpoint —— 跨步累积的任务状态，
  * 存在 agent_runs.context_checkpoint 列。类型放 types.ts 避免 store ↔ checkpoint 循环依赖。
  */
+/**
+ * R1-2/review:检索类工具输出的质量信号(共享类型,防两工具各自声明漂移)。
+ * ok=可用;low_relevance=全为低分垃圾(不要采信);fallback_loose=宽匹配兜底(需核对);
+ * empty=0 结果。critique.isLowSignalSearch 只把 empty/low_relevance 计为低信号。
+ */
+export type SearchQuality = 'ok' | 'low_relevance' | 'fallback_loose' | 'empty';
+
 export type CheckpointFinding = {
   text: string;
   finding: string;

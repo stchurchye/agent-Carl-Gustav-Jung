@@ -65,3 +65,63 @@ describe('R2-2:progress 摘要的搜索步行结构化', () => {
     expect(summary).not.toMatch(/\{"ok":true,"quality.{0,180}$/m); // 不再是截断的原始 JSON
   });
 });
+
+describe('R-review:buildListFinding 边界', () => {
+  it('title 与摘录都缺的条目不占槽位', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const out = buildListFinding({
+      ok: true,
+      results: [
+        { url: 'https://bare.example', year: 2020 }, // 无 title 无 snippet → 滤
+        { title: '有内容', url: 'https://x.example', snippet: 's' },
+      ],
+    });
+    expect(out).not.toContain('[无标题]');
+    expect(out).toContain('有内容');
+  });
+
+  it('结果超 5 条 → 标注「共 N 条,以下前 5」防大脑误以为只有 5 条', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const results = Array.from({ length: 8 }, (_, i) => ({
+      title: `T${i}`, url: `https://e/${i}`, snippet: 's',
+    }));
+    const out = buildListFinding({ ok: true, results })!;
+    expect(out).toMatch(/共 8 条/);
+  });
+});
+
+describe('xhigh 复审修复:buildListFinding 边界二', () => {
+  it('空白-only title 不通过真值检查(trim 后跳过)', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const out = buildListFinding({
+      ok: true,
+      results: [
+        { title: '   ', url: 'https://ws.example', snippet: '' },
+        { title: '  实文  ', url: 'https://x.example', snippet: 's' },
+      ],
+    })!;
+    expect(out).toContain('实文');
+    expect(out).not.toContain('ws.example');
+  });
+
+  it('全部条目无内容但带质量警示 → 返回 ⚠ 警示而非 null(警示不得静默丢失)', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const out = buildListFinding({
+      ok: true,
+      quality: 'low_relevance',
+      note: '结果相关度极低,不要采信',
+      results: [{ url: 'https://bare1.example' }, { url: 'https://bare2.example' }],
+    });
+    expect(out).not.toBeNull();
+    expect(out!).toContain('不要采信');
+  });
+
+  it('全部条目无内容且无警示 → 仍返回 null(回退旧路径,不输出无意义行)', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const out = buildListFinding({
+      ok: true,
+      results: [{ url: 'https://bare.example' }],
+    });
+    expect(out).toBeNull();
+  });
+});

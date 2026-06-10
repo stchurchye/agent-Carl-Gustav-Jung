@@ -186,17 +186,32 @@ export function buildListFinding(inner: unknown): string | null {
   if (typeof o.note === 'string' && o.note.length > 0 && o.quality !== 'ok') {
     lines.push(`⚠ ${o.note}`);
   }
+  // review 修正:超 5 条要声明总数 —— 否则大脑误以为"只搜到 5 条",决策基于片段数据。
+  if (arr.length > 5) lines.push(`(共 ${arr.length} 条,以下为前 5;近窗全文见 digestTail)`);
+  // xhigh 复审修复:警示行单独记 —— 全部条目无内容时警示不得随 null 一起被静默丢弃。
+  const warningLines = [...lines];
+  let itemLines = 0;
   for (const it of arr.slice(0, 5)) {
     if (it == null || typeof it !== 'object') continue;
     const r = it as { title?: unknown; url?: unknown; snippet?: unknown; abstract?: unknown; year?: unknown };
-    const title = typeof r.title === 'string' && r.title ? r.title.slice(0, 80) : '[无标题]';
+    // xhigh 复审修复:trim —— 空白-only title/snippet 是 truthy,会穿透跳过逻辑与 [无标题] 兜底。
+    const titleRaw = typeof r.title === 'string' ? r.title.trim().slice(0, 80) : '';
+    const excerptRaw = (
+      typeof r.snippet === 'string' ? r.snippet : typeof r.abstract === 'string' ? r.abstract : ''
+    ).trim();
+    // review 修正:title 与摘录都缺的条目零信息量,不占槽位。
+    if (!titleRaw && !excerptRaw) continue;
     const url = typeof r.url === 'string' && r.url ? ` — ${r.url}` : '';
     const year = typeof r.year === 'number' ? ` (${r.year})` : '';
-    const excerptRaw = typeof r.snippet === 'string' ? r.snippet : typeof r.abstract === 'string' ? r.abstract : '';
     const excerpt = excerptRaw ? `\n  ${excerptRaw.slice(0, 200).replace(/\n/g, ' ')}` : '';
-    lines.push(`- ${title}${year}${url}${excerpt}`);
+    lines.push(`- ${titleRaw || '[无标题]'}${year}${url}${excerpt}`);
+    itemLines++;
   }
-  if (lines.length === 0) return null;
+  if (itemLines === 0) {
+    // 有 ⚠ 质量警示 → 返回警示(planner 必须看到"别采信");无警示 → null 回退旧路径。
+    const warning = warningLines.find((l) => l.startsWith('⚠'));
+    return warning ? (redactSecrets(warning) as string) : null;
+  }
   return redactSecrets(lines.join('\n')) as string;
 }
 
