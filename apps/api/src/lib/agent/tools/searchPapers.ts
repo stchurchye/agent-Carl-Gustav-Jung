@@ -22,6 +22,12 @@ type SearchPapersOutput = {
   ok: boolean;
   papers: Paper[];
   fallbackUsed?: 'openalex_then_crossref';
+  /**
+   * R1-2 质量信号(实测驱动):OpenAlex 严格匹配对烂 query 真返 0,随后 CrossRef
+   * 宽匹配会凑出一批低相关论文且无信号 —— 大脑会当真。fallback_loose=结果需核对。
+   */
+  quality?: 'ok' | 'fallback_loose' | 'empty';
+  note?: string;
   error?: string;
 };
 
@@ -171,7 +177,7 @@ export const searchPapersTool: ToolDef<SearchPapersInput, SearchPapersOutput> = 
     try {
       const papers = await queryOpenAlex(input.query, input.yearFrom, topK, ctx.signal);
       if (papers.length > 0) {
-        return { ok: true, papers };
+        return { ok: true, papers, quality: 'ok' as const };
       }
       // 0 hits → fall through to CrossRef
     } catch (e) {
@@ -181,7 +187,23 @@ export const searchPapersTool: ToolDef<SearchPapersInput, SearchPapersOutput> = 
 
     try {
       const papers = await queryCrossRef(input.query, topK, ctx.signal, input.yearFrom);
-      return { ok: true, papers, fallbackUsed: 'openalex_then_crossref' };
+      // R1-2:CrossRef 是宽匹配,凑出的结果可能低相关 —— 给大脑明确信号(实测无信号时会当真)。
+      if (papers.length === 0) {
+        return {
+          ok: true,
+          papers,
+          fallbackUsed: 'openalex_then_crossref' as const,
+          quality: 'empty' as const,
+          note: '严格与宽匹配均 0 结果:换关键词再试(英文术语通常更准),不要原样重试。',
+        };
+      }
+      return {
+        ok: true,
+        papers,
+        fallbackUsed: 'openalex_then_crossref' as const,
+        quality: 'fallback_loose' as const,
+        note: 'OpenAlex(严格标题摘要匹配)0 结果,以下来自 CrossRef 宽匹配——相关性可能低,请核对标题是否真的相关;不相关则换关键词(英文术语通常更准)。',
+      };
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') throw e;
       return {
