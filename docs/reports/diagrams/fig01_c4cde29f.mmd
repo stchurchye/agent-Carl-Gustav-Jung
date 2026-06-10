@@ -1,0 +1,36 @@
+flowchart TD
+  subgraph C["客户端 · apps/mobile (Expo RN)"]
+    UI["写作/问答/大脑 三 tab"]
+  end
+  subgraph S["服务端 · apps/api (Hono)"]
+    R["routes/* (auth/chat/group/intent/agent/memory)"]
+    subgraph RT["Agent 运行时 lib/agent/"]
+      W["worker.ts · PG 队列 + 心跳接管"]
+      EX["runExecute.ts · 主循环(plan-once)"]
+      PL["planner.ts · LLM 生 JSON plan"]
+      RF["reflection.ts · 收尾单点裁决"]
+      TR["toolRegistry + 20 工具"]
+      CP["控制面 · approval/steer/deny/ask_user/budget"]
+      SUB["子 agent · childExecutor + spawnSubagent"]
+      MCP["mcp/ · stdio + http transport"]
+    end
+    MEM["记忆 · 原生核心 memory_fragments"]
+  end
+  subgraph EXT["外部"]
+    DB[("PostgreSQL · agent_runs/steps")]
+    MAGI["MAGI 情景记忆服务 /api/agent-memory/*"]
+    E2B["E2B Python 沙箱"]
+    LLM["DeepSeek LLM"]
+  end
+  UI -->|SSE/长轮询| R --> W --> EX
+  EX --> PL --> LLM
+  EX --> RF
+  EX --> TR
+  EX --> CP
+  EX --> SUB
+  EX --> MEM
+  W <--> DB
+  EX <--> DB
+  MEM <-->|HTTP| MAGI
+  TR -->|run_python| E2B
+  MCP -.挂载远端工具.-> TR
