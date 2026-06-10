@@ -13,6 +13,7 @@
  */
 import { randomUUID } from 'crypto';
 import * as store from './store.js';
+import { PlannerUnknownToolError } from './planner.js';
 import {
   AgentBudgetExhausted,
   AgentCancelled,
@@ -235,12 +236,14 @@ export async function executeRun(runId: string): Promise<void> {
       // 已经为未知工具 replan 过一次仍遇到 → 抛错由外层 catch 收尾 failed(error 点名工具)。
       const tool = toolRegistry.get(planStep.toolName);
       if (!tool) {
-        const stepsSoFar = await store.listSteps(runId);
-        const priorUnknownReplans = stepsSoFar.filter(
-          (s) =>
-            s.kind === 'replan' &&
-            (s.output as { reason?: string } | null)?.reason === 'unknown_tool',
-        ).length;
+        // 只取 replan 步(listStepsByKind 在 SQL 层过滤,免全量拉 output 大列);
+        // **按 toolName 计数**:每个未知工具各允许一次 replan 纠正,别的工具的历史
+        // 重试不连坐(review #3)。新 plan 经 parse 校验,不会无限循环。
+        const priorReplans = await store.listStepsByKind(runId, 'replan');
+        const priorUnknownReplans = priorReplans.filter((s) => {
+          const out = s.output as { reason?: string; toolName?: string } | null;
+          return out?.reason === 'unknown_tool' && out?.toolName === planStep.toolName;
+        }).length;
         await recordStep({
           runId,
           kind: 'tool_error',
@@ -772,7 +775,11 @@ export async function executeRun(runId: string): Promise<void> {
     } else if (e instanceof AgentBudgetExhausted) {
       await softComplete(latest, 'budget_exhausted', e.dimension);
     } else {
-      await recordStep({ runId, kind: 'system_error', error: String(e) });
+      // PlannerUnknownToolError:buildInitialPlan 已记过更详细的 system_error + notice,
+      // 这里不再补记第二条(review #4:同一失败双 system_error 污染审计)。
+      if (!(e instanceof PlannerUnknownToolError)) {
+        await recordStep({ runId, kind: 'system_error', error: String(e) });
+      }
       await softComplete(latest, 'failed', String(e).slice(0, 200));
     }
   } finally {

@@ -179,7 +179,7 @@ export async function generatePlanWithLlm(
   // 让 planner 看到自己引用了哪些不存在的工具。只重试一次:防 LLM 反复幻觉时无限循环。
   const retryNote = `上一版 plan 引用了不存在的工具:${parsed.unknownTools
     .map((n) => '`' + n + '`')
-    .join('、')}。这些工具名不存在(或不在你的可用工具列表内),只能使用工具列表中列出的 name。请重新输出完整的严格 JSON plan。`;
+    .join('、')}。这些工具名不存在(或不在你的可用工具列表内),只能使用工具列表中列出的 name。请重新输出完整的严格 JSON plan,并确保每个 step.todoId 都能在 todos 数组里找到对应 id。`;
   const retryMessages: LlmChatMessage[] = [
     ...messages,
     { role: 'assistant', content: result.content },
@@ -471,18 +471,19 @@ export function parsePlannerJsonDetailed(
   raw: string,
   tools: ToolDef[],
 ): { plan: Plan | null; unknownTools: string[] } {
-  const fail = { plan: null, unknownTools: [] as string[] };
+  // 每次新建对象:多个调用方共享同一 {plan,unknownTools} 引用会有被改写串味的风险。
+  const fail = () => ({ plan: null, unknownTools: [] as string[] });
   const obj = tryParseJson(raw);
-  if (!obj) return fail;
+  if (!obj) return fail();
   const knownNames = new Set(tools.map((t) => t.name));
 
-  if (typeof obj.intentSummary !== 'string') return fail;
-  if (!Array.isArray(obj.steps) || obj.steps.length === 0) return fail;
-  if (!Array.isArray(obj.todos) || obj.todos.length === 0) return fail;
+  if (typeof obj.intentSummary !== 'string') return fail();
+  if (!Array.isArray(obj.steps) || obj.steps.length === 0) return fail();
+  if (!Array.isArray(obj.todos) || obj.todos.length === 0) return fail();
 
   const todos: TodoItem[] = [];
   for (const raw of obj.todos as LooseTodo[]) {
-    if (typeof raw.id !== 'string' || typeof raw.text !== 'string') return fail;
+    if (typeof raw.id !== 'string' || typeof raw.text !== 'string') return fail();
     todos.push({
       id: raw.id,
       text: raw.text,
@@ -495,13 +496,13 @@ export function parsePlannerJsonDetailed(
   const steps: PlanStep[] = [];
   const unknownTools: string[] = [];
   for (const raw of obj.steps as LooseStep[]) {
-    if (typeof raw.toolName !== 'string') return fail;
+    if (typeof raw.toolName !== 'string') return fail();
     if (!knownNames.has(raw.toolName)) {
       // 未知工具:继续扫完整个 steps,把所有幻造的工具名一次性点给 LLM 纠正。
       if (!unknownTools.includes(raw.toolName)) unknownTools.push(raw.toolName);
       continue;
     }
-    if (typeof raw.todoId !== 'string' || !todoIds.has(raw.todoId)) return fail;
+    if (typeof raw.todoId !== 'string' || !todoIds.has(raw.todoId)) return fail();
     steps.push({
       toolName: raw.toolName,
       input: (raw.input ?? {}) as Record<string, unknown>,

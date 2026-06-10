@@ -107,6 +107,22 @@ describeDb('exec 期未知工具 → replan 一次再 failed (issue 0005)', () =
     expect(toolErrs.at(-1)!.error ?? '').toContain('ghost_tool_xyz');
   });
 
+  it('历史 replan 是【另一个】未知工具 → 本工具首遇仍走 replan,不误判为已重试(per-toolName 计数)', async () => {
+    const run = await mkRunWithPlan(unknownToolPlan('ghost_tool_xyz'));
+    const idx = (await maxStepIdx(run.id)) + 1;
+    await insertStep({
+      runId: run.id,
+      idx,
+      kind: 'replan',
+      output: { reason: 'unknown_tool', toolName: 'other_ghost_abc' },
+    });
+
+    await executeRun(run.id);
+
+    const after = (await getAgentRun(run.id))!;
+    expect(after.status).toBe('replanning'); // 不是 failed:ghost_tool_xyz 是首次遭遇
+  });
+
   it('applyReplanningIfNeeded:最新一步是 unknown_tool replan → 只清 plan,不补幻影 critique replan', async () => {
     const run = await mkRunWithPlan(unknownToolPlan());
     const idx = (await maxStepIdx(run.id)) + 1;
