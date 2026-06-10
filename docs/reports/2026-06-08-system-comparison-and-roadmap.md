@@ -64,14 +64,14 @@ M1 技能自蒸馏(自我改进)  ──┐  ← ✅ 本次完成
 M2 ReAct Phase-2 原型     │  ← 深化 Agent Loop；先 prototype 测延迟(repo 既定前置)
    (mode:plan_once|react) │
 M3 通用子 agent 角色化     │  ← deep_research→可配 role/工具子集 的通用 spawn
-M4 MCP 扩展(多 transport) │  ← 补 SSE/HTTP transport + server 侧探索
+M4 MCP 扩展(多 transport) │  ← 补 SSE/HTTP transport + server 侧探索 [已落地 2026-06-09,PR #18/#19]
 M5 技能·记忆升格闭环 + UI ─┘  ← mobile「建议技能/记忆」统一评审面
 ```
 
 - **M1（已完成）**：成功多步 run 收尾时，把「这类任务怎么做」蒸馏成可复用 topic_skill（`enabled=false` 待人评审），对齐 Hermes「完成任务→生成 skill」。实现见下。
 - **M2 ReAct Phase-2**：按 `docs/issues/0000`——藏 `mode` flag、先 `prototype` 实测延迟，达标再 opt-in 共存，不替换核心循环。
 - **M3 通用子 agent**：把 `childExecutor`+`deepResearch` 泛化成带 `role`/工具子集的 `spawn_subagent`（`AgentRole` 字段已预留）。
-- **M4 MCP 扩展**：`mcp/` 现有 stdio 之外补 SSE/HTTP transport；评估只读 MCP server。
+- **M4 MCP 扩展**：`mcp/` 现有 stdio 之外补 SSE/HTTP transport；评估只读 MCP server。**[已落地 2026-06-09,PR #18/#19]**(httpTransport + registerFromConfig)
 - **M5 闭环 + 评审 UI**：M1 蒸馏的 skill + 现有 episodic→core 升格，统一一个 mobile「建议技能/记忆」评审面（当前无 skills 屏）。
 
 ## M1 实现（本 PR：技能自蒸馏 self-improvement loop）
