@@ -35,6 +35,21 @@ function isOkFalseOutput(output: unknown): boolean {
 }
 
 /**
+ * 「有进展」步计数:成功 tool_call(error 列空)+ observe(幂等缓存命中也算进展)。
+ * runExecute 续跑判停与 applyReplanningIfNeeded 的 checkpoint successCount 共用,
+ * 防两处口径漂移。注意:这是**进展判定**口径(只看 error 列),与 buildCheckpoint 折叠
+ * findings 的 successfulCalls 口径(额外滤 ok:false)有意不同 —— ok:false 的软失败
+ * 不产 finding,但算"跑过一步"的进展。
+ */
+export function countProgressSteps(steps: AgentStep[]): number {
+  return steps.filter(
+    (s) =>
+      (s.kind === 'tool_call' && (s.error == null || s.error === '')) ||
+      s.kind === 'observe',
+  ).length;
+}
+
+/**
  * 机械累积：把 prior 之后的新成功工具步折叠成 findings，并进 prior.completed。
  * - 只取 idx > prior.producedAtIdx 的新步（不重复折叠）。
  * - 滤掉 soft-fail/失败步（isToolFailure）。
@@ -102,6 +117,16 @@ export function buildCheckpoint(
     .filter((t) => t.status !== 'completed')
     .map((t) => t.text);
 
+  // P0-S6:已完成 todo 文案跨轮并集去重 —— applyReplanningIfNeeded 清 todos 后,
+  // round2 重建仍知道 round1 完成了什么(issue 0001 #2b 的轻解;todo 身份按文案对齐,
+  // trim 抹平 LLM 重生成时的首尾空白差异;语义级对齐(改写文案)留 issue 0003 正解)。
+  const completedTodos = Array.from(
+    new Set([
+      ...(prior?.completedTodos ?? []).map((t) => t.trim()),
+      ...todos.filter((t) => t.status === 'completed').map((t) => t.text.trim()),
+    ]),
+  ).filter((t) => t.length > 0);
+
   return {
     version: 1,
     goal: opts.goal,
@@ -114,6 +139,7 @@ export function buildCheckpoint(
     successCount: opts.successCount,
     producedAtIdx: maxIdx,
     digestTail: buildDigestTail(steps),
+    completedTodos,
   };
 }
 
@@ -277,7 +303,7 @@ export async function compactCheckpointViaLlm(params: {
     const strArr = (v: unknown, fallback: string[]) =>
       Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : fallback;
     return {
-      ...checkpoint, // 保留 version/goal/intent/successCount/producedAtIdx/digestTail
+      ...checkpoint, // 保留 version/goal/intent/successCount/producedAtIdx/digestTail/completedTodos(P0-S6,不送 LLM 压缩、原样跨轮保留)
       completed,
       remainingPlan: strArr(parsed.remainingPlan, checkpoint.remainingPlan),
       openQuestions: strArr(parsed.openQuestions, checkpoint.openQuestions),

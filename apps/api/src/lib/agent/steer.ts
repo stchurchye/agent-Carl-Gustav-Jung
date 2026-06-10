@@ -1,6 +1,8 @@
 import * as store from './store.js';
 import { recordStep } from './stepRecorder.js';
 import { runControllers } from './runtimeRegistry.js';
+import { buildCheckpoint, countProgressSteps } from './checkpoint.js';
+import { toolRegistry } from './toolRegistry.js';
 
 export type SteerInput = {
   runId: string;
@@ -38,6 +40,22 @@ export async function steerRun(input: SteerInput): Promise<SteerResult> {
     return { accepted: false, reason: 'terminal' };
   }
   if (!run.plan) return { accepted: false, reason: 'no_plan' };
+
+  // P0-S5 review #5:清 todos 前先把当前轮进展(含已完成 todo)累积进 checkpoint ——
+  // 否则首个 checkpoint(prior=null)在 applyReplanningIfNeeded 时只能读到已清空的 todos,
+  // round1 完成项的 completedTodos 永久丢失。fail-open:失败不挡 steer。
+  try {
+    const steps = await store.listSteps(input.runId);
+    const checkpoint = buildCheckpoint(run.contextCheckpoint, steps, run.todos ?? [], {
+      goal: run.inputText ?? '',
+      intent: run.plan?.intentSummary ?? run.contextCheckpoint?.intent ?? '',
+      successCount: countProgressSteps(steps),
+      toolMap: new Map(toolRegistry.list().map((t) => [t.name, t])),
+    });
+    await store.updateAgentRun(input.runId, { contextCheckpoint: checkpoint });
+  } catch (e) {
+    console.warn(`[steerRun] checkpoint 累积失败(忽略,不挡 steer) run=${input.runId}`, e);
+  }
 
   // M1c：清 plan + 置 replanning（不再在此同步生成 echo plan）。worker re-pickup 时
   // applyReplanningIfNeeded 据本 steer step 的 instruction 记 directive，buildInitialPlan 走 LLM 重规划。
