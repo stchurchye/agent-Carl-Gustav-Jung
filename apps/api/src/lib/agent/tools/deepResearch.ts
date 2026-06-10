@@ -1,6 +1,7 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
 import * as store from '../store.js';
 import { runChildSubagent, subagentCitationsToRefs, type SubagentCitation } from '../spawnSubagent.js';
+import { docExportMarkdownTool } from './docExportMarkdown.js';
 
 type DeepResearchInput = {
   question: string;
@@ -13,8 +14,15 @@ type DeepResearchOutput = {
   citations: SubagentCitation[];
   stepsUsed: number;
   childRunId: string;
+  /** K7:报告自动存档到写作区的文档 id/标题(存档失败时缺省 —— fail-open)。 */
+  reportDocumentId?: string;
+  reportTitle?: string;
   error?: string;
 };
+
+/** K7:报告存档标题 —— 统一《研究报告：》前缀,写作页可按前缀归拢/批量隐藏。 */
+const REPORT_TITLE_PREFIX = '研究报告：';
+const REPORT_TITLE_QUESTION_MAX = 40;
 
 export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = {
   name: 'deep_research',
@@ -38,6 +46,12 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
     checkpointFindingKind: 'synthesis',
     // K1:子 run 的真引用(已过 filterCitedRefs、url 类、≤MAX_CITATIONS)回流父资源清单。
     extractRefs: (output) => subagentCitationsToRefs(output as DeepResearchOutput | null),
+    // K7:存档的报告文档进资源清单(产物类 ref 恒保留;与上面的 url 引用并存)。
+    extractRef: (output) => {
+      const o = output as DeepResearchOutput | null;
+      if (!o?.ok || !o.reportDocumentId) return null;
+      return { kind: 'document' as const, id: o.reportDocumentId, label: o.reportTitle };
+    },
     failureHint:
       'deep_research 失败：子 agent 超时/工具不可用/子任务范围太大。可改用 search_papers + fetch_url 串行，或缩小问题范围重试。',
   },
@@ -60,13 +74,31 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
     }
     const maxSteps = Math.max(1, Math.min(input.maxSteps ?? 5, 8));
     try {
-      return await runChildSubagent({
+      const result = await runChildSubagent({
         parentRun,
         task: input.question,
         role: 'researcher',
         maxSteps,
         signal: ctx.signal,
       });
+      if (!result.ok || !result.report.trim()) return result;
+
+      // K7:报告自动存档(行业头号抱怨:深研报告滚走即不可复访)。复用 doc_export 的
+      // upsert + 用户编辑保护(同名 v2 版本化);失败 fail-open —— 报告照常返回。
+      try {
+        const title = `${REPORT_TITLE_PREFIX}${input.question.trim().slice(0, REPORT_TITLE_QUESTION_MAX)}`;
+        const archived = await docExportMarkdownTool.handler(
+          { title, markdown: result.report },
+          ctx,
+        );
+        if (archived.ok) {
+          return { ...result, reportDocumentId: archived.documentId, reportTitle: archived.title };
+        }
+      } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') throw e;
+        // 存档失败不影响报告返回
+      }
+      return result;
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') throw e;
       return {

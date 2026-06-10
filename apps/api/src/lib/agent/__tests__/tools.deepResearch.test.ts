@@ -23,9 +23,18 @@ vi.mock('../childExecutor.js', () => ({
   dispatchChildRun: vi.fn(async () => {}),
 }));
 
+vi.mock('../tools/docExportMarkdown.js', () => ({
+  docExportMarkdownTool: {
+    name: 'doc_export_markdown',
+    handler: vi.fn(async () => ({ ok: true, documentId: 'doc-9', title: '研究报告：什么是禀赋效应？', created: true })),
+  },
+  registerDocExportMarkdown: vi.fn(),
+}));
+
 import * as store from '../store.js';
 import { createAgentRun } from '../runLifecycle.js';
 import { dispatchChildRun } from '../childExecutor.js';
+import { docExportMarkdownTool } from '../tools/docExportMarkdown.js';
 
 const PARENT_RUN = {
   id: 'parent-1',
@@ -190,4 +199,55 @@ describeDb('deep_research tool', () => {
     expect(out.ok).toBe(false);
     expect(out.error).toMatch(/not found/);
   });
+
+  it('K7:成功后自动存档报告到写作区 → 输出带 reportDocumentId;extractRef 产 document ref', async () => {
+    vi.mocked(store.getAgentRun)
+      .mockResolvedValueOnce(PARENT_RUN)
+      .mockResolvedValueOnce(CHILD_RUN_COMPLETED);
+    vi.mocked(createAgentRun).mockResolvedValueOnce({
+      run: { ...CHILD_RUN_COMPLETED, status: 'running' as const },
+      userMessageId: null,
+      placeholderMessageId: null,
+      llmJobId: null,
+    });
+    vi.mocked(store.listSteps).mockResolvedValueOnce([
+      { id: 's1', runId: 'child-1', kind: 'reply', toolName: null, toolCallKey: null, input: null,
+        output: { content: '## 报告\n内容...' }, idx: 0, tokens: 0, durationMs: null, error: null,
+        status: 'succeeded', createdAt: new Date() } as unknown as import('../store.js').AgentStep,
+    ]);
+
+    const out = await deepResearchTool.handler({ question: '什么是禀赋效应？' }, fakeCtx);
+    expect(out.ok).toBe(true);
+    expect(out.reportDocumentId).toBe('doc-9');
+    const exportArgs = vi.mocked(docExportMarkdownTool.handler).mock.calls[0]![0] as { title: string; markdown: string };
+    expect(exportArgs.title).toBe('研究报告：什么是禀赋效应？');
+    expect(exportArgs.markdown).toContain('报告');
+    // extractRef:存档文档进父 run 资源清单(与 extractRefs 的 url 引用并存)
+    const ref = deepResearchTool.replyMeta!.extractRef!({ ok: true, reportDocumentId: 'doc-9', reportTitle: '研究报告：什么是禀赋效应？' });
+    expect(ref).toEqual({ kind: 'document', id: 'doc-9', label: '研究报告：什么是禀赋效应？' });
+  });
+
+  it('K7:存档失败 → fail-open,报告照常返回(无 reportDocumentId)', async () => {
+    vi.mocked(docExportMarkdownTool.handler).mockRejectedValueOnce(new Error('db down'));
+    vi.mocked(store.getAgentRun)
+      .mockResolvedValueOnce(PARENT_RUN)
+      .mockResolvedValueOnce(CHILD_RUN_COMPLETED);
+    vi.mocked(createAgentRun).mockResolvedValueOnce({
+      run: { ...CHILD_RUN_COMPLETED, status: 'running' as const },
+      userMessageId: null,
+      placeholderMessageId: null,
+      llmJobId: null,
+    });
+    vi.mocked(store.listSteps).mockResolvedValueOnce([
+      { id: 's1', runId: 'child-1', kind: 'reply', toolName: null, toolCallKey: null, input: null,
+        output: { content: '## 报告\n内容...' }, idx: 0, tokens: 0, durationMs: null, error: null,
+        status: 'succeeded', createdAt: new Date() } as unknown as import('../store.js').AgentStep,
+    ]);
+
+    const out = await deepResearchTool.handler({ question: '什么是禀赋效应？' }, fakeCtx);
+    expect(out.ok).toBe(true);
+    expect(out.report).toContain('报告');
+    expect(out.reportDocumentId).toBeUndefined();
+  });
+
 });

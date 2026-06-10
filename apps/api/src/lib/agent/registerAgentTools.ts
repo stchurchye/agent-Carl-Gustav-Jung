@@ -28,6 +28,7 @@ import { registerYoutubeTranscript } from './tools/youtubeTranscript.js';
 import { registerRecallStep } from './tools/recallStep.js';
 import { registerRecallMemory } from './tools/recallMemory.js';
 import { registerSaveMemory } from './tools/saveMemory.js';
+import { registerReadDocument } from './tools/readDocument.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -50,4 +51,5 @@ export function registerAgentTools(): void {
   registerRecallStep();
   registerRecallMemory();
   registerSaveMemory();
+  registerReadDocument();
 }
