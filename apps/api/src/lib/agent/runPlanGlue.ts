@@ -233,11 +233,11 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       previousFailure,
       progress,
       replanDirective, // M1c：steer/deny 强制改向指令(最高优先级)
-      // S3：只在续跑(continuation)时注入 checkpoint 的「自动续跑中」框架；steer/merge/
-      // approval_deny 等 replan 不注入，避免给用户新指令套上陈旧"不要问是否继续"框架。
-      checkpoint: latestReplanIsContinuation(stepsForPrompt)
-        ? run.contextCheckpoint
-        : null,
+      // P0-S5：只要有 checkpoint 就传(applyReplanningIfNeeded 已在所有 replan 路径累积)——
+      // steer/deny/critique/merge 重规划不再丢早期发现(防重复搜索)。框架按是否续跑分流:
+      // continuation 用「自动续跑中」;其余用中性「已有任务进展(供参考,新指令优先)」。
+      checkpoint: run.contextCheckpoint,
+      checkpointIsContinuation: latestReplanIsContinuation(stepsForPrompt),
       isSubagent: !!run.parentRunId,
       role: run.role, // M3-S1：子 agent 按 role 取工具子集
 
