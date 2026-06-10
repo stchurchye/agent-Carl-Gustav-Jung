@@ -23,7 +23,7 @@ import {
   type Plan,
   type TodoItem,
 } from './types.js';
-import { runCritique, isToolFailure } from './critique.js';
+import { runCritique, isToolFailure, isLowSignalSearch } from './critique.js';
 import { agentHookBus } from './hooks.js';
 import { recordStep, incrementUsage, startHeartbeat } from './stepRecorder.js';
 import { toolRegistry } from './toolRegistry.js';
@@ -125,6 +125,41 @@ async function computeCheckpoint(
     // abort 透传：包成 AgentCancelled，让收尾正确标 cancelled（而非 system_error/failed）。
     if (signal.aborted) throw new AgentCancelled('user');
     throw e;
+  }
+}
+
+/**
+ * 收尾兜底(2026-06-10 review,预存在):收尾点 computeCheckpoint→updateAgentRun 抛错
+ * (网络超时/DB 抖动)时,外层 catch 此前只 softComplete 不补 checkpoint →
+ * contextCheckpoint 停留在续跑时刻旧值,末轮发现丢失。这里在 catch 里 best-effort
+ * 补写**机械版** checkpoint(无 LLM、不压缩,与 applyReplanningIfNeeded/steerRun 同款):
+ * - prior = DB 最新 contextCheckpoint,buildCheckpoint 按 producedAtIdx 只折新步 →
+ *   与 reclaim/续跑增量语义一致,重复补写幂等、producedAtIdx 单调不回退。
+ * - fail-open:补写自身再失败(DB 仍坏)只能放弃 —— 吞错,绝不反向炸掉收尾流程。
+ */
+async function backfillCheckpointBestEffort(
+  runId: string,
+  fallbackRun: AgentRun,
+): Promise<void> {
+  try {
+    const latest = (await store.getAgentRun(runId)) ?? fallbackRun;
+    const steps = await store.listSteps(runId);
+    const sinceIdx = latest.contextCheckpoint?.producedAtIdx ?? -1;
+    if (!steps.some((s) => s.idx > sinceIdx)) return; // 无新步 → 无可补的发现
+    const todos =
+      latest.todos.length > 0 ? latest.todos : (latest.plan?.todos ?? []);
+    const checkpoint = buildCheckpoint(latest.contextCheckpoint, steps, todos, {
+      goal: latest.inputText,
+      intent: latest.plan?.intentSummary ?? latest.contextCheckpoint?.intent ?? '',
+      successCount: countProgressSteps(steps),
+      toolMap: new Map(toolRegistry.list().map((t) => [t.name, t])),
+    });
+    await store.updateAgentRun(runId, { contextCheckpoint: checkpoint });
+  } catch (e) {
+    console.warn(
+      `[executeRun] 收尾兜底 checkpoint 补写失败(忽略,不挡收尾) run=${runId}`,
+      e,
+    );
   }
 }
 
@@ -582,6 +617,33 @@ export async function executeRun(runId: string): Promise<void> {
           return;
         }
       }
+
+      // === R2-3 refine 门:连续低信号搜索(空/低相关垃圾)→ 重规划改写查询 ===
+      // 每 run 只触发一次:重规划后若 LLM 换词仍搜垃圾,继续靠 budget/stall guard 兜底,
+      // 防 refine↔垃圾结果死循环(与 unknown_tool 的"一次纠正"同精神)。
+      const recentLowSignal = allSteps.slice(-4).filter(isLowSignalSearch).length;
+      if (recentLowSignal >= 2) {
+        const alreadyRefined = allSteps.some(
+          (s) =>
+            s.kind === 'critique' &&
+            typeof (s.output as { reason?: unknown } | null)?.reason === 'string' &&
+            ((s.output as { reason: string }).reason.includes('改写查询')),
+        );
+        if (!alreadyRefined) {
+          const c = runCritique({
+            plan,
+            recentSteps: allSteps.slice(-4),
+            reason: 'low_signal_search',
+            mergedInputs: run.mergedInputs,
+          });
+          await recordStep({ runId, kind: 'critique', output: c });
+          if (c.shouldReplan) {
+            await store.updateAgentRun(runId, { status: 'replanning' });
+            return;
+          }
+        }
+      }
+      // === End R2-3 refine 门 ===
     }
 
     // issue 0001 continuation-replan：plan 跑完，但仍有"有 step 却没完成"的 todo
@@ -761,11 +823,16 @@ export async function executeRun(runId: string): Promise<void> {
     await recordStep({ runId, kind: 'reply', output: { content: replyDigest } });
     await softComplete(run, 'completed');
   } catch (e) {
-    const latest = (await store.getAgentRun(runId)) ?? run;
     if (e instanceof AgentCancelled && e.reason === 'steer') {
       // steer 已经把 status 设为 'replanning'，worker 下次 pickup 会进 replanning 分支。
+      // checkpoint 不需要这里补:steerRun + applyReplanningIfNeeded(P0-S5)已在 replan 咽喉累积。
       return;
     }
+    // 收尾兜底:任何异常路径(收尾点 checkpoint 写失败/预算耗尽/取消/硬错)先 best-effort
+    // 把已产出的发现补进 checkpoint,再 softComplete —— 让 buildFinalContent/后续读取
+    // 拿到末轮发现而非续跑旧值。先补写再取 latest,softComplete 才读得到新 checkpoint。
+    await backfillCheckpointBestEffort(runId, run);
+    const latest = (await store.getAgentRun(runId)) ?? run;
     if (e instanceof AgentCancelled) {
       await recordStep({ runId, kind: 'cancel', error: e.reason });
       await softComplete(latest, 'cancelled', e.reason);

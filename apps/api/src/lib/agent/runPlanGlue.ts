@@ -18,6 +18,7 @@ import { recordStep } from './stepRecorder.js';
 import { emitNotice } from './notices.js';
 import { listSteps } from './store.js';
 import { redactSecrets } from './redact.js';
+import { buildListFinding } from './checkpoint.js';
 
 /**
  * M1f polish #1：把最近的 step 失败摘要给 planner 看，避免 replan 复现同样错。
@@ -74,9 +75,13 @@ export function buildProgressSummary(
     for (const s of okObservations) {
       let out = '';
       try {
+        // R2-2:list 类输出(搜索结果等)结构化为 title+url 摘录 —— 原 200 字 JSON 截断
+        // 会碎在 snippet 中间,planner 只见乱码、看不见"搜到什么"。其余形状仍走截断 JSON。
+        const inner = (s.output as { result?: unknown } | null)?.result ?? s.output;
+        const structured = buildListFinding(inner);
         // 送 planner 的投影 → 脱敏（与 digestTail/findings/summarizeStepOutput 一致；
         // 持久化的 step.output 保持原始）。此前漏脱敏，密钥会经 progress 摘要泄给 planner。
-        out = JSON.stringify(redactSecrets(s.output) ?? {}).slice(0, 200);
+        out = structured ?? JSON.stringify(redactSecrets(s.output) ?? {}).slice(0, 200);
       } catch {
         out = '[unserializable]';
       }

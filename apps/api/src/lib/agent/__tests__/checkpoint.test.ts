@@ -367,12 +367,14 @@ describe('buildRichFinding per summaryKind (v4)', () => {
       { goal: 'g', intent: 'i', successCount: 1, toolMap: map },
     );
     const finding = cp.completed[0].finding;
-    // 应包含 title（summarizeStepOutput list-path 提取 top-5 标题）
+    // 应包含 title
     expect(finding).toContain('研究结论');
     // 不应是以 '{"result"' 开头的原始 JSON wrapper（说明 result 解包生效）
     expect(finding.startsWith('{"result"')).toBe(false);
-    // 应是以 '、' 或 title 文本连接的短字符串（不是几千字的 raw JSON）
-    expect(finding.length).toBeLessThan(600);
+    // R2-1 契约更新:结构化摘录(title — url + snippet≤200/条),带 url 供重规划深读;
+    // 上限 = 5×(80 title + url + 200 snippet) ≈ 1.5K,仍在 finding 2000 字预算内。
+    expect(finding).toContain('https://site0.com');
+    expect(finding.length).toBeLessThan(1600);
   });
 });
 
