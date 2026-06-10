@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../store/pg.js', () => ({
   listDocuments: vi.fn(async () => []),
+  getDocument: vi.fn(),
 }));
 
-import { listDocuments } from '../../../store/pg.js';
+import { listDocuments, getDocument } from '../../../store/pg.js';
 import { readDocumentTool, registerReadDocument } from '../tools/readDocument.js';
 import { toolRegistry } from '../toolRegistry.js';
 
 const list = vi.mocked(listDocuments);
+const get = vi.mocked(getDocument);
 
 const ctx = {
   runId: 'r', stepId: 's', ownerId: 'userA', channel: 'private' as const,
@@ -26,6 +28,11 @@ describe('read_document tool (K7)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     list.mockResolvedValue([] as never);
+    // getDocument(用于取最佳匹配规范化全文):默认从 list mock 里按 id 找
+    get.mockImplementation(async (_uid: string, id: string) => {
+      const all = (await list('userA')) as Array<{ id: string }>;
+      return all.find((d) => d.id === id) as never;
+    });
   });
 
   it('registers idempotently', () => {
@@ -90,4 +97,22 @@ describe('read_document tool (K7)', () => {
     list.mockRejectedValueOnce(abortErr);
     await expect(readDocumentTool.handler({ titleQuery: 'x' }, ctx)).rejects.toThrow('aborted');
   });
+
+
+  it('多章文档:拼接所有章/块正文(review#3:不再静默只返第一块)', async () => {
+    const multiDoc = {
+      id: 'd1', title: '多章笔记', hiddenAt: null,
+      chapters: [
+        { id: 'c1', blocks: [{ id: 'b1', content: '第一章内容' }] },
+        { id: 'c2', blocks: [{ id: 'b2', content: '第二章内容' }, { id: 'b3', content: '第二章续' }] },
+      ],
+    };
+    list.mockResolvedValue([multiDoc] as never);
+    get.mockResolvedValue(multiDoc as never);
+    const out = await readDocumentTool.handler({ titleQuery: '多章' }, ctx);
+    expect(out.content).toContain('第一章内容');
+    expect(out.content).toContain('第二章内容');
+    expect(out.content).toContain('第二章续');
+  });
+
 });

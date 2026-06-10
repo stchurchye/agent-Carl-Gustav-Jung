@@ -20,8 +20,8 @@ type DeepResearchOutput = {
   error?: string;
 };
 
-/** K7:报告存档标题 —— 统一《研究报告：》前缀,写作页可按前缀归拢/批量隐藏。 */
-const REPORT_TITLE_PREFIX = '研究报告：';
+/** K7:报告存档标题 —— 统一前缀,写作页可按前缀归拢/批量隐藏。readDocument 复用此常量。 */
+export const REPORT_TITLE_PREFIX = '研究报告：';
 const REPORT_TITLE_QUESTION_MAX = 40;
 
 export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = {
@@ -86,7 +86,12 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
       // K7:报告自动存档(行业头号抱怨:深研报告滚走即不可复访)。复用 doc_export 的
       // upsert + 用户编辑保护(同名 v2 版本化);失败 fail-open —— 报告照常返回。
       try {
-        const title = `${REPORT_TITLE_PREFIX}${input.question.trim().slice(0, REPORT_TITLE_QUESTION_MAX)}`;
+        // review#1/#14:两个问题前 40 字相同会 upsert 同标题、静默覆盖前一份报告。
+        // 问题超 40 字时附 run 短 id 消歧,确保不同研究各存一份。
+        const q = input.question.trim();
+        const qPart = q.slice(0, REPORT_TITLE_QUESTION_MAX);
+        const disambig = q.length > REPORT_TITLE_QUESTION_MAX ? ` (${ctx.runId.slice(0, 8)})` : '';
+        const title = `${REPORT_TITLE_PREFIX}${qPart}${disambig}`;
         const archived = await docExportMarkdownTool.handler(
           { title, markdown: result.report },
           ctx,

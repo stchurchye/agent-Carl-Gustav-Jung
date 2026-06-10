@@ -71,7 +71,7 @@ describe('recall_memory tool', () => {
   it('locks owner to ctx.ownerId (never cross-user/group-member)', async () => {
     searchAgentMemory.mockResolvedValue([]);
     await recallMemoryTool.handler({ query: 'x' }, ctx);
-    expect(searchAgentMemory).toHaveBeenCalledWith('userA', 'x', 12, ctx.signal);
+    expect(searchAgentMemory).toHaveBeenCalledWith('userA', 'x', 12, ctx.signal, false, undefined);
   });
 
   it('fail-open: MAGI disabled → empty results, no throw', async () => {
@@ -124,15 +124,16 @@ describe('recall_memory · K6', () => {
     magiSystemEnabled.mockReturnValue(true);
   });
 
-  it('finding 渲染来源行:title 含「来源: Title (1992) url」,LLM 可直接复引', async () => {
+  it('finding:title 短(claim),来源走结构化 sources 字段(review#15:避免 60 字截断丢 URL)', async () => {
     searchAgentMemory.mockResolvedValue([findingHit(9, 0.9)] as never);
     const out = await recallMemoryTool.handler({ query: '损失厌恶' }, ctx);
-    expect(out.results[0]!.title).toBe(
-      '损失厌恶系数约 2.25 —— 来源: Prospect Theory (1992) https://doi.org/10.1/tk',
-    );
+    expect(out.results[0]!.title).toBe('损失厌恶系数约 2.25');
+    expect(out.results[0]!.sources).toEqual([
+      { url: 'https://doi.org/10.1/tk', title: 'Prospect Theory', year: 1992 },
+    ]);
   });
 
-  it('refuted 条目带【已证伪】前缀 + 反证来源(伪的可查但要记得是伪的)', async () => {
+  it('refuted 条目 title 带【已证伪】前缀,反证走结构化字段', async () => {
     searchAgentMemory.mockResolvedValue([
       findingHit(9, 0.9, {
         truthStatus: 'refuted',
@@ -142,8 +143,9 @@ describe('recall_memory · K6', () => {
     ] as never);
     const out = await recallMemoryTool.handler({ query: '损失厌恶' }, ctx);
     expect(out.results[0]!.title).toMatch(/^【已证伪】/);
-    expect(out.results[0]!.title).toContain('系统综述未能复现');
-    expect(out.results[0]!.title).toContain('https://doi.org/10.1/pashler');
+    expect(out.results[0]!.truthStatus).toBe('refuted');
+    expect(out.results[0]!.truthNote).toBe('系统综述未能复现');
+    expect(out.results[0]!.counterSources).toEqual([{ url: 'https://doi.org/10.1/pashler' }]);
   });
 
   it('disputed 条目带【有争议】前缀', async () => {

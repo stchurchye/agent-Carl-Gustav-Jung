@@ -1,18 +1,19 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
 import {
-  searchAgentMemory,
   magiSystemEnabled,
-  type MemoryHit,
+  type MemorySource,
 } from '../../integrations/magi.js';
-import { groupPoolOwner } from '../../memoryOwner.js';
+import { searchMemoryPools } from '../../memoryPools.js';
 
 type RecallMemoryInput = {
   query: string;
 };
 
 /**
- * 输出 results[] 形状刻意匹配 replyGen 的 'list' 摘要契约(results 数组 + 每项 .title);
- * title = fact 文本(可读标签)。否则召回结果在终稿里会被 fallback 成 JSON 串。
+ * 输出 results[] 形状刻意匹配 replyGen 的 'list' 摘要契约(results 数组 + 每项 .title)。
+ * review#15:title 保持**短**(真伪标 + claim)—— 'list' 摘要器把 title 截到 60 字,
+ * URL 塞进去会被切掉。来源/真伪走**结构化字段**(sources/truthStatus/...),LLM 经
+ * digestTail 全文(每步 ≤4000 字)读到完整出处,可在终稿引用 URL。
  */
 type RecalledMemory = {
   title: string;
@@ -20,6 +21,11 @@ type RecalledMemory = {
   score: number;
   sourceRunId: string | null;
   createdAt: string | null;
+  /** review#15:结构化出处 —— 不挤进被截断的 title。 */
+  sources: MemorySource[] | null;
+  truthStatus: 'unverified' | 'disputed' | 'refuted';
+  truthNote: string | null;
+  counterSources: MemorySource[] | null;
 };
 
 type RecallMemoryOutput = {
@@ -37,26 +43,6 @@ type RecallMemoryOutput = {
  * - AbortError 透传,让 runtime 看到 cancel。
  * - 与 magi_system_read 不混:后者打研究知识库,本工具打 agent 自己的情景记忆表。
  */
-/**
- * K6:召回条目渲染 —— finding 带来源行(LLM 可直接复引 URL);真伪标前置
- * (【已证伪】/【有争议】+ 反证),"记得它是伪的"和结论本身同样是知识。
- */
-function renderHitTitle(h: MemoryHit): string {
-  const truthTag =
-    h.truthStatus === 'refuted' ? '【已证伪】' : h.truthStatus === 'disputed' ? '【有争议】' : '';
-  const srcLine =
-    h.sources && h.sources.length > 0
-      ? ` —— 来源: ${h.sources
-          .map((s) => `${s.title ?? ''}${s.year ? ` (${s.year})` : ''} ${s.url}`.trim())
-          .join('; ')}`
-      : '';
-  const truthLine =
-    truthTag && (h.truthNote || h.counterSources?.length)
-      ? `(${[h.truthNote, h.counterSources?.map((c) => c.url).join(' ')].filter(Boolean).join(' 反证: ')})`
-      : '';
-  return `${truthTag}${h.text}${srcLine}${truthLine ? ` ${truthLine}` : ''}`;
-}
-
 export const recallMemoryTool: ToolDef<RecallMemoryInput, RecallMemoryOutput> = {
   name: 'recall_memory',
   description:
@@ -82,33 +68,23 @@ export const recallMemoryTool: ToolDef<RecallMemoryInput, RecallMemoryOutput> = 
     const enabled = magiSystemEnabled();
     try {
       // owner 锁定 ctx.ownerId —— 绝不用 input 里的 owner。
-      // K6 双池(修订三读侧):群聊 run 额外查 group:{gid} 共享池(成员触发的研究互相可见),
-      // 按 score 归并去重;私聊只查个人池(谁也看不到别人的群池)。
-      const pools: Promise<MemoryHit[]>[] = [
-        searchAgentMemory(ctx.ownerId, input.query, 12, ctx.signal),
-      ];
-      if (ctx.channel === 'group' && ctx.groupId) {
-        pools.push(
-          searchAgentMemory(groupPoolOwner(ctx.groupId), input.query, 12, ctx.signal),
-        );
-      }
-      const seen = new Set<string>();
-      const hits = (await Promise.all(pools))
-        .flat()
-        .sort((a, b) => b.score - a.score)
-        .filter((h) => {
-          const key = `${h.id}:${h.text}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .slice(0, 12);
+      // 双池(修订三读侧):群聊 run 额外查 group:{gid} 共享池,个人池强制 findings-only
+      // (隐私:个人 facts 不进群上下文);私聊查个人池全 kind。去重/排序在 helper 内。
+      const hits = await searchMemoryPools(ctx.ownerId, ctx.channel, ctx.groupId, input.query, {
+        topK: 12,
+        signal: ctx.signal,
+      });
       const results = hits.map((h) => ({
-        title: renderHitTitle(h), // 'list' 摘要器取 .title 渲染
+        // title 短(真伪标 + claim);'list' 摘要器截 60 字,URL 走结构化字段免被切。
+        title: `${h.truthStatus === 'refuted' ? '【已证伪】' : h.truthStatus === 'disputed' ? '【有争议】' : ''}${h.text}`,
         id: h.id,
         score: h.score,
         sourceRunId: h.sourceRunId,
         createdAt: h.createdAt,
+        sources: h.sources,
+        truthStatus: h.truthStatus,
+        truthNote: h.truthNote,
+        counterSources: h.counterSources,
       }));
       return { ok: true, results, enabled };
     } catch (e) {

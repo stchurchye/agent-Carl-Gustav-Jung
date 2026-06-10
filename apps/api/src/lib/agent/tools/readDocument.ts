@@ -1,5 +1,5 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
-import { listDocuments } from '../../../store/pg.js';
+import { listDocuments, getDocument } from '../../../store/pg.js';
 
 type ReadDocumentInput = {
   titleQuery: string;
@@ -61,15 +61,21 @@ export const readDocumentTool: ToolDef<ReadDocumentInput, ReadDocumentOutput> = 
         return { ok: true, matches: [] };
       }
       // 最佳匹配 = 标题最短(包含同一 query 时,短标题更接近精确命中)
-      const best = [...visible].sort((a, b) => a.title.length - b.title.length)[0]!;
-      const raw = best.chapters?.[0]?.blocks?.[0]?.content ?? '';
-      const truncated = raw.length > CONTENT_MAX;
+      const bestId = [...visible].sort((a, b) => a.title.length - b.title.length)[0]!.id;
+      // review#3/#16:用 getDocument(会 normalizeWritingDocument)取规范化全文;
+      // 跨**所有章/块**拼接 —— 否则多章文档静默只返第一块、truncated 还是 false。
+      const best = (await getDocument(ctx.ownerId, bestId)) ?? visible.find((d) => d.id === bestId)!;
+      const full = (best.chapters ?? [])
+        .flatMap((c) => (c.blocks ?? []).map((b) => b.content ?? ''))
+        .filter((t) => t.trim().length > 0)
+        .join('\n\n');
+      const truncated = full.length > CONTENT_MAX;
       return {
         ok: true,
         matches,
         title: best.title,
         documentId: best.id,
-        content: truncated ? raw.slice(0, CONTENT_MAX) : raw,
+        content: truncated ? full.slice(0, CONTENT_MAX) : full,
         truncated,
       };
     } catch (e) {

@@ -10,6 +10,7 @@ vi.mock('../../memoryReconcile.js', () => ({
 }));
 vi.mock('../store.js', () => ({
   listSteps: vi.fn(async () => []),
+  listStepsByKind: vi.fn(async () => []),
   getAgentRun: vi.fn(async () => ({ id: 'run-1', providerId: 'deepseek', modelId: 'm' })),
 }));
 vi.mock('../runLlmClient.js', () => ({
@@ -28,6 +29,7 @@ const search = vi.mocked(searchAgentMemory);
 const write = vi.mocked(writeAgentMemory);
 const reconcile = vi.mocked(reconcileMemoryWrite);
 const listSteps = vi.mocked(store.listSteps);
+const listStepsByKind = vi.mocked(store.listStepsByKind);
 
 const privCtx = {
   runId: 'run-1', stepId: 's1', ownerId: 'userA', channel: 'private' as const,
@@ -49,6 +51,7 @@ describe('save_memory tool (K4)', () => {
     write.mockResolvedValue({ id: 100 });
     reconcile.mockResolvedValue({ action: 'new', writtenId: 100, invalidatedIds: [] });
     listSteps.mockResolvedValue([]);
+    listStepsByKind.mockResolvedValue([]);
   });
 
   it('registers idempotently', () => {
@@ -133,6 +136,7 @@ describe('save_memory tool (K4)', () => {
     );
     vi.clearAllMocks();
     listSteps.mockResolvedValue([]);
+    listStepsByKind.mockResolvedValue([]);
     reconcile.mockResolvedValue({ action: 'new', writtenId: 1, invalidatedIds: [] });
     vi.mocked(store.getAgentRun).mockResolvedValue({ id: 'run-1', providerId: 'deepseek', modelId: 'm' } as never);
     vi.mocked(resolveLlmClient).mockResolvedValue({ chat: vi.fn() } as never);
@@ -141,18 +145,35 @@ describe('save_memory tool (K4)', () => {
     expect(reconcile.mock.calls[0]![1]).toBe('userA'); // fact 恒私有
   });
 
-  it('每 run 5 次硬上限:第 6 次被拒', async () => {
-    const saveStep = (idx: number) => ({
+  it('每 run 5 次硬上限只数成功写入:5 条成功 → 第 6 次被拒', async () => {
+    const saveStep = (idx: number, result: Record<string, unknown>) => ({
       id: `s${idx}`, runId: 'run-1', idx, kind: 'tool_call', toolName: 'save_memory',
-      toolCallKey: null, input: null, output: { result: { ok: true } }, tokens: 0,
+      toolCallKey: null, input: null, output: { result }, tokens: 0,
       durationMs: 0, error: null, byUserId: null, createdAt: new Date(),
     });
-    listSteps.mockResolvedValue(Array.from({ length: 5 }, (_, i) => saveStep(i)) as never);
+    listStepsByKind.mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => saveStep(i, { ok: true, id: i })) as never,
+    );
     const out = await saveMemoryTool.handler({ text: '第六条' }, privCtx);
     expect(out.ok).toBe(false);
     expect(out.error).toMatch(/cap/i);
     expect(write).not.toHaveBeenCalled();
     expect(reconcile).not.toHaveBeenCalled();
+  });
+
+  it('失败/去重的 save 步不烧配额(review#4):5 条失败+去重 → 第 6 次仍放行', async () => {
+    const saveStep = (idx: number, result: Record<string, unknown>) => ({
+      id: `s${idx}`, runId: 'run-1', idx, kind: 'tool_call', toolName: 'save_memory',
+      toolCallKey: null, input: null, output: { result }, tokens: 0,
+      durationMs: 0, error: null, byUserId: null, createdAt: new Date(),
+    });
+    listStepsByKind.mockResolvedValue([
+      saveStep(0, { ok: false }), saveStep(1, { ok: false }),
+      saveStep(2, { ok: true, deduped: true }), saveStep(3, { ok: false }),
+      saveStep(4, { ok: true, deduped: true }),
+    ] as never);
+    const out = await saveMemoryTool.handler({ text: '第六条' }, privCtx);
+    expect(out.ok).toBe(true); // 没有真正写入过,配额未耗
   });
 
   it('MAGI 未启用 → ok:false enabled:false 不抛', async () => {
