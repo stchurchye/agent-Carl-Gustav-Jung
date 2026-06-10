@@ -3,6 +3,14 @@
 ## Parent
 EPIC: 0000-epic-agent-loop-deepening(独立防御性修复,与深化主线无依赖;源自 E2E campaign 候选 finding F-A)
 
+## 现状更新(2026-06-10)
+
+原始复现(「run 永停 planning 无终态」)**已不成立**:
+- **parse 期**:`planner.ts` 解析 plan 时即拒未知 toolName(`knownNames.has(raw.toolName)` 不过 → 整个 plan 返回 null → 走 echo 降级),不会带着未知工具进执行。
+- **exec 期**:即使未知工具漏到 dispatch,`toolRegistry.require` 抛错 → run 进 `failed` 终态,不再悬挂。
+
+**残余缺口**(即本票验收标准仍待实现的部分):缺优雅的 replan 路径——「带『工具 X 不存在,只能用注册表内工具』的失败原因触发一次 replan,replan 后仍未知才进 failed」。现状是 parse 期静默降级 echo / exec 期直接 failed,planner 拿不到针对性纠错信息。验收标准不变,待 P0-S4 实现。
+
 ## What to build
 现状:planner 产出的 plan 步骤若引用**未注册的 toolName**(LLM 幻造工具名),run 不产 step、status **永停 planning**(>1min 无终态、无 error)。`toolRegistry.require` 只在 dispatch 时抛 `unknown tool`,planning 阶段接受 plan 前无校验,也没有兜底把悬挂 run 打进终态。prompt 里虽禁止幻造工具名,但真实 LLM 偶发幻觉即触发——这是一条生产环境"run 静默悬挂"的路径。
 

@@ -3,16 +3,18 @@
 ## Parent
 EPIC: 0000-epic-agent-loop-deepening
 
+> 状态:已完成并合并(2026-06-10 核实,commit 0e517a9;runExecute.ts 无进展判停 + runtime.continuationReplan.test.ts "stall guard" 用例)。本文其余为历史设计记录。
+
 ## What to build
 给续跑加一道**无进展防呆**:当连续几轮续跑后"已完成 todo 数"不再增加(或超过 N 轮续跑上限)时,**干净停住并收尾**,而不是一路烧到 budget 硬顶。避免一个不可完成的目标把整轮预算空转掉。
 
 补在 0001 的续跑机制之上 —— 0001 靠现有 budget 兜底防无限循环,本票把"兜底"升级为"察觉无进展就早停"。
 
 ## Acceptance criteria
-- [ ] 一个续跑多轮但 todo 完成数不增长的任务,**在无进展/轮数上限处**干净停住并给合理终稿,而不是耗尽 maxSteps 才停。
-- [ ] 续跑轮数上限可配置并被强制执行。
-- [ ] 真在推进的正常多轮任务**不受影响**(不会被误停)。
-- [ ] 测试:不可完成任务 → 停在无进展/轮数上限,而非 budget 耗尽。
+- [x] 一个续跑多轮但 todo 完成数不增长的任务,**在无进展/轮数上限处**干净停住并给合理终稿,而不是耗尽 maxSteps 才停。
+- [x] 续跑轮数上限可配置并被强制执行。(CONTINUATION_ROUND_CAP=2,runExecute.ts)
+- [x] 真在推进的正常多轮任务**不受影响**(不会被误停)。
+- [x] 测试:不可完成任务 → 停在无进展/轮数上限,而非 budget 耗尽。(runtime.continuationReplan.test.ts)
 
 ## Blocked by
 - [0001] 续跑且带观察

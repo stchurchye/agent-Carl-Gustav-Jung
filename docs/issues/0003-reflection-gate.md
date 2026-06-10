@@ -3,17 +3,19 @@
 ## Parent
 EPIC: 0000-epic-agent-loop-deepening
 
+> 状态:已完成并合并(2026-06-10 核实,commit 0e517a9;reflection.ts + reflection.test.ts,统一收尾决策已落地)。本文其余为历史设计记录。
+
 ## What to build
 现状有两个互不相识的 critic:`runCritique`(规则 stub,只在"最近4步失败≥2"时驱动重规划,周期路径永远 false)与 `critique_last_answer`(真 LLM 学术 critic,但只能被 plan 当工具调,**没接进重规划闸门**)。
 
 合并为**一个 LLM 兜底的 Reflection 模块**,接口保持 `→ {shouldReplan, adjustment}`,供重规划闸门调用。Reflection 不只看工具失败,还判**答案质量 + 目标是否真完成**;另外在 **Finalize 前**加一道"真的完成了吗?"检查 —— 没完成且 budget 还有,就续跑。
 
 ## Acceptance criteria
-- [ ] 重规划闸门调的是 LLM 兜底的 Reflection(不再只是"≥2失败"规则);一个"没报错但答得不完整/不对"的结果能被送回再续一轮。
-- [ ] Finalize 前跑"done?"检查;判定未完成且 budget 充足 → 继续而非收尾。
-- [ ] 两个旧 critic 合一,无重复 critic 逻辑;复用 `critique_last_answer` 的 critic 提示/逻辑。
-- [ ] **HITL**:Reflection 的接口与决策策略先经人评审,再进 AFK 实现。
-- [ ] 测试:质量/完整性缺陷时 Reflection 返回 shouldReplan;Finalize 检查能拦住过早收尾。
+- [x] 重规划闸门调的是 LLM 兜底的 Reflection(不再只是"≥2失败"规则);一个"没报错但答得不完整/不对"的结果能被送回再续一轮。
+- [x] Finalize 前跑"done?"检查;判定未完成且 budget 充足 → 继续而非收尾。(reflectGoalCompletion,runExecute loop 尾)
+- [x] 两个旧 critic 合一,无重复 critic 逻辑;复用 `critique_last_answer` 的 critic 提示/逻辑。(在收尾决策层达成;mid-loop ≥2 失败规则 gate 与 critique_last_answer 工具作为 fast-path/工具有意保留,见下「critic 完全合并」)
+- [x] **HITL**:Reflection 的接口与决策策略先经人评审,再进 AFK 实现。(多轮 2-finder code-review 记录见下)
+- [x] 测试:质量/完整性缺陷时 Reflection 返回 shouldReplan;Finalize 检查能拦住过早收尾。(reflection.test.ts)
 
 ## Blocked by
 - [0001] 续跑且带观察(Reflection 需要续跑循环 + 观察 scratchpad 才有发挥空间)
@@ -26,7 +28,7 @@ EPIC: 0000-epic-agent-loop-deepening
 - [x] **接进收尾 gate**（runExecute loop 尾）—— 机械续跑信号没响时,问 Reflection;`goalMet:false` 且(非子agent/budget足/未达CAP)→ 续跑。`!isTestEnv` 守卫保护现有测试。
 - [x] **解 #7**（被 replan 丢掉的 todo）—— 机械信号沉默但 Reflection 从语义判出目标没达成 → 续跑。已测。
 - [x] **解 #2b**（跨轮 todo 身份不稳）—— Reflection 读**全历史 finalSteps** 语义判完成,不依赖逐轮 todo。同一机制覆盖。
-- [ ] **未做（非 #7/#2b 必需,后续）**：把 `runCritique` 规则 stub 与 `critique_last_answer` 工具**完全合并**进 Reflection(目前 reflectGoalCompletion 只管收尾判完成;mid-loop 的 ≥2 失败 gate 仍是规则 stub)。
+- [ ] **未做（非 #7/#2b 必需,后续）**：把 `runCritique` 规则 stub 与 `critique_last_answer` 工具**完全合并**进 Reflection(目前 reflectGoalCompletion 只管收尾判完成;mid-loop 的 ≥2 失败 gate 仍是规则 stub)。**[2026-06-10 注:后续已在收尾决策层达成统一,剩余两项为有意保留的 fast-path/工具,见下「critic 完全合并」]**
 - ⚠️ **成本/调参点**：Reflection 在每个非测试 run 的收尾 +1 次 LLM 调用;可加"仅当有 tool_call 才跑"的门减少琐碎 run 的开销。效果依赖 LLM 判断质量(误判会多/少续跑,被 CAP=2 限住)。
 
 测试：`reflection.test.ts`（行为1 函数判定 + 行为2 收尾续跑）。425/425 全绿。
