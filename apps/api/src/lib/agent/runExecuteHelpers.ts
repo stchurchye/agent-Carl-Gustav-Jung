@@ -87,8 +87,13 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
     lastStep?.kind === 'replan'
       ? (lastStep.output as { reason?: string } | null)?.reason
       : undefined;
+  // issue 0005:unknown_tool replan(exec 期未知工具门)也在进入 replanning 前自己写过
+  // replan step,与 merge_trigger/continuation 同列 —— 否则会被误路由进 steer/deny 分支
+  // 或补一条 critique_or_unspecified 幻影 replan。
   const alreadyReplanRecorded =
-    lastReplanReason === 'merge_trigger' || lastReplanReason === 'continuation';
+    lastReplanReason === 'merge_trigger' ||
+    lastReplanReason === 'continuation' ||
+    lastReplanReason === 'unknown_tool';
 
   if (alreadyReplanRecorded) {
     // continuation(issue 0001) / merge_trigger(M7 P1)：最新一步就是它们自己写的 replan，

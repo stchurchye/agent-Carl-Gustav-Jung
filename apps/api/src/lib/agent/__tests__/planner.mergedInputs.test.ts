@@ -27,7 +27,9 @@ describe('planner buildPlannerUserPrompt with mergedInputs (M7 T5b)', () => {
     let capturedUser = '';
     const llm: LlmChatClient = {
       chat: vi.fn(async (msgs: LlmChatMessage[]) => {
-        capturedUser = msgs[msgs.length - 1].content;
+        // 只捕获**首次**调用的 prompt:mock 回的 plan 用了未注册工具,issue 0005 的
+        // unknown-tool 重试会发起第二次 chat,其末条 user 消息是纠错指令,不是本测对象。
+        if (!capturedUser) capturedUser = msgs[msgs.length - 1].content;
         return {
           content: JSON.stringify({
             intentSummary: '总结',

@@ -227,7 +227,49 @@ export async function executeRun(runId: string): Promise<void> {
       checkBudget(run.budget, { ...run.usage, elapsedSeconds });
 
       const planStep = plan.steps[i];
-      const tool = toolRegistry.require(planStep.toolName);
+
+      // === issue 0005 exec 期:plan 含未注册 toolName ===
+      // parse 期(parsePlannerJsonDetailed)已拒未知工具,这里兜的是缓存/陈旧 plan
+      // 漏过校验的残余路径。不悬挂、不立即 failed:记 tool_error(让重规划 prompt 经
+      // buildPreviousFailureSummary 看到「工具 X 不存在」)+ replan 一次;
+      // 已经为未知工具 replan 过一次仍遇到 → 抛错由外层 catch 收尾 failed(error 点名工具)。
+      const tool = toolRegistry.get(planStep.toolName);
+      if (!tool) {
+        const stepsSoFar = await store.listSteps(runId);
+        const priorUnknownReplans = stepsSoFar.filter(
+          (s) =>
+            s.kind === 'replan' &&
+            (s.output as { reason?: string } | null)?.reason === 'unknown_tool',
+        ).length;
+        await recordStep({
+          runId,
+          kind: 'tool_error',
+          toolName: planStep.toolName,
+          input: planStep.input,
+          error: `unknown tool: \`${planStep.toolName}\` 不在工具注册表内,只能使用已注册工具`,
+        });
+        if (priorUnknownReplans >= 1) {
+          throw new Error(
+            `unknown tool in plan: ${planStep.toolName}(已为未知工具重规划一次,仍引用未注册工具,终止)`,
+          );
+        }
+        const fromStatus = run.status;
+        await recordStep({
+          runId,
+          kind: 'replan',
+          output: { reason: 'unknown_tool', toolName: planStep.toolName },
+        });
+        await store.updateAgentRun(runId, { status: 'replanning' });
+        const latest = (await store.getAgentRun(runId))!;
+        agentHookBus.emitEvent({
+          type: 'run.status_changed',
+          run: latest,
+          from: fromStatus,
+          to: 'replanning',
+        });
+        return;
+      }
+      // === End issue 0005 exec 期 ===
 
       // === M3-S0 subagent tool whitelist (exec-time hard guard) ===
       // 白名单此前只在 planner-time 裁剪工具；但续跑(continuation-replan)、steer、

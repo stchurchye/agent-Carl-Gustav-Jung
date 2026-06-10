@@ -6,7 +6,11 @@
  * M1e task 13.4 之后 LLM 失败会 emit `PLANNER_LLM_FALLBACK` notice + recordStep('system_error')。
  */
 import { snapshotForAgent } from './contextAdapter.js';
-import { generatePlanForEcho, generatePlanWithLlm } from './planner.js';
+import {
+  generatePlanForEcho,
+  generatePlanWithLlm,
+  PlannerUnknownToolError,
+} from './planner.js';
 import type { AgentRun, AgentStep, Plan, TodoItem } from './types.js';
 import { resolveLlmClient, resolveEffectiveApiKeyForProvider } from './runLlmClient.js';
 import { runControllers } from './runtimeRegistry.js';
@@ -240,6 +244,29 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       mergedInputs: run.mergedInputs ?? [], // M7 P1a
     });
   } catch (e) {
+    // issue 0005 AC②:generatePlanWithLlm 已带原因重试过一次、仍引用未知工具 →
+    // **不再 echo 降级**(降级会让用户拿到无意义 echo 回复、错误不可见)。
+    // 记 system_error + notice 后透传,由 executeRun 外层 catch 收尾 failed(终态,error 写明工具名)。
+    if (e instanceof PlannerUnknownToolError) {
+      const toolList = e.unknownTools.join('、');
+      try {
+        await recordStep({
+          runId: run.id,
+          kind: 'system_error',
+          error: `planner_unknown_tool: ${toolList}(重试一次后仍引用未注册工具)`,
+        });
+      } catch (recordErr) {
+        console.warn('[buildInitialPlan] recordStep failed (suppressed)', recordErr);
+      }
+      await emitNotice({
+        runId: run.id,
+        severity: 'error',
+        code: 'PLANNER_UNKNOWN_TOOL',
+        message: `AI 规划反复引用不存在的工具(${toolList}),本次任务终止。`,
+        context: { unknownTools: e.unknownTools },
+      });
+      throw e;
+    }
     // M1e Task 13.4：之前 catch 后静默 fallback echo plan，用户毫无感知。现在写一条
     // system_error step（便于排查）+ emit PLANNER_LLM_FALLBACK notice（让用户在
     // UI 看到 "AI 规划不可用，已退回到 echo 计划"）。
