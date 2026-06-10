@@ -275,6 +275,13 @@ export type ReplyRef = {
   label?: string;
 };
 
+const REPLY_REF_KINDS: ReadonlySet<string> = new Set(['document', 'url', 'magi_card', 'diagram']);
+
+/** 宽 string(如 SubagentCitation.kind)收窄为 ReplyRef['kind'] 的运行时守卫。 */
+export function isReplyRefKind(kind: unknown): kind is ReplyRef['kind'] {
+  return typeof kind === 'string' && REPLY_REF_KINDS.has(kind);
+}
+
 /**
  * S1（context compaction）：累积式结构化 checkpoint —— 跨步累积的任务状态，
  * 存在 agent_runs.context_checkpoint 列。类型放 types.ts 避免 store ↔ checkpoint 循环依赖。

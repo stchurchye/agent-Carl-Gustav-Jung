@@ -25,6 +25,8 @@ export type RunChildSubagentResult = {
 
 const POLL_INTERVAL_MS = 500;
 const MAX_WAIT_MS = 5 * 60_000;
+/** 单个子 run 回流父 run 的引用上限(防子报告引用洪水冲垮父资源清单)。 */
+const MAX_CITATIONS = 10;
 
 function fail(error: string, childRunId = '', stepsUsed = 0): RunChildSubagentResult {
   return { ok: false, report: '', citations: [], stepsUsed, childRunId, error };
@@ -122,13 +124,11 @@ export async function runChildSubagent(params: {
       (replyStep?.output as { content?: string; text?: string } | undefined)?.text ??
       '(子 agent 未生成文字报告)';
 
-    const citations: SubagentCitation[] = [];
-    for (const s of steps) {
-      const ref = (s.output as { ref?: unknown } | undefined)?.ref;
-      if (ref && typeof ref === 'object' && (ref as Record<string, unknown>).kind) {
-        citations.push(ref as SubagentCitation);
-      }
-    }
+    // 引用 = 子 run 终态 artifact.refs(softComplete 与 status 同一次 update 写入,无竞态;
+    // 已经过 filterCitedRefs,是"子终稿真引用")。限 10 防洪。artifact 缺失(极端写失败)退化为空。
+    const citations: SubagentCitation[] = (childRun.artifact?.refs ?? [])
+      .slice(0, MAX_CITATIONS)
+      .map((r) => ({ kind: r.kind, id: r.id, ...(r.label ? { label: r.label } : {}) }));
 
     return { ok: true, report, citations, stepsUsed: childRun.usage.steps, childRunId };
   } finally {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolDef } from '../toolRegistry.js';
 import { collectReplyRefs, summarizeStepOutput } from '../replyGen.js';
+import { deepResearchTool } from '../tools/deepResearch.js';
+import { spawnSubagentTool } from '../tools/spawnSubagentTool.js';
+import { documentReaderTool } from '../tools/documentReader.js';
 import type { AgentStep } from '../types.js';
 
 function fakeStep(toolName: string, output: unknown): AgentStep {
@@ -161,6 +164,94 @@ describe('M1f collectReplyRefs / summarizeStepOutput', () => {
         }),
       ],
       new Map([[docTool.name, docTool as ToolDef]]),
+    );
+    expect(refs).toEqual([]);
+  });
+
+  // S1(K 战役):deep_research 的 citations 经 extractRefs 进父 run 资源清单。
+  it('deep_research citations 经 extractRefs 映射为父 run url refs', () => {
+    const refs = collectReplyRefs(
+      [
+        fakeStep('deep_research', {
+          result: {
+            ok: true,
+            report: '...',
+            citations: [
+              { kind: 'url', id: 'https://arxiv.org/abs/1', label: 'P1 (2020)' },
+              { kind: 'url', id: 'https://doi.org/10.1/y' },
+            ],
+            stepsUsed: 3,
+            childRunId: 'c1',
+          },
+          retried: false,
+        }),
+      ],
+      new Map([[deepResearchTool.name, deepResearchTool as ToolDef]]),
+    );
+    expect(refs).toEqual([
+      { kind: 'url', id: 'https://arxiv.org/abs/1', label: 'P1 (2020)' },
+      { kind: 'url', id: 'https://doi.org/10.1/y' },
+    ]);
+  });
+
+  it('spawn_subagent citations 经 extractRefs 映射为父 run refs（非法 kind 被滤掉）', () => {
+    const refs = collectReplyRefs(
+      [
+        fakeStep('spawn_subagent', {
+          result: {
+            ok: true,
+            role: 'researcher',
+            report: '...',
+            citations: [
+              { kind: 'url', id: 'https://example.com/a', label: 'A' },
+              { kind: 'bogus', id: 'x' }, // 非 ReplyRef kind → 滤掉
+            ],
+            stepsUsed: 2,
+            childRunId: 'c2',
+          },
+          retried: false,
+        }),
+      ],
+      new Map([[spawnSubagentTool.name, spawnSubagentTool as ToolDef]]),
+    );
+    expect(refs).toEqual([{ kind: 'url', id: 'https://example.com/a', label: 'A' }]);
+  });
+
+  it('document_reader 成功深读产 url ref；失败不产', () => {
+    const okRefs = collectReplyRefs(
+      [
+        fakeStep('document_reader', {
+          result: { ok: true, url: 'https://arxiv.org/pdf/2304.1.pdf', format: 'pdf', text: '...', truncated: false },
+          retried: false,
+        }),
+      ],
+      new Map([[documentReaderTool.name, documentReaderTool as ToolDef]]),
+    );
+    expect(okRefs).toEqual([
+      { kind: 'url', id: 'https://arxiv.org/pdf/2304.1.pdf', label: 'https://arxiv.org/pdf/2304.1.pdf' },
+    ]);
+
+    const failRefs = collectReplyRefs(
+      [
+        fakeStep('document_reader', {
+          result: { ok: false, url: 'https://x.com/a.pdf', format: 'unknown', text: '', truncated: false, error: '404' },
+          retried: false,
+        }),
+      ],
+      new Map([[documentReaderTool.name, documentReaderTool as ToolDef]]),
+    );
+    expect(failRefs).toEqual([]);
+  });
+
+  it('deep_research 失败输出不产 ref', () => {
+    const refs = collectReplyRefs(
+      [
+        fakeStep('deep_research', {
+          result: { ok: false, report: '', citations: [], stepsUsed: 0, childRunId: '', error: 'boom' },
+          retried: false,
+        }),
+      ],
+      new Map([[deepResearchTool.name, deepResearchTool as ToolDef]]),
     );
     expect(refs).toEqual([]);
   });

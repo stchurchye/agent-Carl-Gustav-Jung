@@ -71,6 +71,13 @@ export const documentReaderTool: ToolDef<DocumentReaderInput, DocumentReaderOutp
   idempotent: true,
   replyMeta: {
     summaryKind: 'text',
+    // S1(K 战役):深读过的外部文档与 fetch_url 同为外部 provenance,产 url ref 进资源
+    // 清单与 checkpoint。pdf-parse 无可靠标题,label 用 URL(fetchUrl 同款先例)。
+    extractRef: (output: unknown) => {
+      const o = output as DocumentReaderOutput;
+      if (!o?.ok || !o.url) return null;
+      return { kind: 'url' as const, id: o.url, label: o.url };
+    },
     failureHint:
       '文档读取失败：URL 可能不可达、非 PDF/DOCX/XLSX 格式、或文件过大（>8MB）。可尝试用 search_web 找该文档的网页版替代，或让用户提供文本摘录。',
   },

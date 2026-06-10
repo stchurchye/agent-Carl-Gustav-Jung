@@ -1,6 +1,7 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
 import * as store from '../store.js';
 import { runChildSubagent, type SubagentCitation } from '../spawnSubagent.js';
+import { isReplyRefKind, type ReplyRef } from '../types.js';
 
 type DeepResearchInput = {
   question: string;
@@ -34,6 +35,15 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
   idempotent: false,
   replyMeta: {
     summaryKind: 'text',
+    // S1(K 战役):子 run 的真引用(已过 filterCitedRefs)回流父 run 资源清单。
+    // 量已被 runChildSubagent 的 MAX_CITATIONS=10 限定,此处不再截。
+    extractRefs: (output) => {
+      const o = output as DeepResearchOutput | null;
+      if (!o?.ok) return [];
+      return (o.citations ?? [])
+        .filter((c): c is SubagentCitation & { kind: ReplyRef['kind'] } => isReplyRefKind(c?.kind))
+        .map((c) => ({ kind: c.kind, id: c.id, ...(c.label ? { label: c.label } : {}) }));
+    },
     failureHint:
       'deep_research 失败：子 agent 超时/工具不可用/子任务范围太大。可改用 search_papers + fetch_url 串行，或缩小问题范围重试。',
   },

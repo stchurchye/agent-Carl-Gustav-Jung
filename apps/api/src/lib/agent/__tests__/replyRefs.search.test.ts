@@ -67,6 +67,23 @@ describe('P0-S7:搜索工具 extractRefs', () => {
     ).toHaveLength(2);
   });
 
+  it('S1(K 战役):论文 ref label 带 (year)，无 year 不带', () => {
+    const papers = [
+      { title: 'P1', url: 'https://doi.org/10.1/x', year: 2019 },
+      { title: 'P2', url: 'https://openalex.org/W2' },
+    ];
+    expect(searchPapersTool.replyMeta!.extractRefs!({ ok: true, papers })).toEqual([
+      { kind: 'url', id: 'https://doi.org/10.1/x', label: 'P1 (2019)' },
+      { kind: 'url', id: 'https://openalex.org/W2', label: 'P2' },
+    ]);
+    expect(
+      getPaperCitationsTool.replyMeta!.extractRefs!({ ok: true, citations: papers }),
+    ).toEqual([
+      { kind: 'url', id: 'https://doi.org/10.1/x', label: 'P1 (2019)' },
+      { kind: 'url', id: 'https://openalex.org/W2', label: 'P2' },
+    ]);
+  });
+
   it('wikipedia:沿用既有单数 extractRef(本切片不重复实现)', () => {
     const ref = wikipediaTool.replyMeta!.extractRef!({
       ok: true,
