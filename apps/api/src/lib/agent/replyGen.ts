@@ -33,7 +33,9 @@ export function collectReplyRefs(
     if (!s.toolName) continue;
     const tool = toolMap.get(s.toolName);
     const extractRef = tool?.replyMeta?.extractRef;
-    if (!extractRef) continue;
+    // P0-S7:复数版 —— 搜索类工具一次产多个 url ref。两者都消费,统一脱敏+去重。
+    const extractRefs = tool?.replyMeta?.extractRefs;
+    if (!extractRef && !extractRefs) continue;
     const raw =
       (s.output as { result?: unknown } | null)?.result ?? s.output;
     // M1f polish #3：ok=false 的 output 永远不产生 ref —— 这是一条失败
@@ -44,21 +46,26 @@ export function collectReplyRefs(
       continue;
     }
     try {
-      const rawRef = extractRef(raw);
-      if (!rawRef) continue;
-      // S0 followup（整体 review #1）：ref 从原始 output 抽取（未脱敏）—— url id/label
-      // 可能带密钥（如 ?api_key=… 的链接）。脱敏 id/label，避免泄进 checkpoint 列与终稿。
-      const ref = {
-        ...rawRef,
-        id: redactSecrets(rawRef.id) as string,
-        ...(rawRef.label ? { label: redactSecrets(rawRef.label) as string } : {}),
-      };
-      const key = `${ref.kind}:${ref.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      refs.push(ref);
+      // P0-S7:单数 + 复数统一收集后走同一条脱敏/去重管线。
+      const rawRefs = [
+        ...(extractRef ? [extractRef(raw)] : []),
+        ...(extractRefs ? extractRefs(raw) : []),
+      ].filter((r): r is NonNullable<typeof r> => r != null);
+      for (const rawRef of rawRefs) {
+        // S0 followup（整体 review #1）：ref 从原始 output 抽取（未脱敏）—— url id/label
+        // 可能带密钥（如 ?api_key=… 的链接）。脱敏 id/label，避免泄进 checkpoint 列与终稿。
+        const ref = {
+          ...rawRef,
+          id: redactSecrets(rawRef.id) as string,
+          ...(rawRef.label ? { label: redactSecrets(rawRef.label) as string } : {}),
+        };
+        const key = `${ref.kind}:${ref.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        refs.push(ref);
+      }
     } catch {
-      // tool extractRef throw 不应让 reply 整体崩
+      // tool extractRef/extractRefs throw 不应让 reply 整体崩
     }
   }
   return refs;

@@ -102,12 +102,27 @@ export function buildCheckpoint(
   // 否则一条"含已见 ref + 新 ref"的发现（如 LLM 压缩把 refs 跨条目重叠成 [A,B] 与
   // [B,C]）会因共享 B 被整条丢弃，连带丢掉只在该条出现的来源 C（round2 #4）。
   // ref-less finding 全留（每步独立；缓存重放已在 dedupedCalls 按 idempotency key 去过）。
-  const seenRefIds = new Set<string>();
+  // P0-S7 修正:搜索工具现在产 top-N url ref,「ref 全部已见 → 整条丢弃」需区分 ref 的
+  // **登记来源类别**,否则搜索列举会吞掉同 URL 的深读发现:
+  // - 列举类发现(tool.summaryKind='list':search_web/search_papers…)的 ref 只记"来源已列出";
+  // - 内容类发现(text/合并条目/未知工具)的 ref 记"内容已折叠"。
+  // 跳过规则:内容类发现仅当其全部 ref 已被**内容类**登记才丢(fetch 重抓同 URL、
+  // review #4 合并条目重折 → 仍去重;深读搜索列过的 URL → 保留,内容是新的);
+  // 列举类发现的全部 ref 被任一类登记过即丢(重复列举无新来源)。
+  const seenListRefs = new Set<string>();
+  const seenContentRefs = new Set<string>();
   const completed: CheckpointFinding[] = [];
   for (const f of [...(prior?.completed ?? []), ...newFindings]) {
     const ids = f.refs.map((r) => `${r.kind}:${r.id}`);
-    if (ids.length > 0 && ids.every((id) => seenRefIds.has(id))) continue;
-    for (const id of ids) seenRefIds.add(id);
+    const tool = opts.toolMap.get(f.text);
+    const isListFinding = tool?.replyMeta?.summaryKind === 'list';
+    const allSeen =
+      ids.length > 0 &&
+      (isListFinding
+        ? ids.every((id) => seenListRefs.has(id) || seenContentRefs.has(id))
+        : ids.every((id) => seenContentRefs.has(id)));
+    if (allSeen) continue;
+    for (const id of ids) (isListFinding ? seenListRefs : seenContentRefs).add(id);
     completed.push(f);
   }
 
