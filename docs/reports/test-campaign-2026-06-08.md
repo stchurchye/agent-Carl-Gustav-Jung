@@ -1,5 +1,12 @@
 # Agent E2E Campaign — 证据笔记(2026-06-08)
 
+## 代号图例
+- **R1–R6** — 旗舰记忆弧的六轮场景(建立→跨会话召回→改主意时序失效→反思/升格→产物→中文 sparse)
+- **M2/M3/M4** — 记忆里程碑:M2 检索(M2c 跨会话+owner 隔离)、M3 时序失效、M4 增强(M4e 蒸馏+情感、M4f 反思→insight、M4g 主动注入、M4h 升格、M4i UI 一致性)
+- **U1–U8** — 长期记忆审核屏的 UI 设计检查点(U1 升格状态机、U2 洞见徽章、U3 情感标签、U4 合成数、U5 分栏、U8 标题 locale)
+- **DRIFT-n** — 前端文案与设计(zh-CN.ts)的漂移编号;**F-A** — 候选 finding 编号(见 docs/issues/0005)
+- **E1–E10** — 日常旅程场景编号(与记忆弧重叠覆盖)
+
 ## 复现钉
 - agent: 3f8a8c6 (feat/agent-memory-enrich)
 - MAGI: d9d1061 (feat/agent-memory-m4), 迁移 head 057
@@ -64,6 +71,7 @@
 - 现象:plan 引用 risky_echo(test-only 未注册)→ run 无 step、status 永停 planning(>1min 无终态/无 error)
 - 影响:planner 幻造工具名时缺防御性校验(prompt 禁止但运行时未拦)→ run 悬挂
 - 严重度:中(真实 LLM 偶发幻觉工具名即触发);bug 阶段深查 buildInitialPlan/dispatch 应 reject→fail/replan
+- 跟踪:docs/issues/0005-unknown-toolname-stalls-run.md
 
 ### 控制流:approval 三态 — PASS
 - approve:plan→approval_request→approval_grant→tool_call(magi_content_ingest ok)→reply→completed
@@ -86,7 +94,7 @@
 - DRIFT-1 修:标题 → zh.brain.sections.memoryEpisodic(commit)
 - DRIFT-2 修:待审空态 → 「没有待审核的记忆」对齐设计(commit);mobile tsc 干净
 
-### 工具穷举 — 19/19 生产工具覆盖
+### 工具穷举 — 18/19 生产工具实测(17 ok + 1 soft-fail),deep_research 未驱动
 - 经真 run 验证(含内容断言):datetime_now / search_web(Tavily) / wikipedia / search_papers(OpenAlex) / recall_memory / render_diagram / doc_export_markdown / magi_content_ingest(审批) / ask_user / run_python(E2B,stdout 真) / get_economic_series(FRED,UNRATE 真) / fetch_url(Jina,荣格真) / critique_last_answer / document_reader(ok) / youtube_transcript(ok) / get_paper_citations(ok) / recall_step(ok) / echo_after_sleep
 - soft-fail 覆盖:magi_system_read(HTTP 404→优雅续跑,research KB 非本测重点)
 - Tier-2 未驱动:deep_research(子 agent spawn,经 relay 需独立 plan,留延后)
