@@ -89,3 +89,39 @@ describe('R-review:buildListFinding 边界', () => {
     expect(out).toMatch(/共 8 条/);
   });
 });
+
+describe('xhigh 复审修复:buildListFinding 边界二', () => {
+  it('空白-only title 不通过真值检查(trim 后跳过)', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const out = buildListFinding({
+      ok: true,
+      results: [
+        { title: '   ', url: 'https://ws.example', snippet: '' },
+        { title: '  实文  ', url: 'https://x.example', snippet: 's' },
+      ],
+    })!;
+    expect(out).toContain('实文');
+    expect(out).not.toContain('ws.example');
+  });
+
+  it('全部条目无内容但带质量警示 → 返回 ⚠ 警示而非 null(警示不得静默丢失)', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const out = buildListFinding({
+      ok: true,
+      quality: 'low_relevance',
+      note: '结果相关度极低,不要采信',
+      results: [{ url: 'https://bare1.example' }, { url: 'https://bare2.example' }],
+    });
+    expect(out).not.toBeNull();
+    expect(out!).toContain('不要采信');
+  });
+
+  it('全部条目无内容且无警示 → 仍返回 null(回退旧路径,不输出无意义行)', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const out = buildListFinding({
+      ok: true,
+      results: [{ url: 'https://bare.example' }],
+    });
+    expect(out).toBeNull();
+  });
+});

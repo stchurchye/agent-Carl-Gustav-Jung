@@ -88,6 +88,10 @@ export const webSearchTool: ToolDef<WebSearchInput, WebSearchOutput> = {
     summaryKind: 'list',
     // P0-S7:top-3 结果产 url ref(进终稿"资源清单"与 checkpoint),限量防 ref 洪水。
     extractRefs: (output) => {
+      // xhigh 复审修复:低质输出(低相关垃圾/宽匹配未核对)不产生正式引用 ——
+      // ⚠ 警示只有大脑看见,引用层若不拦,垃圾 URL 仍会进资源清单与 [n] 引用。
+      const quality = (output as { quality?: string } | null)?.quality;
+      if (quality && quality !== 'ok') return [];
       const results = (output as { results?: WebSearchHit[] } | null)?.results ?? [];
       return results
         .filter((r) => typeof r?.url === 'string' && r.url.length > 0)
