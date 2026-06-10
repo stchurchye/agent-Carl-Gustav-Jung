@@ -88,6 +88,11 @@ export type LlmPlannerInput = {
   /** M7 P1a：合并的追问；非空时 buildPlannerUserPrompt 拼入 "# 后续追问" 段。 */
   mergedInputs?: Array<{ text: string; byUserId: string; byUsername: string; at: string }>;
   /**
+   * K6:prior_research 开局预取块(runPlanGlue 仅首次规划时填)。非空时拼入
+   * 「# 此前研究」段 —— planner 第 0 步就知道"上次查到哪了",复用旧结论不重搜。
+   */
+  priorResearch?: string;
+  /**
    * issue 0001 B2+B3：续跑(continuation-replan)重建时的「进展摘要」——已完成 todo +
    * 成功步骤观察。非空时 buildPlannerUserPrompt 拼入 "# 已完成进展" 段，让新 plan
    * 接着未完成的干、不重做已完成的，并基于已学到的结果规划。
@@ -282,6 +287,10 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   const failure = input.previousFailure
     ? `\n\n# 上一步失败原因\n${input.previousFailure}\n请基于这个失败重新规划剩余步骤，避免重复同样错误。`
     : '';
+  // K6:此前研究沉淀(prior_research 预取)。
+  const prior = input.priorResearch
+    ? `\n\n# 此前研究(已沉淀的结论,可直接复用,避免重复检索)\n${input.priorResearch}`
+    : '';
   // S3：有 checkpoint 时渲染结构化「任务状态」（含 sd0x 重注入），优先于扁平 progress。
   // issue 0001 B2+B3：无 checkpoint（或 checkpoint 渲染为空——全 soft-fail 等边角）时退回
   // 续跑进展摘要。整体 review #5：checkpoint 渲染空串也要落到 progress 兜底，别让续跑
@@ -306,7 +315,7 @@ function buildPlannerUserPrompt(input: LlmPlannerInput): string {
   const directive = input.replanDirective
     ? `\n\n# 用户中途指令（最高优先级，必须遵循）\n${input.replanDirective}\n请据此重新规划剩余步骤；与此冲突的原计划方向应放弃。`
     : '';
-  return `# 用户请求\n${input.inputText}${directive}${mergedSection}${summary}${failure}${progress}`;
+  return `# 用户请求\n${input.inputText}${directive}${mergedSection}${summary}${prior}${failure}${progress}`;
 }
 
 /**

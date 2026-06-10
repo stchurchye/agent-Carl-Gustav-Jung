@@ -6,6 +6,7 @@
  * M1e task 13.4 之后 LLM 失败会 emit `PLANNER_LLM_FALLBACK` notice + recordStep('system_error')。
  */
 import { snapshotForAgent } from './contextAdapter.js';
+import { resolvePriorResearch } from './priorResearch.js';
 import {
   generatePlanForEcho,
   generatePlanWithLlm,
@@ -230,6 +231,12 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
     // applyReplanningIfNeeded 清空 run.todos（否则"已完成 todo"段永远空），又只有续跑
     // 带进展（不泄漏到 critique/merge/steer replan）。
     const progress = readStashedContinuationProgress(stepsForPrompt);
+    // K6:prior_research 预取 —— 仅**初次规划**(零步)发起:replan 已有 checkpoint 上下文,
+    // 再预取徒增 800ms 上限延迟。800ms 紧超时 + fail-open,空结果零注入。
+    const priorResearch =
+      allSteps.length === 0
+        ? await resolvePriorResearch(run.ownerId, text, run.channel, run.groupId)
+        : '';
     return await generatePlanWithLlm({
       inputText: text,
       snapshot,
@@ -247,6 +254,7 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       role: run.role, // M3-S1：子 agent 按 role 取工具子集
 
       mergedInputs: run.mergedInputs ?? [], // M7 P1a
+      ...(priorResearch ? { priorResearch } : {}), // K6
     });
   } catch (e) {
     // issue 0005 AC②:generatePlanWithLlm 已带原因重试过一次、仍引用未知工具 →

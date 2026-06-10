@@ -99,3 +99,82 @@ describe('recall_memory tool', () => {
     ).rejects.toThrow(/aborted/);
   });
 });
+
+// ───────────── K6:来源渲染 / 真伪标 / 群聊双池 ─────────────
+
+const findingHit = (id: number, score: number, over?: Record<string, unknown>) => ({
+  id,
+  text: '损失厌恶系数约 2.25',
+  sourceRunId: 'run-9',
+  sourceSessionId: null,
+  topicId: null,
+  createdAt: '2026-06-10T00:00:00+00:00',
+  score,
+  kind: 'finding' as const,
+  sources: [{ url: 'https://doi.org/10.1/tk', title: 'Prospect Theory', year: 1992 }],
+  truthStatus: 'unverified' as const,
+  truthNote: null,
+  counterSources: null,
+  ...over,
+});
+
+describe('recall_memory · K6', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    magiSystemEnabled.mockReturnValue(true);
+  });
+
+  it('finding 渲染来源行:title 含「来源: Title (1992) url」,LLM 可直接复引', async () => {
+    searchAgentMemory.mockResolvedValue([findingHit(9, 0.9)] as never);
+    const out = await recallMemoryTool.handler({ query: '损失厌恶' }, ctx);
+    expect(out.results[0]!.title).toBe(
+      '损失厌恶系数约 2.25 —— 来源: Prospect Theory (1992) https://doi.org/10.1/tk',
+    );
+  });
+
+  it('refuted 条目带【已证伪】前缀 + 反证来源(伪的可查但要记得是伪的)', async () => {
+    searchAgentMemory.mockResolvedValue([
+      findingHit(9, 0.9, {
+        truthStatus: 'refuted',
+        truthNote: '系统综述未能复现',
+        counterSources: [{ url: 'https://doi.org/10.1/pashler' }],
+      }),
+    ] as never);
+    const out = await recallMemoryTool.handler({ query: '损失厌恶' }, ctx);
+    expect(out.results[0]!.title).toMatch(/^【已证伪】/);
+    expect(out.results[0]!.title).toContain('系统综述未能复现');
+    expect(out.results[0]!.title).toContain('https://doi.org/10.1/pashler');
+  });
+
+  it('disputed 条目带【有争议】前缀', async () => {
+    searchAgentMemory.mockResolvedValue([
+      findingHit(9, 0.9, { truthStatus: 'disputed' }),
+    ] as never);
+    const out = await recallMemoryTool.handler({ query: 'x' }, ctx);
+    expect(out.results[0]!.title).toMatch(/^【有争议】/);
+  });
+
+  it('群聊 run:双池查询(个人 + group:{gid})按 score 归并去重', async () => {
+    const groupCtx = { ...ctx, channel: 'group' as const, groupId: 'g1' };
+    searchAgentMemory
+      .mockResolvedValueOnce([findingHit(1, 0.7)] as never) // 个人池
+      .mockResolvedValueOnce([
+        findingHit(2, 0.9, { text: '群里查过的结论' }),
+      ] as never); // 群池
+    const out = await recallMemoryTool.handler({ query: 'x' }, groupCtx);
+    expect(searchAgentMemory).toHaveBeenCalledTimes(2);
+    expect(searchAgentMemory.mock.calls.map((c) => c[0])).toEqual(
+      expect.arrayContaining(['userA', 'group:g1']),
+    );
+    // 群池 0.9 排在个人池 0.7 前
+    expect(out.results[0]!.id).toBe(2);
+    expect(out.results[1]!.id).toBe(1);
+  });
+
+  it('私聊 run:单池(不查任何群池)', async () => {
+    searchAgentMemory.mockResolvedValue([] as never);
+    await recallMemoryTool.handler({ query: 'x' }, ctx);
+    expect(searchAgentMemory).toHaveBeenCalledTimes(1);
+    expect(searchAgentMemory.mock.calls[0]![0]).toBe('userA');
+  });
+});

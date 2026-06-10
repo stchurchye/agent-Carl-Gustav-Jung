@@ -1,5 +1,10 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
-import { searchAgentMemory, magiSystemEnabled } from '../../integrations/magi.js';
+import {
+  searchAgentMemory,
+  magiSystemEnabled,
+  type MemoryHit,
+} from '../../integrations/magi.js';
+import { groupPoolOwner } from '../../memoryOwner.js';
 
 type RecallMemoryInput = {
   query: string;
@@ -32,10 +37,30 @@ type RecallMemoryOutput = {
  * - AbortError 透传,让 runtime 看到 cancel。
  * - 与 magi_system_read 不混:后者打研究知识库,本工具打 agent 自己的情景记忆表。
  */
+/**
+ * K6:召回条目渲染 —— finding 带来源行(LLM 可直接复引 URL);真伪标前置
+ * (【已证伪】/【有争议】+ 反证),"记得它是伪的"和结论本身同样是知识。
+ */
+function renderHitTitle(h: MemoryHit): string {
+  const truthTag =
+    h.truthStatus === 'refuted' ? '【已证伪】' : h.truthStatus === 'disputed' ? '【有争议】' : '';
+  const srcLine =
+    h.sources && h.sources.length > 0
+      ? ` —— 来源: ${h.sources
+          .map((s) => `${s.title ?? ''}${s.year ? ` (${s.year})` : ''} ${s.url}`.trim())
+          .join('; ')}`
+      : '';
+  const truthLine =
+    truthTag && (h.truthNote || h.counterSources?.length)
+      ? `(${[h.truthNote, h.counterSources?.map((c) => c.url).join(' ')].filter(Boolean).join(' 反证: ')})`
+      : '';
+  return `${truthTag}${h.text}${srcLine}${truthLine ? ` ${truthLine}` : ''}`;
+}
+
 export const recallMemoryTool: ToolDef<RecallMemoryInput, RecallMemoryOutput> = {
   name: 'recall_memory',
   description:
-    "Recall the user's long-term memory of past conversations and learned facts. Use for \"did we discuss X before / what do I already know about the user's history\" questions.",
+    "Recall the user's long-term memory: past conversations, learned facts, AND prior research conclusions with their sources (papers/URLs). Use for \"did we discuss/research X before / what do I already know\" questions. Refuted/disputed findings are returned with warning tags — treat them accordingly.",
   inputSchema: {
     type: 'object',
     required: ['query'],
@@ -56,10 +81,30 @@ export const recallMemoryTool: ToolDef<RecallMemoryInput, RecallMemoryOutput> = 
   async handler(input, ctx) {
     const enabled = magiSystemEnabled();
     try {
-      // owner 锁定 ctx.ownerId —— 绝不用 input 里的 owner
-      const hits = await searchAgentMemory(ctx.ownerId, input.query, 12, ctx.signal);
+      // owner 锁定 ctx.ownerId —— 绝不用 input 里的 owner。
+      // K6 双池(修订三读侧):群聊 run 额外查 group:{gid} 共享池(成员触发的研究互相可见),
+      // 按 score 归并去重;私聊只查个人池(谁也看不到别人的群池)。
+      const pools: Promise<MemoryHit[]>[] = [
+        searchAgentMemory(ctx.ownerId, input.query, 12, ctx.signal),
+      ];
+      if (ctx.channel === 'group' && ctx.groupId) {
+        pools.push(
+          searchAgentMemory(groupPoolOwner(ctx.groupId), input.query, 12, ctx.signal),
+        );
+      }
+      const seen = new Set<string>();
+      const hits = (await Promise.all(pools))
+        .flat()
+        .sort((a, b) => b.score - a.score)
+        .filter((h) => {
+          const key = `${h.id}:${h.text}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 12);
       const results = hits.map((h) => ({
-        title: h.text, // 'list' 摘要器取 .title 渲染
+        title: renderHitTitle(h), // 'list' 摘要器取 .title 渲染
         id: h.id,
         score: h.score,
         sourceRunId: h.sourceRunId,

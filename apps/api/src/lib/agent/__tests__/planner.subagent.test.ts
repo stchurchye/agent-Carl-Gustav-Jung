@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SUBAGENT_TOOL_WHITELIST } from '../subagentTools.js';
+import { SUBAGENT_TOOL_WHITELIST, subagentToolsForRole } from '../subagentTools.js';
 
 describe('subagent tool whitelist', () => {
   it('contains expected read-only retrieval tools', () => {
@@ -99,6 +99,23 @@ describe('planner: subagent tool whitelist integration', () => {
       });
       const result = parsePlannerJson(planJson, subagentTools);
       expect(result).not.toBeNull();
+    }
+  });
+});
+
+describe('K6:子研究员可查已沉淀知识', () => {
+  it('researcher/analyst 子集含 recall_memory(站在已有 findings 上往外搜)', () => {
+    expect(subagentToolsForRole('researcher').has('recall_memory')).toBe(true);
+    expect(subagentToolsForRole('analyst').has('recall_memory')).toBe(true);
+  });
+
+  it('递归与暂停仍被禁(加 recall 不放宽安全边界)', () => {
+    for (const role of ['researcher', 'analyst'] as const) {
+      const tools = subagentToolsForRole(role);
+      expect(tools.has('deep_research')).toBe(false);
+      expect(tools.has('spawn_subagent')).toBe(false);
+      expect(tools.has('ask_user')).toBe(false);
+      expect(tools.has('save_memory')).toBe(false); // 写记忆留给父 run 统一蒸馏
     }
   });
 });
