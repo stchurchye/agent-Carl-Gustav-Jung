@@ -81,6 +81,54 @@ describe('webSearch tool', () => {
     expect(out.results).toEqual([]);
   });
 
+  // R1(实测驱动,2026-06-10 真 Tavily 探针):
+  // ① snippet 截 300 把 Tavily 已返回的 1200-2400 字正文丢 75%;② include_answer 免费概括没要;
+  // ③ search_depth 写死 basic,advanced 实测多出学术源。以下钉住修复。
+  it('R1:请求体带 include_answer,searchDepth 默认 basic、可传 advanced', async () => {
+    vi.stubEnv('TAVILY_API_KEY', 'tk');
+    const mockFetch = vi.fn(async () =>
+      new Response(JSON.stringify({ results: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    await webSearchTool.handler({ query: 'x' }, fakeCtx);
+    let body = JSON.parse((mockFetch.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body).toMatchObject({ search_depth: 'basic', include_answer: true });
+
+    await webSearchTool.handler({ query: 'x', searchDepth: 'advanced' }, fakeCtx);
+    body = JSON.parse((mockFetch.mock.calls[1]![1] as RequestInit).body as string);
+    expect(body).toMatchObject({ search_depth: 'advanced' });
+  });
+
+  it('R1:Tavily answer 概括透传;snippet 保留长正文(上限 1000,不再 300)', async () => {
+    vi.stubEnv('TAVILY_API_KEY', 'tk');
+    const longContent = '深'.repeat(2400);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            answer: '共时性是荣格提出的非因果有意义巧合概念。',
+            results: [{ title: 'T', url: 'https://t', content: longContent }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+    const out = await webSearchTool.handler({ query: '共时性' }, fakeCtx);
+    expect(out.answer).toBe('共时性是荣格提出的非因果有意义巧合概念。');
+    expect(out.results[0].snippet.length).toBe(1000);
+  });
+
+  it('R1:幂等 key 区分 searchDepth(advanced 结果集不同,不能复用 basic 缓存)', () => {
+    const kBasic = webSearchTool.computeIdempotencyKey!({ query: 'x' });
+    const kAdv = webSearchTool.computeIdempotencyKey!({ query: 'x', searchDepth: 'advanced' });
+    expect(kBasic).not.toBe(kAdv);
+  });
+
   it('idempotency key normalizes query case + maxResults', () => {
     const k1 = webSearchTool.computeIdempotencyKey!({
       query: ' Foo Bar ',
