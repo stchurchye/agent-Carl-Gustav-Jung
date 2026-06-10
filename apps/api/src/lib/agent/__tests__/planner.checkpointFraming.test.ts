@@ -103,3 +103,31 @@ describe('P0-S5:checkpoint 双框架渲染', () => {
     expect(llm.userPrompt()).toContain('新指令');
   });
 });
+
+describe('K6:prior_research 注入', () => {
+  beforeEach(() => registerEchoSleep());
+
+  it('priorResearch 非空 → planner user prompt 含 <prior_research> 块', async () => {
+    const llm = capturingLlm();
+    await generatePlanWithLlm({
+      inputText: '研究禀赋效应',
+      snapshot: { systemPrompt: '', shortSummary: '', recentMessages: [] } as never,
+      llm,
+      signal: new AbortController().signal,
+      priorResearch: '<prior_research>\n- 已有结论 X (来源: P url)\n</prior_research>',
+    });
+    expect(llm.userPrompt()).toContain('<prior_research>');
+    expect(llm.userPrompt()).toContain('已有结论 X');
+  });
+
+  it('priorResearch 空 → 不出现该块', async () => {
+    const llm = capturingLlm();
+    await generatePlanWithLlm({
+      inputText: '研究禀赋效应',
+      snapshot: { systemPrompt: '', shortSummary: '', recentMessages: [] } as never,
+      llm,
+      signal: new AbortController().signal,
+    });
+    expect(llm.userPrompt()).not.toContain('<prior_research>');
+  });
+});

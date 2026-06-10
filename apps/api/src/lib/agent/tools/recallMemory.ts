@@ -1,13 +1,19 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
-import { searchAgentMemory, magiSystemEnabled } from '../../integrations/magi.js';
+import {
+  magiSystemEnabled,
+  type MemorySource,
+} from '../../integrations/magi.js';
+import { searchMemoryPools } from '../../memoryPools.js';
 
 type RecallMemoryInput = {
   query: string;
 };
 
 /**
- * 输出 results[] 形状刻意匹配 replyGen 的 'list' 摘要契约(results 数组 + 每项 .title);
- * title = fact 文本(可读标签)。否则召回结果在终稿里会被 fallback 成 JSON 串。
+ * 输出 results[] 形状刻意匹配 replyGen 的 'list' 摘要契约(results 数组 + 每项 .title)。
+ * review#15:title 保持**短**(真伪标 + claim)—— 'list' 摘要器把 title 截到 60 字,
+ * URL 塞进去会被切掉。来源/真伪走**结构化字段**(sources/truthStatus/...),LLM 经
+ * digestTail 全文(每步 ≤4000 字)读到完整出处,可在终稿引用 URL。
  */
 type RecalledMemory = {
   title: string;
@@ -15,6 +21,11 @@ type RecalledMemory = {
   score: number;
   sourceRunId: string | null;
   createdAt: string | null;
+  /** review#15:结构化出处 —— 不挤进被截断的 title。 */
+  sources: MemorySource[] | null;
+  truthStatus: 'unverified' | 'disputed' | 'refuted';
+  truthNote: string | null;
+  counterSources: MemorySource[] | null;
 };
 
 type RecallMemoryOutput = {
@@ -35,7 +46,7 @@ type RecallMemoryOutput = {
 export const recallMemoryTool: ToolDef<RecallMemoryInput, RecallMemoryOutput> = {
   name: 'recall_memory',
   description:
-    "Recall the user's long-term memory of past conversations and learned facts. Use for \"did we discuss X before / what do I already know about the user's history\" questions.",
+    "Recall the user's long-term memory: past conversations, learned facts, AND prior research conclusions with their sources (papers/URLs). Use for \"did we discuss/research X before / what do I already know\" questions. Refuted/disputed findings are returned with warning tags — treat them accordingly.",
   inputSchema: {
     type: 'object',
     required: ['query'],
@@ -56,14 +67,24 @@ export const recallMemoryTool: ToolDef<RecallMemoryInput, RecallMemoryOutput> = 
   async handler(input, ctx) {
     const enabled = magiSystemEnabled();
     try {
-      // owner 锁定 ctx.ownerId —— 绝不用 input 里的 owner
-      const hits = await searchAgentMemory(ctx.ownerId, input.query, 12, ctx.signal);
+      // owner 锁定 ctx.ownerId —— 绝不用 input 里的 owner。
+      // 双池(修订三读侧):群聊 run 额外查 group:{gid} 共享池,个人池强制 findings-only
+      // (隐私:个人 facts 不进群上下文);私聊查个人池全 kind。去重/排序在 helper 内。
+      const hits = await searchMemoryPools(ctx.ownerId, ctx.channel, ctx.groupId, input.query, {
+        topK: 12,
+        signal: ctx.signal,
+      });
       const results = hits.map((h) => ({
-        title: h.text, // 'list' 摘要器取 .title 渲染
+        // title 短(真伪标 + claim);'list' 摘要器截 60 字,URL 走结构化字段免被切。
+        title: `${h.truthStatus === 'refuted' ? '【已证伪】' : h.truthStatus === 'disputed' ? '【有争议】' : ''}${h.text}`,
         id: h.id,
         score: h.score,
         sourceRunId: h.sourceRunId,
         createdAt: h.createdAt,
+        sources: h.sources,
+        truthStatus: h.truthStatus,
+        truthNote: h.truthNote,
+        counterSources: h.counterSources,
       }));
       return { ok: true, results, enabled };
     } catch (e) {

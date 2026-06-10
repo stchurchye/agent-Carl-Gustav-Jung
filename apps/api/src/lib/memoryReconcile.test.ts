@@ -75,7 +75,7 @@ describe('reconcileMemoryWrite', () => {
     expect(r.action).toBe('supersede');
     expect(r.writtenId).toBe(200);
     expect(r.invalidatedIds).toEqual([1]);
-    expect(invalidate).toHaveBeenCalledWith('userA', 1, undefined);
+    expect(invalidate).toHaveBeenCalledWith('userA', 1, undefined, 200); // K4:带版本链(新条 id)
   });
 
   it('近邻搜带 include_pending=true(洞D:也能失效未审 pending 旧 fact)', async () => {
@@ -104,5 +104,20 @@ describe('reconcileMemoryWrite', () => {
     expect(r.writtenId).toBe(201);
     expect(r.invalidatedIds).toEqual([]);
     expect(r.action).toBe('new');
+  });
+});
+
+describe('K4:reconcile 版本链', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    write.mockResolvedValue({ id: 100 });
+    invalidate.mockResolvedValue({ invalidated: 1 });
+  });
+
+  it('supersede 时 invalidate 带 supersededById=新条 id(旧版可循链追到新版)', async () => {
+    search.mockResolvedValue([hit(7, '用户用 Python')] as never);
+    const { llm } = fakeLlm('{"supersededIds":[7],"duplicate":false}');
+    await reconcileMemoryWrite(llm, 'userA', { text: '用户改用 Rust', confidence: 0.9 }, {});
+    expect(invalidate).toHaveBeenCalledWith('userA', 7, undefined, 100);
   });
 });

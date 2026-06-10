@@ -124,3 +124,70 @@ describe('runEpisodicMemory', () => {
     expect(reconcile).toHaveBeenCalledTimes(2);
   });
 });
+
+// ───────────── K5:研究蒸馏接线(refs→findings,群池归属,fail-open) ─────────────
+
+vi.mock('./memoryResearchDistill.js', () => ({
+  distillResearchFindings: vi.fn(async () => []),
+  persistResearchFindings: vi.fn(async () => ({ written: 0, deduped: 0, disputed: 0 })),
+}));
+
+import {
+  distillResearchFindings,
+  persistResearchFindings,
+} from './memoryResearchDistill.js';
+
+const distillResearch = vi.mocked(distillResearchFindings);
+const persistResearch = vi.mocked(persistResearchFindings);
+
+const URL_REF = { kind: 'url' as const, id: 'https://doi.org/10.1/x', label: 'P (2020)' };
+const A_FINDING = { text: '结论', confidence: 0.9, sources: [{ url: 'https://doi.org/10.1/x' }] };
+
+describe('runEpisodicMemory · K5 研究蒸馏', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    enabled.mockReturnValue(true);
+    distill.mockResolvedValue([]);
+    reflect.mockResolvedValue({ reflected: false, written: 0, newFactCount: 0 } as never);
+    distillResearch.mockResolvedValue([A_FINDING]);
+    persistResearch.mockResolvedValue({ written: 1, deduped: 0, disputed: 0 });
+  });
+
+  it('未传 research / refs 为空 → 零研究蒸馏调用(不多花 LLM)', async () => {
+    await runEpisodicMemory(params());
+    await runEpisodicMemory(params({
+      research: { refs: [], finalContent: '正文', channel: 'private' as const },
+    } as never));
+    expect(distillResearch).not.toHaveBeenCalled();
+    expect(persistResearch).not.toHaveBeenCalled();
+  });
+
+  it('refs 非空(私聊)→ 蒸馏 + persist,owner = run owner', async () => {
+    await runEpisodicMemory(params({
+      research: { refs: [URL_REF], finalContent: '研究终稿 [1]', channel: 'private' as const },
+    } as never));
+    expect(distillResearch).toHaveBeenCalledOnce();
+    expect(persistResearch).toHaveBeenCalledWith(
+      llm, 'userA', [A_FINDING],
+      expect.objectContaining({ sourceRunId: 'run-1' }),
+    );
+  });
+
+  it('群聊 run → findings 落群共享池 group:{gid}', async () => {
+    await runEpisodicMemory(params({
+      research: { refs: [URL_REF], finalContent: '终稿', channel: 'group' as const, groupId: 'g1' },
+    } as never));
+    expect(persistResearch.mock.calls[0]![1]).toBe('group:g1');
+  });
+
+  it('研究蒸馏抛错 → fact 链路与 reflection 不受影响(fail-open)', async () => {
+    distill.mockResolvedValue([{ text: '一条 fact', confidence: 0.9 }]);
+    reconcile.mockResolvedValue({ action: 'new', invalidatedIds: [] } as never);
+    distillResearch.mockRejectedValue(new Error('boom'));
+    await runEpisodicMemory(params({
+      research: { refs: [URL_REF], finalContent: '终稿', channel: 'private' as const },
+    } as never));
+    expect(reconcile).toHaveBeenCalledOnce(); // fact 照写
+    expect(reflect).toHaveBeenCalledOnce();   // 反思照跑
+  });
+});

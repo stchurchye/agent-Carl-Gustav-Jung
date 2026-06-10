@@ -157,8 +157,13 @@ export async function isGroupMember(
   userId: string,
   groupId: string,
 ): Promise<boolean> {
-  const members = await listGroupMembers(userId, groupId);
-  return members != null && members.length > 0;
+  // K9b F4:只要布尔 → 专门 SELECT 1,不走 listGroupMembers 的全员名册 JOIN
+  // (后者为面板取整名册用;群评审端点每请求只问"是不是成员")。
+  const { rows } = await getPool().query(
+    `SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1`,
+    [groupId, userId],
+  );
+  return rows.length > 0;
 }
 
 export async function listTopics(

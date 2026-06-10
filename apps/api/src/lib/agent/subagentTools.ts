@@ -6,7 +6,7 @@
  */
 import type { AgentRole } from './types.js';
 
-// researcher：只读检索集（M3-S0 原 SUBAGENT_TOOL_WHITELIST 内容，原样保留）。
+// researcher：只读检索集（M3-S0 原 SUBAGENT_TOOL_WHITELIST 内容 + K6 recall_memory）。
 const RESEARCHER_TOOLS = [
   'search_papers',
   'search_web',
@@ -17,6 +17,10 @@ const RESEARCHER_TOOLS = [
   'datetime_now',
   'magi_system_read',
   'get_economic_series',
+  // K6:只读/owner 锁/无副作用 —— 子研究员开局先 recall 已沉淀 findings,
+  // 站在已有结论上往外搜(tasks[] 并行研究员各自可查再聚合)。写记忆不在子集
+  // (save_memory 留给父 run;子 run 引用经 K1 回流父,父收尾统一蒸馏)。
+  'recall_memory',
 ] as const;
 
 // analyst：researcher + 计算/画图。run_python 在 E2B 沙箱 + 受 budget/幂等护栏；render_diagram 无副作用。

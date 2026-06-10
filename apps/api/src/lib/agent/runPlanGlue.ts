@@ -6,6 +6,7 @@
  * M1e task 13.4 之后 LLM 失败会 emit `PLANNER_LLM_FALLBACK` notice + recordStep('system_error')。
  */
 import { snapshotForAgent } from './contextAdapter.js';
+import { resolvePriorResearch } from './priorResearch.js';
 import {
   generatePlanForEcho,
   generatePlanWithLlm,
@@ -230,6 +231,14 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
     // applyReplanningIfNeeded 清空 run.todos（否则"已完成 todo"段永远空），又只有续跑
     // 带进展（不泄漏到 critique/merge/steer replan）。
     const progress = readStashedContinuationProgress(stepsForPrompt);
+    // K6:prior_research 预取 —— 仅**父 run 初次规划**(零步且非子 run)发起。
+    // review#24:子 run(deep_research/扇出研究员)不预取——父已注入 prior_research,
+    // 子可按需调 recall_memory;否则每个子 run 白付 800ms + 双池查询。
+    // review#25:传 run 的 abort signal,cancel/steer 时能中断预取不空等满 800ms。
+    const priorResearch =
+      allSteps.length === 0 && !run.parentRunId
+        ? await resolvePriorResearch(run.ownerId, text, run.channel, run.groupId, signal)
+        : '';
     return await generatePlanWithLlm({
       inputText: text,
       snapshot,
@@ -247,6 +256,7 @@ export async function buildInitialPlan(run: AgentRun): Promise<Plan> {
       role: run.role, // M3-S1：子 agent 按 role 取工具子集
 
       mergedInputs: run.mergedInputs ?? [], // M7 P1a
+      ...(priorResearch ? { priorResearch } : {}), // K6
     });
   } catch (e) {
     // issue 0005 AC②:generatePlanWithLlm 已带原因重试过一次、仍引用未知工具 →

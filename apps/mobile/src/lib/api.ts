@@ -122,6 +122,14 @@ async function request<T>(
   }
 }
 
+export type MemorySource = {
+  url: string;
+  title?: string;
+  year?: number;
+  kind?: string;
+  runId?: string;
+};
+
 export type AgentMemoryItem = {
   id: number;
   text: string;
@@ -134,7 +142,24 @@ export type AgentMemoryItem = {
   sentiment: 'positive' | 'negative' | 'neutral' | 'mixed' | null;
   sourceFragmentIds: number[] | null;
   promotedAt: string | null;
+  // K8:finding 出处 + 版本链 + 真伪轴(旧后端响应缺省 null)
+  sources: MemorySource[] | null;
+  supersededById: number | null;
+  truthStatus: 'unverified' | 'disputed' | 'refuted';
+  truthNote: string | null;
+  counterSources: MemorySource[] | null;
 };
+
+/** 评审作用域:个人池(me)或群共享池(group)。 */
+export type MemoryScope = { scope: 'me' } | { scope: 'group'; groupId: string };
+
+function scopeQuery(s?: MemoryScope): string {
+  if (!s || s.scope === 'me') return '';
+  return `&scope=group&groupId=${encodeURIComponent(s.groupId)}`;
+}
+function scopeBody(s?: MemoryScope): Record<string, string> {
+  return !s || s.scope === 'me' ? {} : { scope: 'group', groupId: s.groupId };
+}
 
 /** 技能(topic_skill)前端子集。source='auto_distilled' 为 M1 自蒸馏的建议技能;手写为 null。 */
 export type TopicSkill = {
@@ -747,20 +772,42 @@ export const api = {
   deleteMemory: (id: string) =>
     request<unknown>(`/api/memory/${id}`, { method: 'DELETE' }),
 
-  // P5 长期记忆审核面板(agent 情景记忆,owner=JWT)
-  listAgentMemory: (status?: 'pending' | 'approved' | 'rejected') =>
+  // P5/K8 长期记忆审核面板(agent 情景记忆;scope=me 个人池 / scope=group 群共享池)
+  listAgentMemory: (status?: 'pending' | 'approved' | 'rejected', scope?: MemoryScope) =>
     request<{ items: AgentMemoryItem[] }>(
-      `/api/agent-memory/list${status ? `?status=${status}` : ''}`,
+      `/api/agent-memory/list?${status ? `status=${status}` : ''}${scopeQuery(scope)}`,
     ),
-  decideAgentMemory: (id: number, decision: 'approve' | 'reject') =>
+  decideAgentMemory: (id: number, decision: 'approve' | 'reject', scope?: MemoryScope) =>
     request<{ updated: number }>('/api/agent-memory/decide', {
       method: 'POST',
-      body: JSON.stringify({ id, decision }),
+      body: JSON.stringify({ id, decision, ...scopeBody(scope) }),
     }),
   promoteAgentMemory: (id: number) =>
     request<{ promoted: boolean; fragmentId?: string }>('/api/agent-memory/promote', {
       method: 'POST',
       body: JSON.stringify({ id }),
+    }),
+  // K8:误失效追回(valid_until 置回 NULL);rejected 行恢复时效后仍需 decide(approve)
+  revalidateAgentMemory: (id: number, scope?: MemoryScope) =>
+    request<{ revalidated: number; status: string | null }>('/api/agent-memory/revalidate', {
+      method: 'POST',
+      body: JSON.stringify({ id, ...scopeBody(scope) }),
+    }),
+  // K8:真伪轴 —— 标伪/标争议/撤销(可逆;伪 ≠ 删,仍可检索带警示)
+  markTruthAgentMemory: (
+    id: number,
+    truthStatus: 'unverified' | 'disputed' | 'refuted',
+    opts?: { truthNote?: string; counterSources?: MemorySource[]; scope?: MemoryScope },
+  ) =>
+    request<{ updated: number }>('/api/agent-memory/mark-truth', {
+      method: 'POST',
+      body: JSON.stringify({
+        id,
+        truthStatus,
+        ...(opts?.truthNote !== undefined ? { truthNote: opts.truthNote } : {}),
+        ...(opts?.counterSources !== undefined ? { counterSources: opts.counterSources } : {}),
+        ...scopeBody(opts?.scope),
+      }),
     }),
 
   listSkills: () => request<{ skills: TopicSkill[] }>('/api/agent/skills'),

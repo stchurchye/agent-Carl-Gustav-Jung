@@ -340,6 +340,18 @@ export async function softComplete(
           llm,
           signal,
           log,
+          // K5:研究蒸馏材料 —— 仅父 run(子 run 的引用经 S1 回流父 run,父收尾统一蒸,
+          // 防父子双蒸同源);refs 用上方已算好的 artifact.refs(终稿真引用)。
+          ...(run.parentRunId
+            ? {}
+            : {
+                research: {
+                  refs,
+                  finalContent,
+                  channel: run.channel,
+                  groupId: run.groupId,
+                },
+              }),
         });
 
         // 技能自蒸馏(self-improvement loop):成功多步父 run 收尾把"这类任务怎么做"沉淀成

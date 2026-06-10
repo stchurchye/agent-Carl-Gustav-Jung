@@ -27,6 +27,8 @@ import { registerSpawnSubagent } from './tools/spawnSubagentTool.js';
 import { registerYoutubeTranscript } from './tools/youtubeTranscript.js';
 import { registerRecallStep } from './tools/recallStep.js';
 import { registerRecallMemory } from './tools/recallMemory.js';
+import { registerSaveMemory } from './tools/saveMemory.js';
+import { registerReadDocument } from './tools/readDocument.js';
 
 export function registerAgentTools(): void {
   registerMagiSystemRead();
@@ -48,4 +50,6 @@ export function registerAgentTools(): void {
   registerYoutubeTranscript();
   registerRecallStep();
   registerRecallMemory();
+  registerSaveMemory();
+  registerReadDocument();
 }
