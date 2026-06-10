@@ -6,11 +6,13 @@ vi.mock('../../lib/integrations/magi.js', () => ({
   decideAgentMemory: vi.fn(),
   revalidateAgentMemory: vi.fn(),
   markTruthAgentMemory: vi.fn(),
+  unpromoteAgentMemory: vi.fn(),
 }));
 vi.mock('../../store/pg-social.js', () => ({ isGroupMember: vi.fn() }));
 
 import {
   listAgentMemory, decideAgentMemory, revalidateAgentMemory, markTruthAgentMemory,
+  unpromoteAgentMemory,
 } from '../../lib/integrations/magi.js';
 import { isGroupMember } from '../../store/pg-social.js';
 import { agentMemoryPanelRouter } from '../agentMemoryPanel.js';
@@ -20,6 +22,7 @@ const listMem = vi.mocked(listAgentMemory);
 const decideMem = vi.mocked(decideAgentMemory);
 const revalidateMem = vi.mocked(revalidateAgentMemory);
 const markTruthMem = vi.mocked(markTruthAgentMemory);
+const unpromoteMem = vi.mocked(unpromoteAgentMemory);
 const isMember = vi.mocked(isGroupMember);
 
 /** 挂一个把 userId 设成给定值的桩中间件(模拟鉴权中间件),再挂面板路由。 */
@@ -174,5 +177,48 @@ describe('agent-memory panel · F4 健壮性', () => {
     const res = await appAs('userA').request('/api/agent-memory/list?scope=me');
     expect(res.status).toBe(200);
     expect(listMem).toHaveBeenCalledWith('userA', undefined);
+  });
+});
+
+// ───────────── v3 审计修复:promoted 行纠错(decide reject 先 unpromote) ─────────────
+
+describe('agent-memory panel · promoted 行纠错', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('decide reject 命中 promoted 守卫(updated=0)→ 自动 unpromote 后重试,返回 updated=1', async () => {
+    decideMem
+      .mockResolvedValueOnce({ updated: 0 }) // 第一次:promoted 守卫 no-op
+      .mockResolvedValueOnce({ updated: 1 }); // unpromote 后重试成功
+    unpromoteMem.mockResolvedValue({ unpromoted: 1 });
+    const res = await appAs('userA').request('/api/agent-memory/decide', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 7, decision: 'reject' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.updated).toBe(1);
+    expect(body.data.unpromoted).toBe(true); // 告知客户端:已自动撤销升格,核心副本需手动清理
+    expect(unpromoteMem).toHaveBeenCalledWith('userA', 7);
+    expect(decideMem).toHaveBeenCalledTimes(2);
+  });
+
+  it('decide reject updated=0 且非 promoted(unpromote 也 0)→ 如实返回 updated=0,不再重试', async () => {
+    decideMem.mockResolvedValue({ updated: 0 });
+    unpromoteMem.mockResolvedValue({ unpromoted: 0 });
+    const res = await appAs('userA').request('/api/agent-memory/decide', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 7, decision: 'reject' }),
+    });
+    expect((await res.json()).data.updated).toBe(0);
+    expect(decideMem).toHaveBeenCalledTimes(1); // unpromote 没解锁任何行,无需重试
+  });
+
+  it('approve 路径不触发 unpromote(只有 reject 纠错需要解除升格)', async () => {
+    decideMem.mockResolvedValue({ updated: 0 });
+    await appAs('userA').request('/api/agent-memory/decide', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 7, decision: 'approve' }),
+    });
+    expect(unpromoteMem).not.toHaveBeenCalled();
   });
 });

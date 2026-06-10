@@ -1,12 +1,14 @@
 ---
 title: agent-Carl-Gustav-Jung · Agent 架构剖析与同类对标
 subtitle: 它是怎么设计的、为什么这样设计、好处与代价 —— 兼一路走来的演进
-date: 2026-06-10(v2 修订 · 当晚)
+date: 2026-06-11(v3 修订 · K 战役后)
 ---
 
 > 本报告剖析 `agent-Carl-Gustav-Jung` 的对话 Agent:**重点不在"有哪些功能",而在"每一处为什么这样设计、买到了什么好处、付出了什么代价"**。立场为「系统论述 + 诚实评估」——既讲清设计意图与独特性,也不讳言短板。所有技术细节均经源码逐行核实(正文附 `文件:行` 锚点),与同类 Agent 对标处给出 0–5 定性评分(非基准跑分,已注明)。面向自评、协作者与对外说明三类读者。
 >
 > **v2 修订说明(2026-06-10 晚)**:当日完成「深度审计(42 子代理对抗核实)→ P0 修复战役(8 切片)→ 检索追平 R1–R4(实测驱动)→ 三轮递进式审查」,15 个 PR 全部合入 main(#23–#38)。本版并入这些变化:初版中"检索体验落后 Claude Code"的多项短板已被实测驱动地补齐(见新增 A.11),0005 等已知 bug 关账,评分表相应更新。初版判断保留处均原文未动。
+>
+> **v3 修订说明(2026-06-11)**:完成「研究知识沉淀」K 战役(9 主切片 K1–K8 + 三轮对抗复审 42+36+35 子代理修复 + 跨 repo 活体验证 14 项),agent 仓 PR #40/#42 与 MAGI 仓 PR #34 已合入 main。本版新增 A.12(研究知识层:finding/真伪轴/版本链/群池),工具数 20→22,对标表新增"研究知识沉淀"维度(外部调研确认为全行业空白项)。诚实标注:MAGI 侧代码已合 main 但 :8001 运行实例尚未升级部署;群池评审的移动端切换入口为后续项。
 
 ---
 
@@ -17,6 +19,8 @@ date: 2026-06-10(v2 修订 · 当晚)
 双结论:**立意与工程已落地且自洽**——后台可恢复、双层记忆、控制面(中途改向 / 审批 / 暂停问人)、角色化子 Agent、MCP 双 transport、自我改进闭环均已实现并测试;**代价也真实**——对高度探索性的任务,plan-once 不如逐步 ReAct(故保留 M2 作为可选 flag);执行面刻意收窄(无 shell / 文件系统 / 浏览器);生态/通用子 Agent 不及 Claude Code 一类。
 
 **v2 增量结论**:检索子系统经当日 R1–R4 实测驱动升级后,「检索 agentic 体验」已不再是初版所述的全面短板——中英双语并行扇出、结果质量信号(垃圾识别 + 自动改写查询)、结构化检索记忆、可溯源 `[n]` 引用均已落地并经真实 query 活体验证(A.11);plan-once 与纯 ReAct 的差距被 refine 门部分补位,但"逐步重想"的终态差距仍在(M2 flag 不变)。
+
+**v3 增量结论**:K 战役补上了此前最大的结构性缺口——**研究产物的长期沉淀与再检索**(此前查过的论文/结论在 run 结束后即不可再查:引用清单有库无读、蒸馏不含 URL、无显式写记忆工具)。现在:研究 run 收尾自动把「结论+出处」蒸成 **finding** 写入 MAGI 情景层(三轴正交:评审 status / 时效 valid_until / **真伪 truth_status**,伪≠删——已证伪结论仍可查但带警示);`save_memory` 让"记住 X"不再落空;`prior_research` 开局预取让后续研究站在已有结论的肩膀上;deep_research 报告自动存档可读回;纠错全程可逆且留**版本链**。外部对标调研确认"研究知识库"为全行业空白(Codex 显式排除外部检索内容进记忆、ChatGPT Deep Research 报告不可复访)——这是本项目当前最独特的差异化能力(A.12)。
 
 ---
 
@@ -37,8 +41,13 @@ date: 2026-06-10(v2 修订 · 当晚)
 | 技能 | `topic_skill` | 注入 system prompt 的"群规";可由任务收尾自动蒸馏 |
 | 质量信号 | `SearchQuality` | 检索输出的机器可读质量档:ok / low_relevance(全为低分垃圾) / fallback_loose(宽匹配需核对) / empty |
 | 查询扇出 | `queries[]` / `tasks[]` | 一步并行发多查询变体 / 并行派多个子研究员(工具 handler 内 Promise.all,主循环零侵入) |
-| refine 门 | `low_signal_search` | 连续 ≥2 步垃圾/空搜索 → 自动重规划改写查询(每 run 一次,防死循环) |
+| refine 门 | `low_signal_search` | 近 4 步内 ≥2 步垃圾/空搜索 → 自动重规划改写查询(每 run 一次,防死循环) |
 | 引用标记 | `[n]` + `filterCitedRefs` | 终稿关键论断标注资源序号;资源清单只保留真被引用的 url(产物类恒保留) |
+| 研究结论 | `finding` + `sources` | v3:带出处的单条 claim(`kind='finding'`,sources=[{url,title,year}]),收尾自动蒸馏或 save_memory 显式写入 |
+| 真伪轴 | `truth_status` | v3:unverified/disputed/refuted,与评审轴(status)、时效轴(valid_until)三轴正交;伪≠删,可查但带【已证伪】警示 |
+| 版本链 | `superseded_by_id` | v3:旧记忆被取代时记下新条 id;行永不物理删除,删错可循链追回 |
+| 群共享池 | `group:{groupId}` | v3:群聊 run 的 findings 落群伪 owner,成员互见;个人 facts 永远私有 |
+| 开局预取 | `prior_research` | v3:父 run 首次规划前自动检索相关 findings 注入 planner(top5/score≥0.6/800ms fail-open) |
 
 ---
 
@@ -98,7 +107,7 @@ flowchart TD
 
 ## A.2 为什么是 plan-once + continuation-replan,而非纯 ReAct
 
-**设计**:`buildInitialPlan`(`runPlanGlue.ts`)用一次 LLM 调用生成整条 JSON plan(`planner.ts:generatePlanWithLlm`,无 LLM/测试环境退化为 echo 桩);`runExecute.ts` 顺序执行 plan 的每一步;plan 跑完若 todo 未尽且预算未耗,由 `reflection.ts` **单点裁决**是否带"已完成进展"续跑重规划。续跑硬上限 `CONTINUATION_ROUND_CAP = 2`(`runExecute.ts:567`)+ 无新进展的 stall guard。
+**设计**:`buildInitialPlan`(`runPlanGlue.ts`)用一次 LLM 调用生成整条 JSON plan(`planner.ts:generatePlanWithLlm`,无 LLM/测试环境退化为 echo 桩);`runExecute.ts` 顺序执行 plan 的每一步;plan 跑完若 todo 未尽且预算未耗,由 `reflection.ts` **单点裁决**是否带"已完成进展"续跑重规划。续跑硬上限 `CONTINUATION_ROUND_CAP = 2`(`runExecute.ts`,行号随版本漂移不再钉)+ 无新进展的 stall guard。
 
 ```mermaid
 stateDiagram-v2
@@ -146,22 +155,26 @@ sequenceDiagram
 
 ## A.4 工具层:元数据驱动的安全与幂等
 
-**设计**:`toolRegistry` 注册 **20 个生产工具**(`registerAgentTools.ts`)。每个 `ToolDef` 带元数据:`approvalMode`(auto/ask/never)、`costHint`(low/medium/high)、`hasSideEffects`、`idempotent`、可选 `computeIdempotencyKey`。
+**设计**:`toolRegistry` 注册 **22 个生产工具**(`registerAgentTools.ts`;v3 +`save_memory`/`read_document`)。每个 `ToolDef` 带元数据:`approvalMode`(auto/ask/never)、`costHint`(low/medium/high)、`hasSideEffects`、`idempotent`、可选 `computeIdempotencyKey`。
 
 | 工具 | 类别 | approvalMode | 幂等 |
 |---|---|:--:|:--:|
-| search_papers / search_web / wikipedia / fetch_url / document_reader | 只读检索(v2:带质量信号 + 扇出) | auto | ✓ |
-| get_economic_series / magi_system_read / datetime_now | 只读数据/知识库 | auto | ✓ |
+| search_papers / get_paper_citations / search_web / wikipedia / fetch_url / document_reader | 只读检索(v2:带质量信号 + 扇出) | auto | ✓ |
+| get_economic_series / magi_system_read | 只读数据/知识库 | auto | ✓ |
+| datetime_now | 当前时间 | auto | ✗(时间天然变化) |
 | youtube_transcript | 只读检索 | auto | ✓ |
-| recall_memory / recall_step | 记忆召回 | auto | ✓ |
+| recall_memory / recall_step | 记忆召回(v3:recall 带出处/真伪标/群聊双池) | auto | ✓ |
+| save_memory | 显式写长期记忆(v3:fact 走 reconcile 版本链/finding 带出处) | auto | ✓ |
+| read_document | 读回写作区文档/存档研究报告(v3) | auto | ✓ |
 | critique_last_answer | 元思自检 | auto | ✓ |
-| render_diagram | 计算/出图 | auto | ✓ |
-| run_python | E2B 沙箱计算(副作用) | **ask** | ✗ |
-| magi_content_ingest / doc_export_markdown | 写入/导出 | **ask** | ✗ |
+| render_diagram | 计算/出图 | auto | ✗ |
+| run_python | E2B 沙箱计算(副作用) | auto(护栏=沙箱隔离+预算,非审批门) | ✗ |
+| doc_export_markdown | 导出到私有文档库 | auto | ✓(按 title upsert) |
+| magi_content_ingest | 写入外部知识库 | **ask** | ✗ |
 | ask_user | 暂停问人 | auto | ✗ |
 | deep_research / spawn_subagent | 派子 agent | auto | ✗ |
 
-**为什么这样(好处)**:① **审批分级**——写入/高成本/沙箱工具默认 `ask`,只读检索 `auto`,无需逐工具写守卫;② **幂等键 + 唯一索引**(`agent_steps(run_id, tool_call_key)`,key 含 `ownerId` 名空间)——同一工具同参在一个 run 内**恰好执行一次**;命中缓存则写一条 `observe` 步留痕而不重复调用;③ 配合 reclaim,**崩溃接管不会重复发邮件/重复写库**这类副作用。
+**为什么这样(好处)**:① **审批分级**——对外部系统写入(magi_content_ingest)与 MCP 远端工具默认 `ask`,只读检索 `auto`;沙箱 `run_python` 实为 auto,护栏是 E2B 隔离+预算而非审批门(顶层与子 agent 同权,见 Part F 诘问三);② **幂等键 + 唯一索引**(`agent_steps(run_id, tool_call_key)`,key 含 `ownerId` 名空间)——同一工具同参在一个 run 内**恰好执行一次**;命中缓存则写一条 `observe` 步留痕而不重复调用;③ 配合 reclaim,**崩溃接管不会重复发邮件/重复写库**这类副作用。
 
 **权衡**:`approvalMode` 是工具级声明(并非独立的审批服务),`never` 走的是执行期硬守卫而非审批门——简单但意味着"审批策略"分散在各工具定义里。
 
@@ -194,13 +207,13 @@ flowchart LR
 
 ## A.6 子 Agent:角色化最小权限
 
-**设计**(M3):`deep_research` 与 `spawn_subagent` 派生子运行(`parentRunId`),由独立 `childExecutor` 池跑。子 Agent 按 `AgentRole`(`types.ts:3`:`generalist`/`researcher`/`analyst`)获取**工具子集** `SUBAGENT_ROLE_TOOLS`:researcher 是 9 个只读检索工具;analyst 额外加 `run_python` + `render_diagram`。
+**设计**(M3):`deep_research` 与 `spawn_subagent` 派生子运行(`parentRunId`),由独立 `childExecutor` 池跑。子 Agent 按 `AgentRole`(`types.ts:3`:`generalist`/`researcher`/`analyst`)获取**工具子集** `SUBAGENT_ROLE_TOOLS`:researcher 是 10 个只读工具(9 检索 + v3 `recall_memory`,子研究员开局先查已沉淀 findings 再往外搜);analyst 额外加 `run_python` + `render_diagram`。
 
 ```mermaid
 flowchart TD
   P["父 run"] -->|spawn_subagent role=?| C["子 run(parentRunId)"]
   C --> R{role}
-  R -->|researcher| RT["9 只读工具(检索/文献/wiki)"]
+  R -->|researcher| RT["10 只读工具(检索/文献/wiki + recall_memory)"]
   R -->|analyst| AT["researcher + run_python + render_diagram"]
   C -. 禁止 .-> X["deep_research / spawn_subagent / ask_user"]
   RT --> G1["planner 裁剪"] --> G2["执行期守卫"]
@@ -215,7 +228,7 @@ flowchart TD
 
 ## A.7 双层记忆:稳定核心 + 按需情景
 
-**设计**:① **原生核心** `memory_fragments`——always-on 注入 system prompt 的稳定身份/偏好/项目记忆(autoExtract 抽取、consolidate 合并、promote 升格;三 scope user/session/topic;confidence≥0.85 才明确"记住");② **MAGI 情景层**——外部 MAGI 服务(`integrations/magi.ts` → `/api/agent-memory/*`):bge 向量 + 稀疏混合检索、时序失效(`invalidate`)、质量门、主动召回 + `recall_memory` 工具按需召回。
+**设计**:① **原生核心** `memory_fragments`——always-on 注入 system prompt 的稳定身份/偏好/项目记忆(autoExtract 抽取、consolidate 合并、promote 升格;三 scope user/session/topic;解析端 0.55 置信门——prompt 指引"明确『记住』≥0.85"但非代码强制;0.85 阈值实际生效处是 MAGI 情景层的 approved/pending 质量门);② **MAGI 情景层**——外部 MAGI 服务(`integrations/magi.ts` → `/api/agent-memory/*`):bge 向量 + 稀疏混合检索、时序失效(`invalidate`)、质量门、主动召回 + `recall_memory` 工具按需召回。
 
 ```mermaid
 flowchart TD
@@ -233,6 +246,8 @@ flowchart TD
 ```
 
 **为什么这样(好处)**:稳定的"你是谁"常驻不耗检索;海量"聊过什么"按需召回不撑爆上下文;时序失效让"我改主意了"能覆盖旧事实;升格让反复出现的情景事实沉淀为核心。**代价**:依赖外部 MAGI 服务可用(未启用则 fail-open 返空);两层的一致性靠 owner 隔离 + 升格补偿维持。
+
+**v3 扩展**:情景层从 fact/insight 两类扩为三类——新增 **finding(带出处的研究结论)**,并补齐纠错/恢复/真伪/版本链全套生命周期,详见 A.12。
 
 ## A.8 韧性:分布式下副作用恰好一次
 
@@ -272,7 +287,7 @@ flowchart TD
 2. **工具配置榨干 provider**(R1):Tavily `include_answer` 概括透传(实测中文质量好)、snippet 300→1000(实测正文常返 1200–2400 字,截 300 丢 75% 已付费内容)、`searchDepth` 参数开放(advanced 实测多出学术源,LLM 无提示自发用于深查询)。
 3. **质量信号**(R1-2):实测发现生造词 query **不返 0 条,而是 5 条 score<0.2 的不相关垃圾**,Tavily answer 还会一本正经编造解释——"搜错"比"搜不到"更隐蔽。实测 score 双峰分布(垃圾 0.03–0.17 / 正经 0.72–0.87)→ score 逐条透传;全低分标 `low_relevance` + 丢弃幻觉 answer;混合时滤除垃圾条目;OpenAlex 严格匹配 0 → CrossRef 宽匹配结果标 `fallback_loose` 警示核对。**低质输出不产生正式引用**(extractRefs 看 quality)。
 4. **结构化检索记忆**(R2):checkpoint finding 从"只存 top-5 标题"升级为「title (year) — url + snippet 摘录」,质量警示 ⚠ 置顶——重规划时大脑看得见"搜到什么、去哪深读、该不该信";progress 摘要同步结构化(替换碎在 snippet 中间的 200 字 JSON 截断)。
-5. **refine 门**(R2-3):连续 ≥2 步垃圾/空搜索 → critique 触发重规划,理由明示「换关键词/换语言」;每 run 只触发一次(结构化 `gate` 字段防呆),之后靠 budget/stall guard 兜底——以 ~10% 的改动拿到纯 ReAct"看结果改查询"的主要收益。
+5. **refine 门**(R2-3):近 4 步内 ≥2 步垃圾/空搜索 → critique 触发重规划,理由明示「换关键词/换语言」;每 run 只触发一次(结构化 `gate` 字段防呆),之后靠 budget/stall guard 兜底——以 ~10% 的改动拿到纯 ReAct"看结果改查询"的主要收益。
 6. **并行扇出 + 可溯源引用**(R3/R4):`search_web queries[]` 单步并行中英双路(活体:2.7s 合并去重 8 条,matchedQueries 标注命中来源);`spawn_subagent tasks[]` 并行派研究员;终稿关键论断标 `[n]`,资源清单经 `filterCitedRefs` 只保留真被引用的 url(无标记/越界 fail-open,文档/图等产物恒保留)。
 
 **为什么这样(好处)**:① 检索面覆盖中英两个语料世界,而成本只多并行的一次调用;② 垃圾结果从"无声混入大脑并被引用"变为"被识别、被滤除、触发改写"——三道关(quality 信号 → 引用层拦截 → refine 门);③ 重规划的决策素材完整(结构化记忆),多跳检索不重做、不瞎做;④ 终稿引用可逐条溯源,清单不被搜索 ref 灌满。
@@ -280,6 +295,28 @@ flowchart TD
 **权衡/代价**:① 质量阈值 0.3 来自当日实测分布,Tavily 评分漂移需重标定(常量集中,一处可调);② refine 门每 run 一次是保守取舍——换词后仍垃圾时不再二次触发,靠预算兜底;③ 扇出 answer 各答各题故多查询模式不透传概括;④ 纯 ReAct 的"每步重想"终态差距仍在,M2 flag 保留。
 
 **质量保障**:本节全部改动经三轮递进审查(medium → 7 角度合并审 → xhigh 9 角度 + sweep + **CONFIRMED 逐条对抗反驳**);xhigh 轮首批 12 条 CONFIRMED 被对抗复核击杀 9 条,存活 3 条(垃圾进引用/警示静默丢失/空白 title 穿透)全部修复——"问题必须真实可触发"作为核实硬标准。
+
+## A.12 研究知识沉淀(v3 新增:K 战役)
+
+> 立项动机来自外部对标调研:**研究产物(查过的文献+引用+结论)的结构化长期沉淀是全行业空白**——Codex 的 memories 显式排除用过 web search/MCP 的线程;ChatGPT Deep Research 报告不可复访是社区头号抱怨;Hermes 只把洞察蒸进有界记忆不存引用。而本项目 MAGI 情景层的 pgvector+jieba 混合检索、0.85 质量门、评审 UI 正好是现成地基——**不建第四个记忆系统,给情景层加一个 provenance 维度**。
+
+**北极星**:今天查过并引用的论文,明天新会话问起,agent 能召回结论并给出原始 URL。
+
+**设计**:七件事首尾闭环——
+
+1. **引用链修复(K1)**:子 run 引用回流原读一个全仓无写入方的字段(恒空死路径),改读子 run `artifact.refs`(终稿真引用,url 类,≤10 防洪);`deep_research`/`spawn_subagent`/`document_reader` 补 extractRef(s),来源 URL 进父 run 资源清单;子报告 `[n]` 标记按子清单编号,进父上下文前剥离防错引;复审另发现并修复 checkpoint 回归——合成报告引用全与早先深读重叠时会被去重规则整条吞掉,新增 `synthesis` 发现类豁免。
+2. **finding 数据模型(K2/K3,跨 repo)**:MAGI `agent_memory_fragment` 表 kind 扩 `finding` + `sources JSONB`([{url,title,year}],**source 标题拼进 search_vector**——"Kahneman 1992"走 sparse 路精确命中)+ **三轴正交**:`status`(评审:pending/approved/rejected)、`valid_until`(时效)、`truth_status`(真伪:unverified/disputed/refuted + truth_note + counter_sources 反证)。**伪≠删**:search 不按真伪过滤,已证伪结论照常命中、渲染带【已证伪】+反证——"记得它是伪的"本身是知识。`decide` 放宽为 approve/reject 双向互转(approved 错误记忆可标错、rejected 可恢复;**已升格行 MAGI 裸端点 no-op**——由面板层自动 unpromote 后重试补偿,见第 7 条);`/revalidate` 恢复误失效;`invalidate` 带 `superseded_by_id` 写版本链。行永不物理删除。
+3. **研究蒸馏(K5,自动化主干)**:completed 父 run 收尾,独立第二次 LLM 调用把「终稿+编号 refs 清单」蒸成 ≤4 条 finding。**反幻觉**:LLM 只输出 sourceIdx 指向编号清单,代码侧映射 idx→source,越界/无出处整条丢弃(LLM 永远不写 URL)。近邻 ≥0.92 同源机械去重;≥0.85 跑**争议判官**(duplicate 跳过/contradicts 写新+旧条标 disputed 带反证/distinct 并存)——机器只升到 disputed,refuted 由人裁决(证据保全)。
+4. **save_memory 工具(K4)**:修"run 中说记住 X 落空"——fact 路径走 reconcile(「其实 X 是 Y」自动取代旧条留版本链);finding 路径(带 source_url)机械近重;每 run 5 次硬上限+幂等键 sha256(全文+url);永远写 MAGI(agent 自主写 always-on 核心 = 自我提示注入通道,不开)。
+5. **召回与开局复利(K6)**:`recall_memory` 命中带出处与真伪标;**prior_research 预取**——父 run 首次规划前自动检索相关 findings 注入 planner(800ms fail-open),"站在之前研究肩膀上"的强制落点;子研究员工具集补 recall_memory。
+6. **归属两轴(修订三)**:个人 facts 永远私有;**群聊 run 的 findings 进 `group:{groupId}` 共享池**——家人在群里问"我们之前查过 X 吗"能命中任何成员触发过的研究;读侧双池归并收口在 `memoryPools.ts`,群聊个人池强制 findings-only(隐私底线)。
+7. **报告复访(K7)+ 评审闭环(K8)**:deep_research 报告自动存档写作区(《研究报告:…》,同名 v2 版本化保护)+ `read_document` 读回;大脑 tab 评审屏:真伪徽标/可点来源/「查看来源任务」深链(回溯三层:论文 URL → 原始 run → 存档报告)/标错-恢复-标伪-撤销全可逆;复审修复:恢复同时处理时效轴(先 revalidate 再按需 decide)、已升格记忆可标错(面板层自动 unpromote 解锁后 reject;promote 时复制进原生核心的副本无反向链接,需在长期记忆页手动删除——已知残余)、【已失效】标让死记忆可见。
+
+**为什么这样(好处)**:① 研究知识形成**复利**——后续 run 开局即知"上次查到哪",不重搜、可续深;② 知识可信——出处可点、真伪有标、冲突共存不销毁证据;③ 纠错灵活且安全——三轴全可逆、行不删、版本链可循;④ 全部复用已验证基建(检索/质量门/评审 UI/owner 隔离),净新增持久化设施 = 一个枚举值 + 五列。
+
+**权衡/代价**:① 每研究 run 多一次蒸馏 LLM 调用(refs 非空才发起,家庭规模每天几次);② finding 文本进向量库的信噪比依赖 0.85 质量门+近重门+预取 0.6 阈值,需长期观察(claim 截 300 字、URL 不进 text 已预留 fallback);③ 注入残余面与既有 proactive recall 同源(web 衍生文本进 prompt),纵深防御为蒸馏 prompt 反指令守卫、save_memory 描述明示、写入侧长度帽(蒸馏 claim≤300/save_memory text≤500/title≤300/note≤1000)、http(s) 白名单、人审通路——家庭信任域内接受;④ 群池仅 findings 可共享,评审的**移动端群池切换入口为后续项**(后端+客户端链路已就位并测试)。
+
+**质量保障**:三轮对抗复审(42/36/35 子代理)CONFIRMED 全修;跨 repo finding 全生命周期(写带出处→语义+标题词双路检索→标伪仍可查→版本链→失效/恢复)以真实 agent 端客户端 ↔ 活体 MAGI 容器在隔离库上验证 **14 项全过**。**部署门(诚实)**:MAGI 侧已合 main,但 `:8001` 运行实例尚未升级(活进程跑旧代码且容器缺 jieba,直接重启会崩——需重建镜像+迁移+重启);完整"真 agent run→蒸馏→跨会话召回"活体回归待部署后执行。
 
 ---
 
@@ -302,13 +339,16 @@ flowchart TD
 | 自我改进/技能 | ✅ 自蒸馏+评审 | ✅ | ✅ | skills | — | — |
 | 群聊多人 | ✅ topic 合并/排队(**罕见**) | — | — | — | — | — |
 | 检索体验(扇出/质量信号/引用) | ✅ v2:双语扇出+score 质量门+[n] 溯源 | 弱 | 弱 | ✅ 强 | 中 | 中 |
+| 研究知识沉淀(结论+出处+真伪可再查) | ✅ v3:finding/真伪轴/版本链/群池(**全行业空白项**) | 蒸洞察不存引用 | — | —(memory 不存研究产物) | —(显式排除外部检索内容) | — |
 | 执行面宽度 | web/文档/MAGI/沙箱 Python(无 shell/文件) | 宽 | 宽 | 文件/shell | 沙箱 | 代码库 |
 | 通用子 agent | 角色化(researcher/analyst) | — | — | ✅ 通用 | — | — |
 | MCP | client(stdio+http) | — | 插件 | c/s | 工具 | 工具 |
 | 审批/沙箱 | ✅ auto/ask/never+沙箱 | — | 权限 | ✅ | ✅ | — |
 
+> 注:竞品列的能力描述为外部对标调研结论(截至 2026-06,来源含官方文档/仓库),**非源码核实**;「本项目」列经源码核实。
+
 ## B.4 定位
-在「后台可恢复 + 记忆分层 + 群聊多人」象限**领先多数编码 Agent**;v2 后「检索 agentic 体验」从落后项转为**接近追平**(双语扇出/质量信号/可溯源引用已落地,差距余量在纯 ReAct 式逐步重想与生态);仍落后处为「纯 ReAct 终态、执行面宽度(无 shell/文件/浏览器,刻意)、通用子 Agent 与生态」。
+在「后台可恢复 + 记忆分层 + 群聊多人」象限**领先多数编码 Agent**;v2 后「检索 agentic 体验」从落后项转为**接近追平**;**v3 后「研究知识沉淀」成为独有维度**——外部调研确认头部产品均未做"查过的文献+结论+真伪"的结构化沉淀与再检索,这与"研究知识越积越强"的产品愿景直接对齐;仍落后处为「纯 ReAct 终态、执行面宽度(无 shell/文件/浏览器,刻意)、通用子 Agent 与生态」。
 
 ## B.5 功能评分(0–5,定性,非基准)
 
@@ -320,6 +360,7 @@ flowchart TD
 | 自我改进/技能 | 4 | 5 | 3 | 1 | 1 |
 | 控制面(改向/审批/暂停) | 4 | 2 | 4 | 4 | 3 |
 | 检索体验(扇出/质量/引用) | **4(v2,原≈2)** | 2 | 5 | 4 | 3 |
+| 研究知识沉淀(v3 新增维度) | **5(独有)** | 2 | 1 | 0 | 1 |
 | 子 agent 通用性 | **4(v2:tasks[] 并行,原 3)** | 1 | 5 | 1 | 1 |
 | 执行面宽度 | 2 | 5 | 5 | 4 | 4 |
 | 编码/文件/shell | 1 | 4 | 5 | 5 | 5 |
@@ -332,8 +373,8 @@ flowchart TD
 
 # Part C · 现状、局限与逐设计 review
 
-**已落地**:Part A 全部子系统 + M1(自蒸馏)/M3(子 agent)/M4(MCP)/M5(评审)/M7(群聊)+ 上午 7 个已合 PR + **v2:P0 修复战役 8 切片与检索追平 R1–R4 共 15 个 PR(#23–#38)全部合入 main**。
-**未竟**:M2 ReAct 全量(仅 prototype)。
+**已落地**:Part A 全部子系统 + M1(自蒸馏)/M3(子 agent)/M4(MCP)/M5(评审)/M7(群聊)+ 上午 7 个已合 PR + **v2:P0 修复战役 8 切片与检索追平 R1–R4 共 15 个 PR(#23–#38)全部合入 main** + **v3:K 战役(研究知识沉淀)agent 仓 PR #40/#42 + MAGI 仓 PR #34 合入 main**。
+**未竟**:M2 ReAct 全量(仅 prototype);群池评审移动端切换入口(后端+客户端已就位);MAGI :8001 实例升级部署与其后的全链活体回归。
 **v2 关账项**:issue 0005(未知工具名悬挂)已修——原始"永停 planning"复现在审计时已不成立(文档滞后于代码),残余的优雅 replan 路径于 P0-S4 落地,验收四条全过;测试体系两档分层(P0-S1):此前 62/117 个测试文件无 DATABASE_URL 全红、另有静默假绿,现无 PG 显式 skip / 有 PG 全绿 + `test:pg` fail-fast。
 
 **逐设计的诚实 review(代价)**:
@@ -341,8 +382,10 @@ flowchart TD
 - **续跑 `CONTINUATION_ROUND_CAP=2`**:防失控,但极复杂任务可能 2 轮不够 → 由 budget 兜底而非无限续。
 - **持久列只增不清**:steer_directive/denied_tools 注入到 run 结束;对评审 hub 刻意**不加 TTL**(freshness > 省调用:用户批准后返回必须看到更新计数)。
 - **子 run 轮询**:`runChildSubagent` 每 500ms 轮询 DB(至多 5min),未走 event-bus → 低负载无感,上规模是 DB 压力(backlog)。
-- **zenmux 占位**:provider 字段有 zenmux,实际仅 DeepSeek 真实接。
+- **zenmux 已实现待实战**:zenmux 适配器完整(双协议路由+用户 key 通道,spike 实测打通),但日常活体运行仅 DeepSeek 长期验证。
 - **执行面刻意收窄**:无 shell/文件/浏览器——安全 + 聚焦,但也意味着不做代码 Agent 的活。
+- **(v3)蒸馏成本与信噪比**:每研究 run 多一次 finding 蒸馏调用;finding 进向量库的长期信噪比待真实使用观察(0.85 门+近重+0.6 预取阈值三道闸,fallback 已预留)。
+- **(v3)部署滞后于代码**:MAGI 侧 finding 端点已合 main,但 :8001 活进程是 M4 前旧代码且容器缺 jieba——重启即崩,升级需"重建镜像+alembic 迁移+重启"三步;在此之前线上 agent 实际不写不读 finding(各写入方 fail-open 降级)。
 
 **可证伪评测设计**:① 记忆——A run 写事实、新 session B run `recall_memory` 跨会话召回 + 时序失效覆盖改口(本会话已活体验证);② 续跑——多步任务 plan 跑完未达标须续跑且 2 轮内收敛;③ 子 agent——researcher 子 run 试调 `run_python` 必被执行期守卫拒、analyst 放行(已单测);④ steer——改向后终稿主题词频应翻转(已活体验证)。
 
@@ -355,12 +398,12 @@ flowchart LR
   M1["M1 自蒸馏 ✅"] --> M3["M3 子 agent 角色化 ✅"]
   M3 --> M4["M4 MCP transport+config ✅"]
   M4 --> M5["M5 评审闭环 ✅"]
-  M5 --> M2["M2 ReAct 全量(留 flag,待决策)"]
+  M5 --> M2["M2 ReAct 全量(设计已定稿,flag 未落码,待决策)"]
   M2 -.明确不做.-> NO["shell / 文件系统 / 浏览器执行面"]
 ```
 
 - **优先**:M2 ReAct opt-in 共存(prototype 已测,需架构决策,专门推进)。
-- **backlog(低优)**:子 run 等待改 event-bus、count 端点(避免拉全列表计数)、deep_research↔spawn_subagent 重叠、search_papers 扇出(planner 已能分两步双语查,单步省一步的边际收益待真实使用观察)。
+- **backlog(低优)**:子 run 等待改 event-bus、count 端点(避免拉全列表计数)、deep_research↔spawn_subagent 重叠、search_papers 扇出(planner 已能分两步双语查,单步省一步的边际收益待真实使用观察);**v3 新增**:群池评审移动端切换入口、MAGI :8001 升级部署 + 全链活体回归、finding 信噪比长期观察(劣化则启用 text 去 URL fallback)。
 - **明确不做**:shell / 文件系统 / 浏览器——刻意收窄执行面以保安全与聚焦。**v2 按实测原则追加砍掉**:fetch/document detailLevel 分页(24K 上限实测够用)、token 统账重构(纯重构无用户可感知收益)、中文学术查询翻译指引(实测 OpenAlex 中文返回 5 篇高相关论文,假设被推翻)。
 
 ---
@@ -380,18 +423,23 @@ flowchart LR
 | MCP(M4) | stdio + Streamable HTTP/SSE transport + env 配置注册 |
 | **本会话上午(2026-06-09~10)** | steer/deny→M1c LLM 重规划 + 双向持久化 + deny 硬门(#16);M3-S1 角色子 agent(#17);MCP HTTP(#18)+ config(#19);M5 hub badge(#20)+ 渲染测试(#21);终态集合单一源(#22) |
 | **v2 · 当日下午~晚** | 深度审计(42 子代理 + 逐条对抗核实,5 条候选被推翻——文档滞后于代码);P0 修复战役 8 切片(测试两档/0005 关账/replan 统一 checkpoint/completedTodos/引用链/递归守卫);检索追平 R1–R4(实测驱动:双语扇出/质量信号/结构化记忆/refine 门/[n] 引用,详见 A.11);三轮递进式审查(xhigh 轮对抗复核杀 9 留 3 全修);15 PR(#23–#38)全部合入 main |
+| **v3 · K 战役(2026-06-10 晚~11)** | 研究知识沉淀全链:K1 引用链死路径修复(+checkpoint synthesis 回归)→ K2/K3 finding 模型(出处/三轴/版本链,跨 repo)→ K4 save_memory → K5 研究蒸馏(sourceIdx 反幻觉+争议判官)→ K6 召回/prior_research 预取/子研究员 recall → K7 报告存档+read_document → K8 评审 UI(真伪徽标/来源深链/纠错追回)→ K9b 复审修复(时效轴恢复/升格可标错);三轮对抗复审(42/36/35)CONFIRMED 全修;跨 repo 活体 14 项全过;PR #40/#42 + MAGI#34 合入 main(详见 A.12) |
 
 ---
 
 # Part F · 反方与风险
 
-**诘问一:plan-once 是否够用?** 对探索性任务确实弱。**回应(v2 更新)**:除 continuation-replan + steer 外,refine 门(A.11)补上了"看搜索结果质量中途改写查询"这一 ReAct 的核心收益场景——以 ~10% 改动拿 ~70% 收益;但"每步基于全部观察重想"的终态差距仍在,M2 ReAct flag 保留(prototype 已测延迟),实测某类任务持续吃亏即 opt-in——这是真实权衡,非已解。
+**诘问一:plan-once 是否够用?** 对探索性任务确实弱。**回应(v2 更新)**:除 continuation-replan + steer 外,refine 门(A.11)补上了"看搜索结果质量中途改写查询"这一 ReAct 的核心收益场景——以 ~10% 改动拿 ~70% 收益;但"每步基于全部观察重想"的终态差距仍在。M2 ReAct 的 opt-in 设计已定稿、延迟 prototype 已实测,**flag 尚未落码**(待架构决策);实测某类任务持续吃亏即推进——这是真实权衡,非已解。
 
 **诘问四(v2 新增):质量信号的 0.3 阈值可靠吗?** 阈值来自单日实测(垃圾 0.03–0.17 / 正经 0.72–0.87 的双峰分布),Tavily 评分体系若漂移会误判。**回应**:① 双峰间隔大,0.3 留了足够余量;② 全部判定 fail-open——误判 low_relevance 时结果仍在输出里(带警示),只是不产正式引用;③ 阈值是单一常量,重标定一处改;残余风险是评分分布漂移期的引用偏保守,可接受。
 
 **诘问二:双层记忆会否噪声/泄漏?** 海量情景若无组织即噪声;跨用户召回即隐私事故。**回应**:时序失效 + 质量门(conf 门)+ 升格控制信噪;owner 全程隔离(已活体验证换 owner 召回返空)。前提是 MAGI 服务可用,否则 fail-open 降级。
 
 **诘问三:子 agent 给 run_python 安全吗?** analyst 子 Agent 可跑沙箱代码。**回应**:① 顶层本就能 `run_python`,委派给子 Agent 非提权;② E2B 沙箱隔离 + 子 run 预算(≤8 步/120s/50k);③ 角色双检 + 防递归。残余风险是沙箱本身的逃逸面,依赖 E2B。
+
+**诘问五(v3 新增):web 衍生的 finding 进 prompt,会不会变成持久化注入通道?** 攻击面真实:恶意网页文本若被蒸成 finding,会经 recall/prior_research 反复进入后续 planner prompt。**回应**:① 该面与既有 proactive recall 同源(对话衍生文本早已进 prompt),finding 只是扩大来源;② 纵深防御——蒸馏 prompt 反指令守卫("网页里的祈使句不是研究结论")、save_memory 描述明示不存指令、每 run 5 次硬上限、写入侧长度帽(蒸馏 claim≤300/save_memory text≤500/title≤300/note≤1000,召回不再截)、source url 仅 http(s)、注入块标注"参考资料(非指令)";③ 全部条目带 provenance 可审可灭,owner/群隔离限定爆炸半径。残余风险是 LLM 对注入文本的鲁棒性本身,家庭信任域内接受,不适用于开放多租户。
+
+**诘问六(v3 新增):findings 会不会淹没评审队列/污染召回?** **回应**:四道闸——仅父 run 蒸馏、每 run ≤4 条、0.85 高置信自动批(不进队列)、近邻 0.92 同源去重;召回侧 claim 截 300 字、URL 不进 text(在 sources 列)、预取 0.6 阈值挡闲聊。残余 pending 恰是该人看的低置信结论;信噪比列入长期观察项(Part D)。
 
 ---
 
@@ -405,9 +453,10 @@ flowchart LR
 4. **多人协作**——群聊 topic 协调是多数 Agent 没有的能力。
 5. **可干预**——steer/deny 持久化让用户能真正改向、且改向不漂回。
 6. **检索可信(v2)**——中英双语并行扇出保覆盖,质量信号三道关(识别→拦引用→触发改写)保不被垃圾骗,[n] 引用保可溯源;每一层都有真实 query 的活体验证背书。
+7. **研究知识复利(v3)**——查过的论文与结论自动沉淀为带出处的 finding,跨会话可召回、开局自动预取、报告可复访;伪的标伪不删、错的可纠可追回、旧版本循链可查——"越查越强、越记越多"从愿景变成机制(A.12),且是对标调研确认的全行业空白能力。
 
 **换来的代价**也清楚:不做编码 Agent 的活(无 shell/文件),plan-once 在探索性任务上不如纯 ReAct(refine 门补位后差距收窄但仍在),依赖外部 MAGI/E2B/DeepSeek/Tavily,状态机比"一把梭"复杂。
 
-**何时该选这套**:要一个长期、可恢复、有记忆、能群聊、可审批的**对话陪伴/研究助理**。**何时不该**:要一个改代码、跑 shell、操作文件系统的**编码 Agent**——那是 Claude Code 一类的主场。
+**何时该选这套**:要一个长期、可恢复、有记忆、**研究知识越积越强**、能群聊、可审批的**对话陪伴/研究助理**。**何时不该**:要一个改代码、跑 shell、操作文件系统的**编码 Agent**——那是 Claude Code 一类的主场。
 
 > 诚实声明:本报告所有架构论断均对应真实源码(`apps/api/src/lib/agent/` 等,正文附 `文件:行`);评分为定性判断非基准跑分;局限与代价均如实列出,未夸大已完成度。

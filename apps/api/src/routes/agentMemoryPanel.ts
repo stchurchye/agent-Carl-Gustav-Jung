@@ -4,6 +4,7 @@ import {
   decideAgentMemory,
   revalidateAgentMemory,
   markTruthAgentMemory,
+  unpromoteAgentMemory,
   type MemorySource,
 } from '../lib/integrations/magi.js';
 import { promoteMemoryToNative } from '../lib/memoryPromote.js';
@@ -75,8 +76,24 @@ agentMemoryPanelRouter.post('/decide', async (c) => {
   if (!body) return c.json({ ok: false, message: '请求体不是合法 JSON' }, 400);
   const resolved = await resolveReviewOwner(userId, body.scope, body.groupId);
   if ('error' in resolved) return c.json({ ok: false, message: resolved.error }, resolved.status);
-  const result = await decideAgentMemory(resolved.owner, body.id, body.decision);
-  return c.json({ ok: true, data: { updated: result.updated }, requestId: c.get('requestId') });
+  let result = await decideAgentMemory(resolved.owner, body.id, body.decision);
+  let unpromoted = false;
+  // v3 审计修复:MAGI decide 对已升格行 no-op(updated=0,K2 加固守卫)——否则「标记错误」
+  // 在 UI 静默失败。reject 纠错时自动先 unpromote(撤销升格,行回到 episodic 检索域)再重试;
+  // unpromote 也 0 = 行本来就非 promoted(真 no-op,如实返回)。原生核心中 promote 时复制的
+  // 副本无反向链接,需用户在长期记忆页手动删除 —— unpromoted 标志让客户端给出该指引。
+  if (result.updated === 0 && body.decision === 'reject') {
+    const un = await unpromoteAgentMemory(resolved.owner, body.id);
+    if (un.unpromoted > 0) {
+      unpromoted = true;
+      result = await decideAgentMemory(resolved.owner, body.id, body.decision);
+    }
+  }
+  return c.json({
+    ok: true,
+    data: { updated: result.updated, ...(unpromoted ? { unpromoted: true } : {}) },
+    requestId: c.get('requestId'),
+  });
 });
 
 agentMemoryPanelRouter.post('/promote', async (c) => {
