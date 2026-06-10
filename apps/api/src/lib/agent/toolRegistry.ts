@@ -37,8 +37,21 @@ export type ToolReplyMeta = {
     id: string;
     label?: string;
   } | null;
+  /**
+   * P0-S7:复数版 —— 一次输出产多个可引用 ref(搜索类工具:top-N 结果各一条 url ref)。
+   * 与 extractRef 并存(纯增量),collectReplyRefs 两者都消费并按 kind:id 去重。
+   * 实现方按需自行限量(如 top-3)防 ref 洪水。
+   */
+  extractRefs?: (output: unknown) => Array<{
+    kind: 'document' | 'url' | 'magi_card' | 'diagram';
+    id: string;
+    label?: string;
+  }>;
   failureHint?: string;
 };
+
+/** P0-S7:搜索类工具 extractRefs 的统一限量(防 ref 洪水),三个搜索工具共用。 */
+export const SEARCH_REF_TOP_N = 3;
 
 export type ToolDef<I = unknown, O = unknown> = {
   name: string;

@@ -1,4 +1,4 @@
-import { toolRegistry, type ToolDef } from '../toolRegistry.js';
+import { SEARCH_REF_TOP_N, toolRegistry, type ToolDef } from '../toolRegistry.js';
 
 type SearchPapersInput = {
   query: string;
@@ -151,6 +151,14 @@ export const searchPapersTool: ToolDef<SearchPapersInput, SearchPapersOutput> = 
   idempotent: true,
   replyMeta: {
     summaryKind: 'list',
+    // P0-S7:top-3 论文产 url ref(doi/openalex 链接),进终稿资源清单与 checkpoint。
+    extractRefs: (output) => {
+      const papers = (output as { papers?: Paper[] } | null)?.papers ?? [];
+      return papers
+        .filter((p) => typeof p?.url === 'string' && p.url.length > 0)
+        .slice(0, SEARCH_REF_TOP_N)
+        .map((p) => ({ kind: 'url' as const, id: p.url, label: p.title || p.url }));
+    },
     failureHint:
       'OpenAlex / CrossRef 都失败可能是网络或上游故障。可换关键词；如学术词不出结果可改 search_web 走通用搜索。',
   },
@@ -204,6 +212,14 @@ export const getPaperCitationsTool: ToolDef<
   idempotent: true,
   replyMeta: {
     summaryKind: 'list',
+    // P0-S7:被引/引用文献同样产 top-3 url ref。
+    extractRefs: (output) => {
+      const citations = (output as { citations?: Paper[] } | null)?.citations ?? [];
+      return citations
+        .filter((p) => typeof p?.url === 'string' && p.url.length > 0)
+        .slice(0, SEARCH_REF_TOP_N)
+        .map((p) => ({ kind: 'url' as const, id: p.url, label: p.title || p.url }));
+    },
     failureHint:
       '论文 ID 可能不存在或非 OpenAlex 格式（W 开头）。可先用 search_papers 拿到合法 id 再查引用。',
   },

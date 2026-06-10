@@ -1,4 +1,4 @@
-import { toolRegistry, type ToolDef } from '../toolRegistry.js';
+import { SEARCH_REF_TOP_N, toolRegistry, type ToolDef } from '../toolRegistry.js';
 
 type WebSearchInput = {
   query: string;
@@ -44,6 +44,14 @@ export const webSearchTool: ToolDef<WebSearchInput, WebSearchOutput> = {
   idempotent: true,
   replyMeta: {
     summaryKind: 'list',
+    // P0-S7:top-3 结果产 url ref(进终稿"资源清单"与 checkpoint),限量防 ref 洪水。
+    extractRefs: (output) => {
+      const results = (output as { results?: WebSearchHit[] } | null)?.results ?? [];
+      return results
+        .filter((r) => typeof r?.url === 'string' && r.url.length > 0)
+        .slice(0, SEARCH_REF_TOP_N)
+        .map((r) => ({ kind: 'url' as const, id: r.url, label: r.title || r.url }));
+    },
     failureHint: '搜索可能限流或网络故障。可换关键词重试一次；连续失败请改走 magi_system_read 或直接给 finalReply。',
   },
   computeIdempotencyKey: (input) => {
