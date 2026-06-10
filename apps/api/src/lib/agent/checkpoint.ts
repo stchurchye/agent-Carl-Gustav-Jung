@@ -172,6 +172,34 @@ export function buildCheckpoint(
  * - text / 未知 → 保留 2000 字原始 output，让 LLM 压缩器从更丰富的原材料提炼，
  *   避免旧版 200 字截断导致的"摘要的摘要"信息损失。
  */
+/**
+ * R2-1:list 类 output(results/items/papers/citations 数组)→ 结构化摘录。
+ * 形状不识别时返回 null,调用方回退 summarizeStepOutput 旧行为。
+ */
+export function buildListFinding(inner: unknown): string | null {
+  if (inner == null || typeof inner !== 'object') return null;
+  const o = inner as Record<string, unknown>;
+  const arr = (o.results ?? o.items ?? o.papers ?? o.citations) as unknown[] | undefined;
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const lines: string[] = [];
+  // R1-2 质量警示置顶:重规划读 finding 时第一眼看到"别采信"。
+  if (typeof o.note === 'string' && o.note.length > 0 && o.quality !== 'ok') {
+    lines.push(`⚠ ${o.note}`);
+  }
+  for (const it of arr.slice(0, 5)) {
+    if (it == null || typeof it !== 'object') continue;
+    const r = it as { title?: unknown; url?: unknown; snippet?: unknown; abstract?: unknown; year?: unknown };
+    const title = typeof r.title === 'string' && r.title ? r.title.slice(0, 80) : '[无标题]';
+    const url = typeof r.url === 'string' && r.url ? ` — ${r.url}` : '';
+    const year = typeof r.year === 'number' ? ` (${r.year})` : '';
+    const excerptRaw = typeof r.snippet === 'string' ? r.snippet : typeof r.abstract === 'string' ? r.abstract : '';
+    const excerpt = excerptRaw ? `\n  ${excerptRaw.slice(0, 200).replace(/\n/g, ' ')}` : '';
+    lines.push(`- ${title}${year}${url}${excerpt}`);
+  }
+  if (lines.length === 0) return null;
+  return redactSecrets(lines.join('\n')) as string;
+}
+
 function buildRichFinding(s: AgentStep, tool?: ToolDef): string {
   const kind = tool?.replyMeta?.summaryKind ?? 'text';
   if (kind === 'silent' || kind === 'export_ref') {
@@ -181,6 +209,12 @@ function buildRichFinding(s: AgentStep, tool?: ToolDef): string {
     // tool output 被包在 { result: ... } 里（runExecute.ts:382 `output: { result: output }`）；
     // summarizeStepOutput 直接读 out.results/out.items，需先解包 result wrapper 才能提取 title。
     const inner = (s.output as { result?: unknown } | null)?.result ?? s.output;
+    // R2-1:搜索/列举类 finding 结构化为「title — url + snippet 摘录」。此前只存 top-5 标题:
+    // 无 url(重规划无法安排深读)、无 snippet(只见"搜过什么"不见"搜到什么")。
+    // quality 警示 note(R1-2)一并带上,重规划不会误信垃圾结果。每条 snippet 截 200,
+    // 总量 ≤5 条 ≈ 1.2K,在 finding 2000 字预算内;近窗全文仍走 digestTail。
+    const structured = buildListFinding(inner);
+    if (structured) return structured;
     return summarizeStepOutput(inner, kind);
   }
   const redacted = redactSecrets(s.output);
