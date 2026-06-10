@@ -1,6 +1,6 @@
 import type { AgentStep, MergedInput, Plan } from './types.js';
 
-export type CritiqueReason = 'periodic' | 'consecutive_failures';
+export type CritiqueReason = 'periodic' | 'consecutive_failures' | 'low_signal_search';
 
 export type CritiqueInput = {
   plan: Plan;
@@ -35,6 +35,19 @@ export function isToolFailure(s: AgentStep): boolean {
 }
 
 /**
+ * R2-3:低信号搜索步 —— 工具调用本身成功(无 error,不与 isToolFailure 重叠),
+ * 但 R1-2 质量信号判定结果不可用:empty(0 结果)/ low_relevance(全是 score<0.3 垃圾)。
+ * fallback_loose 不算:CrossRef 宽匹配结果可能仍相关,由 LLM 自行核对。
+ */
+export function isLowSignalSearch(s: AgentStep): boolean {
+  if (s.kind !== 'tool_call') return false;
+  if (s.error != null && s.error !== '') return false; // soft-fail 归 isToolFailure 管
+  const inner = (s.output as { result?: unknown } | null)?.result ?? s.output;
+  const quality = (inner as { quality?: unknown } | null)?.quality;
+  return quality === 'empty' || quality === 'low_relevance';
+}
+
+/**
  * M1b-2 规则化 stub（spec §9.4 接口 1:1 保持，M1c 接入 LLM 时仅替换实现）：
  * - reason='consecutive_failures'：最近 4 step 内 >= 2 次 tool 失败（hard or soft）
  *   → shouldReplan
@@ -53,6 +66,19 @@ export function runCritique(input: CritiqueInput): CritiqueOutput {
       return {
         shouldReplan: true,
         reason: '连续两次工具失败,建议重规划' + mergedHint,
+      };
+    }
+  }
+  // R2-3:连续低信号搜索(空/低相关垃圾)→ 重规划改写查询,别把剩余步骤浪费在错误的关键词上。
+  if (input.reason === 'low_signal_search') {
+    const tail = input.recentSteps.slice(-4);
+    const lowSignal = tail.filter(isLowSignalSearch);
+    if (lowSignal.length >= 2) {
+      return {
+        shouldReplan: true,
+        reason:
+          '连续搜索无有效结果(0 结果或全为低相关垃圾),需改写查询:换关键词/同义词/另一种语言再规划' +
+          mergedHint,
       };
     }
   }
