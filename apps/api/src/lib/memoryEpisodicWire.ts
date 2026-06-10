@@ -2,9 +2,15 @@ import type { LlmRequestLogContext } from '@xzz/shared';
 import type { LlmChatClient } from './llm/types.js';
 import { magiSystemEnabled } from './integrations/magi.js';
 import { distillEpisodicMemories } from './memoryEpisodicDistill.js';
+import {
+  distillResearchFindings,
+  persistResearchFindings,
+} from './memoryResearchDistill.js';
+import { memoryPoolOwner } from './memoryOwner.js';
 import { reconcileMemoryWrite } from './memoryReconcile.js';
 import { runReflection } from './memoryReflect.js';
 import { isAbortError } from './memoryAbort.js';
+import type { ReplyRef } from './agent/types.js';
 
 /** 太短的转录不值得花一次 LLM 蒸馏(仿 autoExtract 的 min 门);只挡"在""好的"这种 trivial ack,
  *  保留有内容的短对话。 */
@@ -26,6 +32,16 @@ export async function runEpisodicMemory(params: {
   llm: LlmChatClient;
   signal: AbortSignal;
   log?: LlmRequestLogContext;
+  /**
+   * K5:研究蒸馏材料(仅父 run、refs 非空时由 runLifecycle 传入)。
+   * refs = artifact.refs(终稿真引用);channel/groupId 决定 finding 落个人池还是群共享池。
+   */
+  research?: {
+    refs: ReplyRef[];
+    finalContent: string;
+    channel: 'private' | 'group';
+    groupId?: string | null;
+  };
 }): Promise<void> {
   if (!magiSystemEnabled()) return;
   if (params.transcript.trim().length < MIN_TRANSCRIPT_CHARS) return;
@@ -53,6 +69,36 @@ export async function runEpisodicMemory(params: {
     } catch (e) {
       if (isAbortError(e, params.signal)) throw e; // 取消透传
       // 逐条 fail-open:单条 reconcile 失败不影响其他、不抛
+    }
+  }
+
+  // K5:研究蒸馏(独立第二次 LLM 调用,refs 非空才发起;prompt 与 fact 蒸馏不互相污染)。
+  // findings 落池按修订三:私聊 → 个人池;群聊 → group:{groupId} 共享池。全程 fail-open。
+  if (params.research && params.research.refs.length > 0) {
+    try {
+      const findings = await distillResearchFindings(
+        params.llm,
+        params.research.finalContent,
+        params.research.refs,
+        { signal: params.signal, log: params.log },
+      );
+      if (findings.length > 0) {
+        const poolOwner = memoryPoolOwner(
+          'finding',
+          params.ownerId,
+          params.research.channel,
+          params.research.groupId,
+        );
+        await persistResearchFindings(params.llm, poolOwner, findings, {
+          sourceRunId: params.runId,
+          topicId: params.topicId,
+          signal: params.signal,
+          log: params.log,
+        });
+      }
+    } catch (e) {
+      if (isAbortError(e, params.signal)) throw e;
+      // fail-open:研究蒸馏失败不影响 fact 链路与 finalize
     }
   }
 
