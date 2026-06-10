@@ -122,7 +122,8 @@ export async function reconcileMemoryWrite(
   const invalidatedIds: number[] = [];
   for (const oldId of judgment.supersededIds) {
     try {
-      await invalidateAgentMemory(ownerId, oldId, opts.signal);
+      // K4 版本链:旧条记下被新条(id)取代 —— 误删可循链追回、面板可见"被新版取代"
+      await invalidateAgentMemory(ownerId, oldId, opts.signal, id);
       invalidatedIds.push(oldId);
     } catch (e) {
       if (isAbortError(e, opts.signal)) throw e;
