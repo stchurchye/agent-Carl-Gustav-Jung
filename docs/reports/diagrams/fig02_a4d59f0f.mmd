@@ -1,0 +1,16 @@
+stateDiagram-v2
+  [*] --> draft
+  draft --> planning: worker 捡起
+  planning --> running: 生成 plan(LLM)
+  running --> running: 顺序执行工具步
+  running --> awaiting_approval: 命中 ask 工具
+  running --> awaiting_user_input: ask_user
+  running --> replanning: steer / deny / critique
+  awaiting_approval --> running: approve / 60s 超时
+  awaiting_user_input --> running: resume / 24h 超时
+  replanning --> running: 重新规划(读持久 directive)
+  running --> completed: 反思判定达标
+  running --> failed
+  running --> cancelled
+  running --> budget_exhausted
+  completed --> [*]

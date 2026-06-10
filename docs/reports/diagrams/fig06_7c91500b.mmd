@@ -1,0 +1,12 @@
+flowchart TD
+  subgraph CORE["原生核心 · always-on"]
+    C1["稳定身份/偏好/项目"] --> C2["注入每次 system prompt"]
+  end
+  subgraph EPI["MAGI 情景层 · 按需"]
+    E1["对话收尾蒸馏事实"] --> E2["写 MAGI(向量)"]
+    E2 --> E3["recall_memory 按需召回"]
+    E2 --> E4["时序失效:改口/过期"]
+  end
+  RUN["agent run"] --> CORE
+  RUN -->|需要历史时| EPI
+  EPI -. 高频高质 升格 .-> CORE

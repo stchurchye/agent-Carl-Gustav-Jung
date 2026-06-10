@@ -1,0 +1,11 @@
+flowchart LR
+  subgraph STEER["steer 改向"]
+    s1["用户插话"] --> s2["清 plan + 写 steer_directive(持久列)"]
+    s2 --> s3["worker 重规划:LLM 读 directive"]
+    s3 -. 跨后续续跑不丢 .-> s3
+  end
+  subgraph DENY["deny 拒绝"]
+    d1["用户拒某工具"] --> d2["append denied_tools(持久列)"]
+    d2 --> d3["软:planner 注入'不要调 X'"]
+    d2 --> d4["硬:执行期跳过该工具"]
+  end

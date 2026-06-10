@@ -1,0 +1,12 @@
+sequenceDiagram
+  participant U as 用户/触发
+  participant DB as PostgreSQL
+  participant WA as Worker A
+  participant WB as Worker B
+  U->>DB: 写 agent_run(draft)
+  WA->>DB: tick:pickupNextRun + 心跳
+  WA->>WA: executeRun(跑工具,落 step)
+  Note over WA: 崩溃(心跳停)
+  WB->>DB: tick:发现心跳过期
+  WB->>DB: reclaim 检测(DB step 数 > usage.steps)
+  WB->>WA: 接管续跑(不重复已落地副作用)

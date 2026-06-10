@@ -1,0 +1,6 @@
+flowchart LR
+  M1["M1 自蒸馏 ✅"] --> M3["M3 子 agent 角色化 ✅"]
+  M3 --> M4["M4 MCP transport+config ✅"]
+  M4 --> M5["M5 评审闭环 ✅"]
+  M5 --> M2["M2 ReAct 全量(留 flag,待决策)"]
+  M2 -.明确不做.-> NO["shell / 文件系统 / 浏览器执行面"]

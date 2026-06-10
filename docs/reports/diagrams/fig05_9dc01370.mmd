@@ -1,0 +1,8 @@
+flowchart TD
+  P["父 run"] -->|spawn_subagent role=?| C["子 run(parentRunId)"]
+  C --> R{role}
+  R -->|researcher| RT["9 只读工具(检索/文献/wiki)"]
+  R -->|analyst| AT["researcher + run_python + render_diagram"]
+  C -. 禁止 .-> X["deep_research / spawn_subagent / ask_user"]
+  RT --> G1["planner 裁剪"] --> G2["执行期守卫"]
+  AT --> G1
