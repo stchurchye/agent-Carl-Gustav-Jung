@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { it, expect, vi, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { deepResearchTool, registerDeepResearch } from '../tools/deepResearch.js';
 import { toolRegistry } from '../toolRegistry.js';
 
@@ -79,7 +80,7 @@ const fakeCtx = {
   signal: new AbortController().signal,
 };
 
-describe('deep_research tool', () => {
+describeDb('deep_research tool', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('registers idempotently', () => {

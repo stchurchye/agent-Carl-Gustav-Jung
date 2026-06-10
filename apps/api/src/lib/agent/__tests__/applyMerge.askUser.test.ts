@@ -5,13 +5,14 @@
  * 必须同时清掉 pending_user_* / ask_user_* —— 否则 owner 去答那个被放弃的
  * 问题时 resumeAgentRun 会因 status!=='awaiting_user_input' 报错，且状态残留。
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { it, expect, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../../db/client.js';
 import { applyMergeInTx } from '../store.js';
 import { ensureUser, ensureGroup } from './_groupFixture.js';
 
-describe('applyMergeInTx into awaiting_user_input run (M7 review fix)', () => {
+describeDb('applyMergeInTx into awaiting_user_input run (M7 review fix)', () => {
   let owner: { id: string };
   let groupId: string;
   let topicId: string;

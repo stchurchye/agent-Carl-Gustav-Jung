@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -18,7 +19,7 @@ async function ensureUser(name: string) {
   });
 }
 
-describe('topic skill prompt-injection defense (M1d T7)', () => {
+describeDb('topic skill prompt-injection defense (M1d T7)', () => {
   beforeAll(async () => await runMigrations());
   beforeEach(async () => {
     await getPool().query('DELETE FROM topic_skills');

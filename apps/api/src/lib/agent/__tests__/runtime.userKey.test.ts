@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -16,7 +17,7 @@ async function ensureUser(name: string) {
   });
 }
 
-describe('createAgentRun persists per-user DeepSeek key (M1d Task 6)', () => {
+describeDb('createAgentRun persists per-user DeepSeek key (M1d Task 6)', () => {
   const ORIGINAL = process.env.AGENT_KEY_SECRET;
   beforeAll(async () => {
     await runMigrations();
@@ -85,7 +86,7 @@ describe('createAgentRun persists per-user DeepSeek key (M1d Task 6)', () => {
  * 让用户能在 UI 看到"你的 key 没用上，走了 server key"的告警。
  * M1e Task 11d 之后接口签名是 (run, providerId)，dedup 维度是 (runId, providerId, code)。
  */
-describe('resolveEffectiveApiKeyForProvider emits notice on degradation (M1e blocker 3 + Task 11d)', () => {
+describeDb('resolveEffectiveApiKeyForProvider emits notice on degradation (M1e blocker 3 + Task 11d)', () => {
   const ORIGINAL_SECRET = process.env.AGENT_KEY_SECRET;
   const ORIGINAL_DS = process.env.DEEPSEEK_API_KEY;
   const ORIGINAL_ZM = process.env.ZENMUX_API_KEY;

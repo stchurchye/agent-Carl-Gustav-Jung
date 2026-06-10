@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -6,7 +7,7 @@ import * as topicSkills from '../topicSkills.js';
 import { ensureUser, ensureGroup } from './_groupFixture.js';
 import { createTopic } from '../../../store/pg-social.js';
 
-describe('topicSkills CRUD', () => {
+describeDb('topicSkills CRUD', () => {
   beforeAll(async () => await runMigrations());
   beforeEach(async () => {
     await getPool().query('DELETE FROM topic_skills');

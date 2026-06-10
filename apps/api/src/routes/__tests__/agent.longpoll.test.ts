@@ -14,7 +14,8 @@
  *   5. jitter 数值落 [20000, 30000] 且有方差
  *   6. 403 / 404 权限
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../testUtils/dbGuard.js';
 import { Hono } from 'hono';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../db/client.js';
@@ -74,7 +75,7 @@ async function readNdjson(resp: Response): Promise<unknown[]> {
     .map((l) => JSON.parse(l));
 }
 
-describe('GET /api/agent/runs/:id/long-poll', { timeout: 40000 }, () => {
+describeDb('GET /api/agent/runs/:id/long-poll', { timeout: 40000 }, () => {
   beforeAll(async () => {
     await runMigrations();
   });

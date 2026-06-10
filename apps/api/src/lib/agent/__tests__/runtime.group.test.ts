@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
 import { registerEchoSleep } from '../tools/echoSleep.js';
@@ -11,7 +12,7 @@ import { ensureUser, ensureGroup, addMember } from './_groupFixture.js';
  * - 跑三步 echo 到 completed，placeholder content/job status 同步更新
  * - 跨成员取消（AC2）：成员（非 owner）取消 owner 发起的群聊任务，应正常 cancelled
  */
-describe('agent runtime group e2e', () => {
+describeDb('agent runtime group e2e', () => {
   beforeAll(async () => {
     await runMigrations();
     registerEchoSleep();

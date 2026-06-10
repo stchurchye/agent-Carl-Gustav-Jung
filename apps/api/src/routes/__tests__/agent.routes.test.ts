@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../testUtils/dbGuard.js';
 import { Hono } from 'hono';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../db/migrate.js';
@@ -19,7 +20,7 @@ import type { AppVariables } from '../../types.js';
  * - 私聊：仅 owner true，其他 false
  * - 群聊：owner true、群成员 true、外人 false
  */
-describe('canAccessRun (T12 routes auth)', () => {
+describeDb('canAccessRun (T12 routes auth)', () => {
   beforeAll(async () => await runMigrations());
   beforeEach(async () => {
     await getPool().query('DELETE FROM agent_steps');
@@ -78,7 +79,7 @@ describe('canAccessRun (T12 routes auth)', () => {
 /**
  * M1b-2: approve/deny/steer 路由的群成员鉴权 + happy path。
  */
-describe('approve/deny/steer routes (M1b-2)', () => {
+describeDb('approve/deny/steer routes (M1b-2)', () => {
   beforeAll(async () => await runMigrations());
   beforeEach(async () => {
     await getPool().query('DELETE FROM agent_steps');
@@ -220,7 +221,7 @@ describe('approve/deny/steer routes (M1b-2)', () => {
 /**
  * M1d Task 3: retry route — terminal 状态可重跑、非 terminal 409、owner/member 鉴权。
  */
-describe('POST /api/agent/runs/:id/retry (M1d)', () => {
+describeDb('POST /api/agent/runs/:id/retry (M1d)', () => {
   beforeAll(async () => await runMigrations());
   beforeEach(async () => {
     await getPool().query('DELETE FROM agent_steps');
@@ -394,7 +395,7 @@ describe('POST /api/agent/runs/:id/retry (M1d)', () => {
  * M1d Task 4: GET /api/agent/runs 列表 — owner runs + 群成员 runs，
  * 不返回外人 / 其它 group 的 run；支持 status / limit 过滤。
  */
-describe('GET /api/agent/runs (M1d task panel)', () => {
+describeDb('GET /api/agent/runs (M1d task panel)', () => {
   beforeAll(async () => await runMigrations());
   beforeEach(async () => {
     await getPool().query('DELETE FROM agent_steps');

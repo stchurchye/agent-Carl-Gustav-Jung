@@ -1,7 +1,8 @@
 /**
  * M7 T4a：dequeueNextOnTopic 测试（TB6 + TB16 集成）。
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { it, expect, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { dequeueNextOnTopic } from '../topicCoord.js';
 import { agentHookBus } from '../hooks.js';
@@ -27,7 +28,7 @@ async function insertRun(opts: {
   return id;
 }
 
-describe('dequeueNextOnTopic (M7 T4a)', () => {
+describeDb('dequeueNextOnTopic (M7 T4a)', () => {
   let owner: { id: string };
   let groupId: string;
   let topicId: string;

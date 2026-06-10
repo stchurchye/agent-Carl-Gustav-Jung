@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { redactSecrets } from '../redact.js';
 import { runMigrations } from '../../../db/migrate.js';
 import * as store from '../store.js';
@@ -10,7 +11,7 @@ import { ensureUser } from './_groupFixture.js';
  * S0：密钥脱敏。落库 step.input 前刮掉用户误粘的密钥（research agent 工具入参常带 key）。
  * 行为 1（tracer）：字符串里的 OpenAI 风格密钥被打码，返回新值、不改原对象。
  */
-describe('redactSecrets', () => {
+describeDb('redactSecrets', () => {
   it('redacts an OpenAI-style secret inside a string and does not mutate input', () => {
     const input = { note: 'use key sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ to call' };
     const out = redactSecrets(input) as { note: string };
@@ -102,7 +103,7 @@ describe('redactSecrets', () => {
  * 但 step.output 保持原始（幂等 replay / extractRef 结构化读它，留到投影点脱敏），
  * 且 toolCallKey 原样（幂等 key 在 recordStep 之前已算好）。
  */
-describe('recordStep redaction', () => {
+describeDb('recordStep redaction', () => {
   beforeAll(async () => {
     await runMigrations();
   });
@@ -150,7 +151,7 @@ describe('recordStep redaction', () => {
   });
 });
 
-describe('redactSecrets robustness', () => {
+describeDb('redactSecrets robustness', () => {
   it('does not stack-overflow on pathologically deep nesting (adversarial tool output)', () => {
     // 外部工具输出是任意 JSON；超深嵌套不该让落库路径崩。
     let deep: unknown = { v: 'x' };

@@ -6,7 +6,8 @@
  *   - findQueuedHeadOnTopic：FIFO 取队首
  *   - countBlockingPlusQueuedOnTopic：union count
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { it, expect, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../../db/client.js';
 import * as store from '../store.js';
@@ -33,7 +34,7 @@ async function insertRunRaw(opts: {
   return id;
 }
 
-describe('store topic slot queries (M7 T2a)', () => {
+describeDb('store topic slot queries (M7 T2a)', () => {
   let owner: { id: string };
   let groupId: string;
   let topicId: string;

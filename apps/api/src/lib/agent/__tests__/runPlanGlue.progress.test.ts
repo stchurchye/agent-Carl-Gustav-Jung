@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -59,7 +60,7 @@ function installPlannerCaptureFetch(intent: string): {
   return { getLast: () => last };
 }
 
-describe('buildProgressSummary 脱敏（送 planner 投影必须刮密钥）', () => {
+describeDb('buildProgressSummary 脱敏（送 planner 投影必须刮密钥）', () => {
   it('成功观察里的密钥不进 progress 摘要（与 digestTail/findings 脱敏纪律一致）', async () => {
     const { buildProgressSummary } = await import('../runPlanGlue.js');
     const SECRET = 'sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ';
@@ -76,7 +77,7 @@ describe('buildProgressSummary 脱敏（送 planner 投影必须刮密钥）', (
   });
 });
 
-describe('readStashedReplanDirective (M1c steer/deny → LLM 重规划)', () => {
+describeDb('readStashedReplanDirective (M1c steer/deny → LLM 重规划)', () => {
   const mkReplan = (reason: string, directive?: string) => ({
     id: 's', runId: 'r', idx: 1, kind: 'replan' as const,
     toolName: null, toolCallKey: null, input: null,
@@ -118,7 +119,7 @@ describe('readStashedReplanDirective (M1c steer/deny → LLM 重规划)', () => 
   });
 });
 
-describe('buildInitialPlan: 续跑重建带「进展摘要」(issue 0001 B2+B3)', () => {
+describeDb('buildInitialPlan: 续跑重建带「进展摘要」(issue 0001 B2+B3)', () => {
   const ORIGINAL_VITEST = process.env.VITEST;
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
   const ORIGINAL_DS = process.env.DEEPSEEK_API_KEY;

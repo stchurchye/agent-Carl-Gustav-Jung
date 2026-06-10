@@ -1,7 +1,8 @@
 /**
  * M3 Task 3：POST /api/agent/runs/:id/resume 路由测试。
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../testUtils/dbGuard.js';
 import { Hono } from 'hono';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../db/migrate.js';
@@ -56,19 +57,16 @@ async function mkAwaitingRun(ownerId: string) {
   return r;
 }
 
-describe('POST /api/agent/runs/:id/resume', () => {
+describeDb('POST /api/agent/runs/:id/resume', () => {
   beforeAll(async () => {
-    if (!process.env.DATABASE_URL) return;
     await runMigrations();
   });
   beforeEach(async () => {
-    if (!process.env.DATABASE_URL) return;
     await getPool().query('DELETE FROM agent_steps');
     await getPool().query('DELETE FROM agent_runs');
   });
 
   it('200: awaiting_user_input → running, returns updated run', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const owner = await ensureUser('resume-owner');
     const run = await mkAwaitingRun(owner.id);
@@ -96,7 +94,6 @@ describe('POST /api/agent/runs/:id/resume', () => {
   });
 
   it('404: run not found', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const owner = await ensureUser('resume-404');
     const token = await tokenFor(owner);
@@ -116,7 +113,6 @@ describe('POST /api/agent/runs/:id/resume', () => {
   });
 
   it('403: non-owner gets forbidden', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const owner = await ensureUser('resume-priv-owner');
     const stranger = await ensureUser('resume-stranger');
@@ -138,7 +134,6 @@ describe('POST /api/agent/runs/:id/resume', () => {
   });
 
   it('409: status is not awaiting_user_input', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const owner = await ensureUser('resume-409');
     const r = await store.insertAgentRun({
@@ -172,7 +167,6 @@ describe('POST /api/agent/runs/:id/resume', () => {
   });
 
   it('400: empty userInput', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const owner = await ensureUser('resume-400');
     const run = await mkAwaitingRun(owner.id);
@@ -193,7 +187,6 @@ describe('POST /api/agent/runs/:id/resume', () => {
   });
 
   it('400: missing userInput field', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const owner = await ensureUser('resume-400b');
     const run = await mkAwaitingRun(owner.id);
@@ -216,7 +209,7 @@ describe('POST /api/agent/runs/:id/resume', () => {
 
 type TestUser = Awaited<ReturnType<typeof ensureUser>>;
 
-describe('M7 T6d ask_user group resume permission', () => {
+describeDb('M7 T6d ask_user group resume permission', () => {
   let owner: TestUser;
   let other: TestUser;
   let outsider: TestUser;

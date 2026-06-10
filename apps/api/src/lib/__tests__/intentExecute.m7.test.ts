@@ -7,7 +7,8 @@
  *   - 两并发 fresh → 串行，只有 1 个 blocking run（R13）
  *   - 跨 owner 60s 后 → type='agent', queued=true, queuePosition=N
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { it, expect, beforeEach } from 'vitest';
+import { describeDb } from '../../testUtils/dbGuard.js';
 import { getPool } from '../../db/client.js';
 import { executeIntent } from '../intentExecute.js';
 import { ensureUser, ensureGroup } from '../agent/__tests__/_groupFixture.js';
@@ -48,7 +49,7 @@ async function countGroupMessages(groupId: string, topicId: string): Promise<num
   return Number(rows[0].c);
 }
 
-describe('intentExecute group agent_run M7', () => {
+describeDb('intentExecute group agent_run M7', () => {
   let owner: { id: string };
   let other: { id: string };
   let groupId: string;

@@ -1,4 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -28,7 +29,7 @@ function ctxFor(ownerId: string) {
   };
 }
 
-describe('docExportMarkdown tool', () => {
+describeDb('docExportMarkdown tool', () => {
   beforeAll(async () => {
     await runMigrations();
     registerDocExportMarkdown();

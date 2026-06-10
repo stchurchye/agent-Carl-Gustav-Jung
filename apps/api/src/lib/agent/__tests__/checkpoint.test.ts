@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import {
   buildCheckpoint,
   checkpointNeedsCompaction,
@@ -76,7 +77,7 @@ const todos: TodoItem[] = [
   { id: 't2', text: '汇总', status: 'pending', stepRefs: [] },
 ];
 
-describe('buildCheckpoint (mechanical)', () => {
+describeDb('buildCheckpoint (mechanical)', () => {
   it('extracts a finding with ref from a successful tool_call and sets producedAtIdx', () => {
     const steps = [
       step({ idx: 0, kind: 'plan' }),
@@ -300,7 +301,7 @@ describe('buildCheckpoint (mechanical)', () => {
   });
 });
 
-describe('buildRichFinding per summaryKind (v4)', () => {
+describeDb('buildRichFinding per summaryKind (v4)', () => {
   it('text 工具：finding 保留最多 2000 字（远超旧版 200 字）', () => {
     const cp = buildCheckpoint(
       null,
@@ -375,7 +376,7 @@ describe('buildRichFinding per summaryKind (v4)', () => {
   });
 });
 
-describe('buildDigestTail 扩容 (v4)', () => {
+describeDb('buildDigestTail 扩容 (v4)', () => {
   const opts = { goal: 'g', intent: 'i', successCount: 0, toolMap };
 
   it('保留最近 8 步而不是 4 步', () => {
@@ -411,7 +412,7 @@ describe('buildDigestTail 扩容 (v4)', () => {
   });
 });
 
-describe('checkpointNeedsCompaction (S5)', () => {
+describeDb('checkpointNeedsCompaction (S5)', () => {
   const base = {
     version: 1 as const, goal: 'g', intent: 'i', remainingPlan: [], openQuestions: [],
     nextStep: '', successCount: 0, producedAtIdx: 0, digestTail: '',
@@ -430,7 +431,7 @@ describe('checkpointNeedsCompaction (S5)', () => {
   });
 });
 
-describe('compactCheckpointViaLlm (S4)', () => {
+describeDb('compactCheckpointViaLlm (S4)', () => {
   const big: AgentCheckpoint = {
     version: 1, goal: '研究 X', intent: 'i',
     completed: Array.from({ length: 10 }, (_, i) => ({ text: `t${i}`, finding: `f${i}`, refs: [] })),
@@ -546,7 +547,7 @@ describe('compactCheckpointViaLlm (S4)', () => {
  * 行为 5（DB 列）：context_checkpoint jsonb 列往返 —— updateAgentRun 写、getAgentRun 读，
  * readLatestCheckpoint 取出结构一致。
  */
-describe('context_checkpoint column round-trip', () => {
+describeDb('context_checkpoint column round-trip', () => {
   beforeAll(async () => {
     await runMigrations();
   });
@@ -592,7 +593,7 @@ describe('context_checkpoint column round-trip', () => {
  * 行为 6（集成）：续跑触发时 runExecute 把 checkpoint 写进 run 列。
  * 复用 continuationReplan 的 harness：单 soft-fail 步 → 进 replanning → 列被写、goal=inputText。
  */
-describe('runExecute writes checkpoint at continuation', () => {
+describeDb('runExecute writes checkpoint at continuation', () => {
   beforeAll(async () => {
     await runMigrations();
   });

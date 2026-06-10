@@ -1,4 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
 import * as store from '../store.js';
@@ -44,7 +45,7 @@ async function freshRun(slug: string) {
   return { run, userId: u.id };
 }
 
-describe('recall_step tool', () => {
+describeDb('recall_step tool', () => {
   beforeAll(async () => {
     await runMigrations();
   });

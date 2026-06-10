@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 
 import { runMigrations } from '../../../db/migrate.js';
@@ -21,7 +22,7 @@ async function ensureUser(name: string) {
  * M1f #5：runtime 必须把 `output.ok === false` 识别为 soft-fail —— 把 error 写到
  * step.error，但 run 整体仍然完成，让 planner / critique 后续可见。
  */
-describe('M1f runtime soft-fail recognition (#5)', () => {
+describeDb('M1f runtime soft-fail recognition (#5)', () => {
   beforeAll(async () => {
     await runMigrations();
   });

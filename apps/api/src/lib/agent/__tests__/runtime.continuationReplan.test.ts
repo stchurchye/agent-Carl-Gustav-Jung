@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -15,7 +16,7 @@ import type { Plan } from '../types.js';
  * (step.todoId===todo.id)且 status !== 'completed' —— 说明计划里这块活没干成,
  * 进 'replanning' 续跑一轮,而不是直接收尾。纯标签 todo(无 step)不触发。
  */
-describe('continuation-replan: plan 跑完但有未完成的 todo → 续跑而非收尾 (issue 0001)', () => {
+describeDb('continuation-replan: plan 跑完但有未完成的 todo → 续跑而非收尾 (issue 0001)', () => {
   beforeAll(async () => {
     await runMigrations();
   });

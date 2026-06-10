@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -34,7 +35,7 @@ async function waitFor<T>(fn: () => Promise<T | null | undefined>, timeoutMs = 2
   throw new Error('waitFor timed out');
 }
 
-describe('logHook', () => {
+describeDb('logHook', () => {
   beforeAll(async () => {
     await runMigrations();
   });

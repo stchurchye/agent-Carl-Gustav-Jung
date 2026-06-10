@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
 import * as store from '../store.js';
@@ -7,7 +8,7 @@ import { registerRiskyEcho, riskyEchoTool } from '../tools/riskyEcho.js';
 import { autoResolveExpiredApprovals } from '../approval.js';
 import { ensureUser } from './_groupFixture.js';
 
-describe('autoResolveExpiredApprovals (worker tick)', () => {
+describeDb('autoResolveExpiredApprovals (worker tick)', () => {
   beforeAll(async () => {
     await runMigrations();
     registerRiskyEcho();

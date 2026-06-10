@@ -6,7 +6,8 @@
  *   - 子 placeholder 仅 1 条 ai 消息（无 human）
  *   - acquireTopicSlot 不被合并（parentRunId 强制 create_fresh）
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { it, expect, beforeEach, vi } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { ensureUser, ensureGroup } from './_groupFixture.js';
 import { randomUUID } from 'crypto';
@@ -22,7 +23,7 @@ vi.mock('../childExecutor.js', () => ({
   }),
 }));
 
-describe('deep_research group child run (M7 TB11)', () => {
+describeDb('deep_research group child run (M7 TB11)', () => {
   let owner: { id: string };
   let groupId: string;
   let topicId: string;

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
@@ -17,7 +18,7 @@ async function ensureUser(): Promise<string> {
 }
 
 // Round-trip test for new columns
-describe('M2 Task 1A: agent_runs new columns', { timeout: 15000 }, () => {
+describeDb('M2 Task 1A: agent_runs new columns', { timeout: 15000 }, () => {
   beforeAll(async () => {
     await runMigrations();
   });

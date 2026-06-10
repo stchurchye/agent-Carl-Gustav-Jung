@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -47,7 +48,7 @@ function installReflectCaptureFetch(goalMet: boolean, reason: string): {
   return { getLast: () => last };
 }
 
-describe('buildStepDigest with checkpoint (S2)', () => {
+describeDb('buildStepDigest with checkpoint (S2)', () => {
   it('prepends accumulated findings from the checkpoint so the judge sees the whole run', async () => {
     const { buildStepDigest } = await import('../reflection.js');
     const digest = buildStepDigest([], {
@@ -103,7 +104,7 @@ describe('buildStepDigest with checkpoint (S2)', () => {
   });
 });
 
-describe('reflectGoalCompletion (issue 0003)', () => {
+describeDb('reflectGoalCompletion (issue 0003)', () => {
   const ORIGINAL_VITEST = process.env.VITEST;
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
   const ORIGINAL_DS = process.env.DEEPSEEK_API_KEY;

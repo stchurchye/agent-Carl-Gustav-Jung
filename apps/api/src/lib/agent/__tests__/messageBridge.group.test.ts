@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -12,7 +13,7 @@ import { ensureUser, ensureGroup } from './_groupFixture.js';
  * T8: 群聊 message bridge 集成测试。
  * 验证写入 invoke + placeholderAi + llm_invoke_jobs 三方关联，以及 finalize 终态写回。
  */
-describe('messageBridge group placeholder', () => {
+describeDb('messageBridge group placeholder', () => {
   beforeAll(async () => await runMigrations());
 
   beforeEach(async () => {

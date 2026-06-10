@@ -2,7 +2,8 @@
  * M1e Task 12: 验证 intentExecute 把 agentOptions.providerId/modelId 透传到
  * createAgentRun → agent_runs 表，并按 providerId 选择正确的 user-key 落盘列。
  */
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it } from 'vitest';
+import { describeDb } from '../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../db/migrate.js';
 import { getPool } from '../../db/client.js';
@@ -20,7 +21,7 @@ async function ensureUser(name: string) {
   });
 }
 
-describe('executeIntent(agent_run) honors agentOptions (M1e Task 12)', () => {
+describeDb('executeIntent(agent_run) honors agentOptions (M1e Task 12)', () => {
   const ORIGINAL_SECRET = process.env.AGENT_KEY_SECRET;
 
   beforeAll(async () => {

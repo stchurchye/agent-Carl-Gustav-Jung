@@ -1,8 +1,9 @@
-import { describe, expect, it, beforeAll } from 'vitest';
+import { expect, it, beforeAll } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
 
-describe('012_agent_runtime migration', () => {
+describeDb('012_agent_runtime migration', () => {
   beforeAll(async () => {
     await runMigrations();
   });

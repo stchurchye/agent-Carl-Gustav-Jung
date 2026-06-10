@@ -10,6 +10,7 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:pg": "node -e \"if(!(process.env.DATABASE_URL||'').trim()){console.error('test:pg 需要 DATABASE_URL(docker compose up -d postgres + .env),拒绝静默跳过 DB 测试');process.exit(1)}\" && vitest run",
     "test:watch": "vitest",
     "lint:agent-tools": "eslint 'src/lib/agent/tools/**/*.ts'",
     "lint": "npm run lint:agent-tools"

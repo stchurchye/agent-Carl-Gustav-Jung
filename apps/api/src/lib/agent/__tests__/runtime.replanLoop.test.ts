@@ -1,4 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 
 import { runMigrations } from '../../../db/migrate.js';
@@ -66,7 +67,7 @@ function makePlan(opts: {
   };
 }
 
-describe('applyReplanningIfNeeded: critique branch clears plan (M1f polish #1 finish)', () => {
+describeDb('applyReplanningIfNeeded: critique branch clears plan (M1f polish #1 finish)', () => {
   beforeAll(async () => {
     await runMigrations();
     // e2e 测试要让 buildInitialPlan 重生成出可执行的 echo plan,

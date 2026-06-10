@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll } from 'vitest';
+import { expect, it, beforeAll } from 'vitest';
+import { describeDb } from '../../testUtils/dbGuard.js';
 import { runMigrations } from '../migrate.js';
 import { getPool } from '../client.js';
 
@@ -11,7 +12,7 @@ import { getPool } from '../client.js';
  *    * topic_skills 表 (M1b)
  *    * agent_event_logs 表 (013)
  */
-describe('db migrations smoke', () => {
+describeDb('db migrations smoke', () => {
   beforeAll(async () => {
     await runMigrations();
     // 第二次跑应该完全是 no-op

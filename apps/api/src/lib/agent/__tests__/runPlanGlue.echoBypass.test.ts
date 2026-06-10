@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -62,7 +63,7 @@ function installPlannerCaptureFetch(intent: string): { called: () => boolean } {
   return { called: () => saw };
 }
 
-describe('buildInitialPlan: /echo 输入旁路修复 (issue 0004)', () => {
+describeDb('buildInitialPlan: /echo 输入旁路修复 (issue 0004)', () => {
   const ORIGINAL_VITEST = process.env.VITEST;
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
   const ORIGINAL_DS = process.env.DEEPSEEK_API_KEY;
