@@ -147,3 +147,32 @@ describe('agent-memory panel · K8 群池 scope + 纠错/真伪', () => {
     expect(markTruthMem).not.toHaveBeenCalled();
   });
 });
+
+// ───────────── K9b F4:健壮性(畸形 JSON / 未知 scope) ─────────────
+
+describe('agent-memory panel · F4 健壮性', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('畸形 JSON body → 400(而非 500),不打 MAGI', async () => {
+    const res = await appAs('userA').request('/api/agent-memory/decide', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{not json',
+    });
+    expect(res.status).toBe(400);
+    expect(decideMem).not.toHaveBeenCalled();
+  });
+
+  it('未知 scope(非 me/group)→ 400(而非静默落个人池)', async () => {
+    const res = await appAs('userA').request('/api/agent-memory/list?scope=topic&groupId=g1');
+    expect(res.status).toBe(400);
+    expect(listMem).not.toHaveBeenCalled();
+  });
+
+  it('scope=me 显式仍走个人池(owner=JWT)', async () => {
+    listMem.mockResolvedValue([]);
+    const res = await appAs('userA').request('/api/agent-memory/list?scope=me');
+    expect(res.status).toBe(200);
+    expect(listMem).toHaveBeenCalledWith('userA', undefined);
+  });
+});

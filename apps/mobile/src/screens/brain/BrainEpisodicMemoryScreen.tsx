@@ -76,6 +76,23 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
       .catch((e) => Alert.alert('失败', apiErrorText(e).message));
   };
 
+  // F1:恢复要兼顾两条正交轴 —— 时效轴(valid_until)先 revalidate;若该条还在评审轴上
+  // 是 rejected(revalidate 回传 status==='rejected'),再补 decide(approve)。仅评审轴失效
+  // (validUntil=null)则只 decide。否则"恢复"会静默半失败(改了状态但记忆仍因失效不可召回)。
+  const restore = (item: AgentMemoryItem) => {
+    const run = async () => {
+      if (item.validUntil != null) {
+        const res = await api.revalidateAgentMemory(item.id);
+        if (res.data.status === 'rejected') await api.decideAgentMemory(item.id, 'approve');
+      } else {
+        await api.decideAgentMemory(item.id, 'approve');
+      }
+    };
+    void run()
+      .then(load)
+      .catch((e) => Alert.alert('失败', apiErrorText(e).message));
+  };
+
   const promote = (id: number) => {
     void api
       .promoteAgentMemory(id)
@@ -141,7 +158,12 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
                 ) : it.kind === 'insight' ? (
                   <Text style={[styles.badge, styles.insightBadge]}>洞见</Text>
                 ) : null}
-                {it.truthStatus !== 'unverified' ? (
+                {/* F1:时效轴失效标(与评审 status 正交;approved 也可能已失效) */}
+                {it.validUntil != null ? (
+                  <Text style={[styles.badge, styles.invalidBadge]}>已失效</Text>
+                ) : null}
+                {/* F5:只渲染已知真伪值(未知值当 unverified,不出空文字徽标) */}
+                {TRUTH_LABEL[it.truthStatus] ? (
                   <Text
                     style={[
                       styles.badge,
@@ -198,7 +220,7 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
                 <View style={styles.actions}>
                   <Pressable
                     style={[styles.btn, styles.approve]}
-                    onPress={() => decide(it.id, 'approve')}
+                    onPress={() => restore(it)}
                   >
                     <Text style={styles.btnText}>恢复</Text>
                   </Pressable>
@@ -219,7 +241,17 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
                   </Pressable>
                 </View>
               ) : it.promotedAt ? (
-                <Text style={styles.promoted}>已升格到核心记忆</Text>
+                // F2:升格进核心后也要能纠错(否则错误结论永驻 always-on 注入)。
+                // 「标记错误」reject 此条;核心层副本由 promote 的补偿链(unpromote)兜。
+                <View style={styles.actions}>
+                  <Text style={styles.promoted}>已升格到核心记忆</Text>
+                  <Pressable
+                    style={[styles.btn, styles.reject]}
+                    onPress={() => decide(it.id, 'reject')}
+                  >
+                    <Text style={styles.btnText}>标记错误</Text>
+                  </Pressable>
+                </View>
               ) : (
                 <View style={styles.actions}>
                   {/* finding 不升格(研究结论留情景层);可标真伪 */}
@@ -296,6 +328,7 @@ const styles = StyleSheet.create({
   findingBadge: { color: '#fff', backgroundColor: '#3a7ca5' },
   disputedBadge: { color: '#fff', backgroundColor: '#e0a800' },
   refutedBadge: { color: '#fff', backgroundColor: '#d9534f' },
+  invalidBadge: { color: '#fff', backgroundColor: '#888' },
   truthNote: { fontSize: typography.caption, color: '#b9770e', marginTop: 4 },
   sourceLink: { fontSize: typography.caption, color: colors.primary, marginTop: 4 },
   counterLink: { color: '#d9534f' },

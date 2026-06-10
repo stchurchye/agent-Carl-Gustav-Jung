@@ -21,9 +21,19 @@ import type { AppVariables } from '../types.js';
  */
 export const agentMemoryPanelRouter = new Hono<{ Variables: AppVariables }>();
 
+/** 安全解析 JSON body:畸形 → null(调用方返 400,而非让 Hono 抛成 500)。 */
+async function safeJson<T>(c: { req: { json: () => Promise<unknown> } }): Promise<T | null> {
+  try {
+    return (await c.req.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 解析评审 owner(个人 or 群池),含群成员校验。
  * 返回 owner 字符串;非法/越权返回 { error, status }。
+ * scope 仅接受 undefined/'me'(个人池)或 'group'(群池);其它值 → 400(不静默落个人池)。
  */
 async function resolveReviewOwner(
   userId: string,
@@ -36,6 +46,9 @@ async function resolveReviewOwner(
       return { error: '非该群成员,无权访问群组记忆', status: 403 };
     }
     return { owner: groupPoolOwner(groupId) };
+  }
+  if (scope !== undefined && scope !== 'me') {
+    return { error: `invalid scope '${scope}' (expected me|group)`, status: 400 };
   }
   return { owner: userId };
 }
@@ -53,12 +66,13 @@ agentMemoryPanelRouter.get('/list', async (c) => {
 agentMemoryPanelRouter.post('/decide', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ ok: false, message: '请先登录' }, 401);
-  const body = await c.req.json<{
+  const body = await safeJson<{
     id: number;
     decision: 'approve' | 'reject';
     scope?: string;
     groupId?: string;
-  }>();
+  }>(c);
+  if (!body) return c.json({ ok: false, message: '请求体不是合法 JSON' }, 400);
   const resolved = await resolveReviewOwner(userId, body.scope, body.groupId);
   if ('error' in resolved) return c.json({ ok: false, message: resolved.error }, resolved.status);
   const result = await decideAgentMemory(resolved.owner, body.id, body.decision);
@@ -68,7 +82,8 @@ agentMemoryPanelRouter.post('/decide', async (c) => {
 agentMemoryPanelRouter.post('/promote', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ ok: false, message: '请先登录' }, 401);
-  const body = await c.req.json<{ id: number }>();
+  const body = await safeJson<{ id: number }>(c);
+  if (!body) return c.json({ ok: false, message: '请求体不是合法 JSON' }, 400);
   // 升格只针对**个人**记忆(原生核心是 per-user always-on);群池不升格。owner=JWT。
   const result = await promoteMemoryToNative(userId, body.id);
   return c.json({ ok: true, data: result, requestId: c.get('requestId') });
@@ -77,7 +92,8 @@ agentMemoryPanelRouter.post('/promote', async (c) => {
 agentMemoryPanelRouter.post('/revalidate', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ ok: false, message: '请先登录' }, 401);
-  const body = await c.req.json<{ id: number; scope?: string; groupId?: string }>();
+  const body = await safeJson<{ id: number; scope?: string; groupId?: string }>(c);
+  if (!body) return c.json({ ok: false, message: '请求体不是合法 JSON' }, 400);
   const resolved = await resolveReviewOwner(userId, body.scope, body.groupId);
   if ('error' in resolved) return c.json({ ok: false, message: resolved.error }, resolved.status);
   const result = await revalidateAgentMemory(resolved.owner, body.id);
@@ -87,14 +103,15 @@ agentMemoryPanelRouter.post('/revalidate', async (c) => {
 agentMemoryPanelRouter.post('/mark-truth', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ ok: false, message: '请先登录' }, 401);
-  const body = await c.req.json<{
+  const body = await safeJson<{
     id: number;
     truthStatus: 'unverified' | 'disputed' | 'refuted';
     truthNote?: string;
     counterSources?: MemorySource[];
     scope?: string;
     groupId?: string;
-  }>();
+  }>(c);
+  if (!body) return c.json({ ok: false, message: '请求体不是合法 JSON' }, 400);
   const resolved = await resolveReviewOwner(userId, body.scope, body.groupId);
   if ('error' in resolved) return c.json({ ok: false, message: resolved.error }, resolved.status);
   const opts: { truthNote?: string; counterSources?: MemorySource[] } = {};
