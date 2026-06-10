@@ -1,8 +1,8 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
 import * as store from '../store.js';
-import { runChildSubagent, type SubagentCitation } from '../spawnSubagent.js';
+import { MAX_CITATIONS, runChildSubagent, subagentCitationsToRefs, type SubagentCitation } from '../spawnSubagent.js';
 import { SPAWNABLE_SUBAGENT_ROLES } from '../subagentTools.js';
-import { isReplyRefKind, type AgentRole, type ReplyRef } from '../types.js';
+import type { AgentRole } from '../types.js';
 
 type SpawnSubagentInput = {
   /** 单子任务(与 tasks 二选一,tasks 优先)。 */
@@ -66,14 +66,10 @@ export const spawnSubagentTool: ToolDef<SpawnSubagentInput, SpawnSubagentOutput>
   idempotent: false,
   replyMeta: {
     summaryKind: 'text',
-    // S1(K 战役):子 run 真引用回流父资源清单(扇出模式已按 kind:id 去重;量由子级 MAX_CITATIONS 限定)。
-    extractRefs: (output) => {
-      const o = output as SpawnSubagentOutput | null;
-      if (!o?.ok) return [];
-      return (o.citations ?? [])
-        .filter((c): c is SubagentCitation & { kind: ReplyRef['kind'] } => isReplyRefKind(c?.kind))
-        .map((c) => ({ kind: c.kind, id: c.id, ...(c.label ? { label: c.label } : {}) }));
-    },
+    // K1:合成报告类发现 —— checkpoint 折叠时不被"引用全已见"吞掉(报告是新内容)。
+    checkpointFindingKind: 'synthesis',
+    // K1:子 run 真引用回流父资源清单(单 task 由子级、扇出由聚合处统一限 MAX_CITATIONS)。
+    extractRefs: (output) => subagentCitationsToRefs(output as SpawnSubagentOutput | null),
     failureHint:
       'spawn_subagent 失败：子 agent 超时/工具不可用/子任务范围太大/role 非法。可缩小子任务范围、换 role，或改用串行工具。',
   },
@@ -151,6 +147,8 @@ export const spawnSubagentTool: ToolDef<SpawnSubagentInput, SpawnSubagentOutput>
             : `## 子任务:${task}\n\n(该子任务失败:${res.error ?? 'unknown'})`,
         )
         .join('\n\n');
+      // K1:聚合后再统一限量 —— 每子各≤10,5 任务可达 50 条,不截会冲垮父资源清单
+      // (filterCitedRefs 无 [n] 标记时 fail-open 全保留)。
       const seen = new Set<string>();
       const citations: SubagentCitation[] = [];
       for (const { res } of settled) {
@@ -161,6 +159,7 @@ export const spawnSubagentTool: ToolDef<SpawnSubagentInput, SpawnSubagentOutput>
           citations.push(c);
         }
       }
+      citations.splice(MAX_CITATIONS);
       return {
         ok: succeeded.length > 0,
         role,

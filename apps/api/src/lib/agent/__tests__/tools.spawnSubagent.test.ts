@@ -133,6 +133,56 @@ describe('spawn_subagent tool (M3-S1)', () => {
     ]);
   });
 
+  it('citations 只回流 url 类——子 run 的 diagram/document 产物不冒充父交付物', async () => {
+    const childMixedRefs = {
+      ...CHILD_COMPLETED,
+      artifact: {
+        finalContent: '报告',
+        refs: [
+          { kind: 'diagram' as const, id: 'dg-1', label: '中间草图' },
+          { kind: 'url' as const, id: 'https://a.com/p', label: 'Paper' },
+          { kind: 'document' as const, id: 'doc-1', label: '子导出' },
+        ],
+        model: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+        producedAt: new Date().toISOString(),
+      },
+    };
+    vi.mocked(store.getAgentRun)
+      .mockResolvedValueOnce(PARENT_RUN)
+      .mockResolvedValueOnce(childMixedRefs);
+    vi.mocked(createAgentRun).mockResolvedValueOnce({
+      run: { ...childMixedRefs, status: 'running' as const }, userMessageId: null, placeholderMessageId: null, llmJobId: null,
+    } as never);
+    vi.mocked(store.listSteps).mockResolvedValueOnce([]);
+
+    const out = await spawnSubagentTool.handler({ task: '查文献', role: 'researcher' }, fakeCtx);
+    expect(out.citations).toEqual([{ kind: 'url', id: 'https://a.com/p', label: 'Paper' }]);
+  });
+
+  it('report 取自 artifact.finalContent 且子 run 的 [n] 引用标记被剥离（防父清单错误解引）', async () => {
+    const childWithMarkers = {
+      ...CHILD_COMPLETED,
+      artifact: {
+        finalContent: '损失厌恶系数约 2.25 [1]，后续研究有争议 [12]。',
+        refs: [{ kind: 'url' as const, id: 'https://a.com/p', label: 'P' }],
+        model: { providerId: 'deepseek', modelId: 'deepseek-chat' },
+        producedAt: new Date().toISOString(),
+      },
+    };
+    vi.mocked(store.getAgentRun)
+      .mockResolvedValueOnce(PARENT_RUN)
+      .mockResolvedValueOnce(childWithMarkers);
+    vi.mocked(createAgentRun).mockResolvedValueOnce({
+      run: { ...childWithMarkers, status: 'running' as const }, userMessageId: null, placeholderMessageId: null, llmJobId: null,
+    } as never);
+    // artifact.finalContent 在手 → 不应再为取报告全量拉 steps
+    vi.mocked(store.listSteps).mockResolvedValueOnce([]);
+
+    const out = await spawnSubagentTool.handler({ task: '查文献', role: 'researcher' }, fakeCtx);
+    expect(out.report).toBe('损失厌恶系数约 2.25，后续研究有争议。');
+    expect(store.listSteps).not.toHaveBeenCalled();
+  });
+
   it('子 run 引用超 10 条时截到 10（防洪）', async () => {
     const manyRefs = Array.from({ length: 14 }, (_, i) => ({
       kind: 'url' as const, id: `https://example.com/${i}`, label: `Ref ${i}`,

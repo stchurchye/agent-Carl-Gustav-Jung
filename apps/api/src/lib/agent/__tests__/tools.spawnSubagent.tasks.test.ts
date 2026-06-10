@@ -10,7 +10,9 @@ let maxConcurrent = 0;
 let inFlight = 0;
 let failTasks: string[] = [];
 
-vi.mock('../spawnSubagent.js', () => ({
+vi.mock('../spawnSubagent.js', async (importOriginal) => ({
+  // K1:工具还从本模块 import MAX_CITATIONS/subagentCitationsToRefs,保留真实现
+  ...(await importOriginal<typeof import('../spawnSubagent.js')>()),
   runChildSubagent: vi.fn(async ({ task }: { task: string }) => {
     inFlight++;
     maxConcurrent = Math.max(maxConcurrent, inFlight);
@@ -116,5 +118,25 @@ describe('R3-2:tasks[] 并行扇出', () => {
     };
     expect(out.ok).toBe(false);
     expect(out.error).toMatch(/task/);
+  });
+
+  it('K1:扇出聚合后 citations 总量≤10（每子≤10 但 5 任务可达 50,需总帽防洪）', async () => {
+    const { runChildSubagent } = await import('../spawnSubagent.js');
+    vi.mocked(runChildSubagent).mockImplementation(async ({ task }: never) => ({
+      ok: true,
+      report: `r-${task}`,
+      citations: Array.from({ length: 10 }, (_, i) => ({
+        kind: 'url', id: `https://${task}.example/${i}`,
+      })),
+      stepsUsed: 1,
+      childRunId: `child-${task}`,
+    }) as never);
+
+    const out = (await spawnSubagentTool.handler(
+      { tasks: ['角度A', '角度B', '角度C'], role: 'researcher' },
+      ctx,
+    )) as never as { ok: boolean; citations: unknown[] };
+    expect(out.ok).toBe(true);
+    expect(out.citations).toHaveLength(10); // 30 条去重后仍 30,总帽截到 10
   });
 });

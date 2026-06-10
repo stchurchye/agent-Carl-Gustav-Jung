@@ -94,7 +94,12 @@ export function buildCheckpoint(
       finding: buildRichFinding(s, tool),
       refs: collectReplyRefs([s], opts.toolMap),
       // 折叠时就钉死类别 —— LLM 压缩可改写 text,toolMap 查找会失效(review S7 #2)。
-      kind: (tool?.replyMeta?.summaryKind === 'list' ? 'list' : 'content') as 'list' | 'content',
+      // K1:工具显式声明 synthesis(spawn 类合成报告)优先;否则按 summaryKind 推断。
+      kind: (tool?.replyMeta?.checkpointFindingKind ??
+        (tool?.replyMeta?.summaryKind === 'list' ? 'list' : 'content')) as
+        | 'list'
+        | 'content'
+        | 'synthesis',
     };
   });
 
@@ -111,6 +116,11 @@ export function buildCheckpoint(
   // 跳过规则:内容类发现仅当其全部 ref 已被**内容类**登记才丢(fetch 重抓同 URL、
   // review #4 合并条目重折 → 仍去重;深读搜索列过的 URL → 保留,内容是新的);
   // 列举类发现的全部 ref 被任一类登记过即丢(重复列举无新来源)。
+  // K1:synthesis(spawn 类合成报告)第三类 —— 报告引用了来源但**不是**任何来源的内容,
+  // 永不被"ref 全已见"吞掉(否则引用全与早先深读重叠的研究报告会从 checkpoint 消失);
+  // 其 refs 登记进列举侧("来源已提及"),之后深读这些来源仍算新内容。
+  // 已知取舍:document_reader 深读 fetch_url 已抓过的同 URL 仍走内容去重(同 URL 重抓
+  // 去重是既有设计;不同工具的抽取质量差异不在 checkpoint 层分辨,digestTail 兜近窗)。
   const seenListRefs = new Set<string>();
   const seenContentRefs = new Set<string>();
   const completed: CheckpointFinding[] = [];
@@ -118,16 +128,21 @@ export function buildCheckpoint(
     const ids = f.refs.map((r) => `${r.kind}:${r.id}`);
     // 类别优先用折叠时钉死的 f.kind(扛 LLM 压缩改写 text);旧行无 kind 再回退 toolMap;
     // 都查不到(合并条目)→ content(安全侧:深读不被吞,重复列举仍被 list∪content 去重)。
+    const isSynthesis =
+      f.kind === 'synthesis' ||
+      (f.kind == null && opts.toolMap.get(f.text)?.replyMeta?.checkpointFindingKind === 'synthesis');
     const isListFinding =
-      f.kind === 'list' ||
-      (f.kind == null && opts.toolMap.get(f.text)?.replyMeta?.summaryKind === 'list');
+      !isSynthesis &&
+      (f.kind === 'list' ||
+        (f.kind == null && opts.toolMap.get(f.text)?.replyMeta?.summaryKind === 'list'));
     const allSeen =
+      !isSynthesis &&
       ids.length > 0 &&
       (isListFinding
         ? ids.every((id) => seenListRefs.has(id) || seenContentRefs.has(id))
         : ids.every((id) => seenContentRefs.has(id)));
     if (allSeen) continue;
-    for (const id of ids) (isListFinding ? seenListRefs : seenContentRefs).add(id);
+    for (const id of ids) (isSynthesis || isListFinding ? seenListRefs : seenContentRefs).add(id);
     completed.push(f);
   }
 

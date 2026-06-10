@@ -220,6 +220,55 @@ describe('buildCheckpoint (mechanical)', () => {
     expect(allIds).toContain('https://c.com'); // 仅在第二条出现的来源 C 不丢
   });
 
+  it('K1:合成报告(synthesis)引用全部已被内容登记 → 仍保留(报告是新内容,不是来源的内容)', () => {
+    const drTool = {
+      name: 'deep_research',
+      replyMeta: {
+        summaryKind: 'text',
+        checkpointFindingKind: 'synthesis',
+        extractRefs: (raw: unknown) =>
+          ((raw as { citations?: Array<{ kind: 'url'; id: string }> } | null)?.citations ?? []),
+      },
+    } as unknown as ToolDef;
+    const map = new Map<string, ToolDef>([['fetch_url', urlTool], ['deep_research', drTool]]);
+    const cp = buildCheckpoint(
+      null,
+      [
+        // 父 run 先深读了 X(content 登记 url:X)
+        step({ idx: 1, kind: 'tool_call', toolName: 'fetch_url', output: { result: { ok: true, url: 'https://x.com' } } }),
+        // 随后 deep_research 的报告恰好只引用 X —— 报告本身是合成的新内容,不能被吞
+        step({ idx: 2, kind: 'tool_call', toolName: 'deep_research', output: { result: { ok: true, report: '综合分析…', citations: [{ kind: 'url', id: 'https://x.com' }] } } }),
+      ],
+      todos,
+      { goal: 'g', intent: 'i', successCount: 2, toolMap: map },
+    );
+    expect(cp.completed).toHaveLength(2);
+    expect(cp.completed[1]!.kind).toBe('synthesis');
+  });
+
+  it('K1:synthesis 引用过的来源,之后被 fetch_url 深读 → 深读保留(引用≠内容已折叠)', () => {
+    const drTool = {
+      name: 'deep_research',
+      replyMeta: {
+        summaryKind: 'text',
+        checkpointFindingKind: 'synthesis',
+        extractRefs: (raw: unknown) =>
+          ((raw as { citations?: Array<{ kind: 'url'; id: string }> } | null)?.citations ?? []),
+      },
+    } as unknown as ToolDef;
+    const map = new Map<string, ToolDef>([['fetch_url', urlTool], ['deep_research', drTool]]);
+    const cp = buildCheckpoint(
+      null,
+      [
+        step({ idx: 1, kind: 'tool_call', toolName: 'deep_research', output: { result: { ok: true, report: 'R', citations: [{ kind: 'url', id: 'https://x.com' }] } } }),
+        step({ idx: 2, kind: 'tool_call', toolName: 'fetch_url', output: { result: { ok: true, url: 'https://x.com' } } }),
+      ],
+      todos,
+      { goal: 'g', intent: 'i', successCount: 2, toolMap: map },
+    );
+    expect(cp.completed).toHaveLength(2); // 深读不被 synthesis 的引用挡掉
+  });
+
   it('does NOT dedup ref-less findings (distinct steps are distinct findings even if summary identical)', () => {
     // 无 extractRef 的工具：两次成功调用、输出相同 → 应是 2 条 finding（每步独立）
     const plainTool = { name: 'run_python', replyMeta: { summaryKind: 'text' } } as unknown as ToolDef;

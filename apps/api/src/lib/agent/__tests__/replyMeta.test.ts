@@ -243,6 +243,31 @@ describe('M1f collectReplyRefs / summarizeStepOutput', () => {
     expect(failRefs).toEqual([]);
   });
 
+  it('citation 缺 id/空 id 不产 ref（extractRefs 跑在 DB 回读数据上,形状不可信）', () => {
+    const refs = collectReplyRefs(
+      [
+        fakeStep('deep_research', {
+          result: {
+            ok: true, report: 'r', stepsUsed: 1, childRunId: 'c',
+            citations: [
+              { kind: 'url' }, // 缺 id
+              { kind: 'url', id: '' }, // 空 id
+              { kind: 'url', id: 'https://ok.example/1' },
+            ],
+          },
+          retried: false,
+        }),
+      ],
+      new Map([[deepResearchTool.name, deepResearchTool as ToolDef]]),
+    );
+    expect(refs).toEqual([{ kind: 'url', id: 'https://ok.example/1' }]);
+  });
+
+  it('spawn 类工具声明 synthesis 发现类别(checkpoint 不被 ref 覆盖率吞报告)', () => {
+    expect(deepResearchTool.replyMeta?.checkpointFindingKind).toBe('synthesis');
+    expect(spawnSubagentTool.replyMeta?.checkpointFindingKind).toBe('synthesis');
+  });
+
   it('deep_research 失败输出不产 ref', () => {
     const refs = collectReplyRefs(
       [

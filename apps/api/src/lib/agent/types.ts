@@ -275,7 +275,14 @@ export type ReplyRef = {
   label?: string;
 };
 
-const REPLY_REF_KINDS: ReadonlySet<string> = new Set(['document', 'url', 'magi_card', 'diagram']);
+// Record<ReplyRef['kind'], true> 双向穷尽:union 加新 kind 漏更这里会编译报错(防静默漏滤)。
+const REPLY_REF_KIND_FLAGS: Record<ReplyRef['kind'], true> = {
+  document: true,
+  url: true,
+  magi_card: true,
+  diagram: true,
+};
+const REPLY_REF_KINDS: ReadonlySet<string> = new Set(Object.keys(REPLY_REF_KIND_FLAGS));
 
 /** 宽 string(如 SubagentCitation.kind)收窄为 ReplyRef['kind'] 的运行时守卫。 */
 export function isReplyRefKind(kind: unknown): kind is ReplyRef['kind'] {
@@ -301,8 +308,10 @@ export type CheckpointFinding = {
    * P0-S7:折叠时按工具 summaryKind 记下的发现类别(list=来源列举/content=内容深读),
    * 供 buildCheckpoint 双类去重 —— LLM 压缩可能改写 text 导致 toolMap 查不到,
    * 此字段让类别不随 text 漂移。可选:旧行/LLM 合并条目无此字段 → 按 content 处理(安全侧)。
+   * K1 增补 'synthesis':spawn 类工具的合成报告 —— 引用来源但不是来源的内容,
+   * 永不被"ref 全已见"吞掉,refs 只登记为"来源已提及"(列举侧)。
    */
-  kind?: 'list' | 'content';
+  kind?: 'list' | 'content' | 'synthesis';
 };
 export type AgentCheckpoint = {
   version: 1;
