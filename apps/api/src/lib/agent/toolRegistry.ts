@@ -47,6 +47,12 @@ export type ToolReplyMeta = {
     id: string;
     label?: string;
   }>;
+  /**
+   * K1:checkpoint 折叠时的发现类别声明。'synthesis' = 输出是**合成报告**(spawn 类工具),
+   * 引用了来源但不是任何单一来源的内容 —— 不参与"ref 全已见→整条丢弃"的内容去重,
+   * 其 refs 只登记为"来源已提及"。缺省按 summaryKind 推断(list→列举,其余→内容)。
+   */
+  checkpointFindingKind?: 'synthesis';
   failureHint?: string;
 };
 

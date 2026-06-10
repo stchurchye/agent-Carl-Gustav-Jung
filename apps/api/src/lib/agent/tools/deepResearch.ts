@@ -1,6 +1,6 @@
 import { toolRegistry, type ToolDef } from '../toolRegistry.js';
 import * as store from '../store.js';
-import { runChildSubagent, type SubagentCitation } from '../spawnSubagent.js';
+import { runChildSubagent, subagentCitationsToRefs, type SubagentCitation } from '../spawnSubagent.js';
 
 type DeepResearchInput = {
   question: string;
@@ -34,6 +34,10 @@ export const deepResearchTool: ToolDef<DeepResearchInput, DeepResearchOutput> = 
   idempotent: false,
   replyMeta: {
     summaryKind: 'text',
+    // K1:合成报告类发现 —— checkpoint 折叠时不被"引用全已见"吞掉(报告是新内容)。
+    checkpointFindingKind: 'synthesis',
+    // K1:子 run 的真引用(已过 filterCitedRefs、url 类、≤MAX_CITATIONS)回流父资源清单。
+    extractRefs: (output) => subagentCitationsToRefs(output as DeepResearchOutput | null),
     failureHint:
       'deep_research 失败：子 agent 超时/工具不可用/子任务范围太大。可改用 search_papers + fetch_url 串行，或缩小问题范围重试。',
   },

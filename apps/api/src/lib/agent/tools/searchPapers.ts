@@ -59,6 +59,12 @@ function decodeInvertedAbstract(inv: Record<string, number[]> | null | undefined
   return positions.map(([, w]) => w).join(' ').slice(0, ABSTRACT_CAP);
 }
 
+/** S1(K 战役):ref label 带年份 —— "Title (2019)",供终稿资源清单/checkpoint/蒸馏溯源更可辨。 */
+function paperRefLabel(p: Paper): string {
+  if (!p.title) return p.url;
+  return p.year ? `${p.title} (${p.year})` : p.title;
+}
+
 function mapOpenAlexWork(w: any): Paper {
   const rawId = String(w.id ?? '');
   const id = rawId.replace('https://openalex.org/', '');
@@ -167,7 +173,7 @@ export const searchPapersTool: ToolDef<SearchPapersInput, SearchPapersOutput> = 
       return papers
         .filter((p) => typeof p?.url === 'string' && p.url.length > 0)
         .slice(0, SEARCH_REF_TOP_N)
-        .map((p) => ({ kind: 'url' as const, id: p.url, label: p.title || p.url }));
+        .map((p) => ({ kind: 'url' as const, id: p.url, label: paperRefLabel(p) }));
     },
     failureHint:
       'OpenAlex / CrossRef 都失败可能是网络或上游故障。可换关键词；如学术词不出结果可改 search_web 走通用搜索。',
@@ -246,7 +252,7 @@ export const getPaperCitationsTool: ToolDef<
       return citations
         .filter((p) => typeof p?.url === 'string' && p.url.length > 0)
         .slice(0, SEARCH_REF_TOP_N)
-        .map((p) => ({ kind: 'url' as const, id: p.url, label: p.title || p.url }));
+        .map((p) => ({ kind: 'url' as const, id: p.url, label: paperRefLabel(p) }));
     },
     failureHint:
       '论文 ID 可能不存在或非 OpenAlex 格式（W 开头）。可先用 search_papers 拿到合法 id 再查引用。',
