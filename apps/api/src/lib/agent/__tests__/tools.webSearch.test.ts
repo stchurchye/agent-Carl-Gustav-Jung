@@ -129,6 +129,68 @@ describe('webSearch tool', () => {
     expect(kBasic).not.toBe(kAdv);
   });
 
+  // R1-2(实测驱动):生造词 query 实测不返回 0 条,而是 5 条 score<0.2 的垃圾,
+  // Tavily answer 还会对生造词编故事;正经 query 实测 score>0.7。
+  // → score 透传 + 全低分标 low_relevance + 丢弃幻觉 answer + 空结果标 empty。
+  it('R1-2:score 透传;全部低分 → quality=low_relevance + note 提示换词 + 丢弃 answer', async () => {
+    vi.stubEnv('TAVILY_API_KEY', 'tk');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            answer: '一本正经的编造解释',
+            results: [
+              { title: '垃圾A', url: 'https://a', content: 'x', score: 0.17 },
+              { title: '垃圾B', url: 'https://b', content: 'x', score: 0.05 },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+    const out = await webSearchTool.handler({ query: '生造词' }, fakeCtx);
+    expect(out.results[0].score).toBe(0.17);
+    expect(out.quality).toBe('low_relevance');
+    expect(out.note).toMatch(/换关键词|换.*语言/);
+    expect(out.answer).toBeUndefined(); // 低相关时 answer 是幻觉源,丢弃
+  });
+
+  it('R1-2:有高分结果 → quality=ok,answer 保留', async () => {
+    vi.stubEnv('TAVILY_API_KEY', 'tk');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            answer: '靠谱概括',
+            results: [{ title: '好', url: 'https://g', content: 'x', score: 0.87 }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+    const out = await webSearchTool.handler({ query: '共时性' }, fakeCtx);
+    expect(out.quality).toBe('ok');
+    expect(out.answer).toBe('靠谱概括');
+  });
+
+  it('R1-2:结果为空 → quality=empty + note 提示换词', async () => {
+    vi.stubEnv('TAVILY_API_KEY', 'tk');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    const out = await webSearchTool.handler({ query: 'x' }, fakeCtx);
+    expect(out.quality).toBe('empty');
+    expect(out.note).toMatch(/换关键词/);
+  });
+
   it('idempotency key normalizes query case + maxResults', () => {
     const k1 = webSearchTool.computeIdempotencyKey!({
       query: ' Foo Bar ',
