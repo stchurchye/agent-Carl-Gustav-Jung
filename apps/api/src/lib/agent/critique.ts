@@ -13,6 +13,11 @@ export type CritiqueInput = {
 export type CritiqueOutput = {
   shouldReplan: boolean;
   reason: string;
+  /**
+   * R2-3 review 修正:结构化门标记 —— runExecute 的"每 run 只 refine 一次"判定用本字段,
+   * 不再对 reason 文案做脆弱的字符串 includes(文案措辞变更/未来 LLM 化都不破坏门)。
+   */
+  gate?: 'low_signal_search';
   adjustment?: Partial<Plan>;
 };
 
@@ -76,6 +81,7 @@ export function runCritique(input: CritiqueInput): CritiqueOutput {
     if (lowSignal.length >= 2) {
       return {
         shouldReplan: true,
+        gate: 'low_signal_search',
         reason:
           '连续搜索无有效结果(0 结果或全为低相关垃圾),需改写查询:换关键词/同义词/另一种语言再规划' +
           mergedHint,

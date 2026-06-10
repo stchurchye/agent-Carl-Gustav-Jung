@@ -85,7 +85,9 @@ export function collectReplyRefs(
  */
 export function filterCitedRefs(finalContent: string, refs: ReplyRef[]): ReplyRef[] {
   const cited = new Set<number>();
-  for (const m of finalContent.matchAll(/\[(\d{1,2})\]/g)) {
+  // (?!\() 排除 markdown 链接 [12](url) 的误匹配(review R 阶段 #1);\d{1,3} 覆盖到 999,
+  // 超出 refs.length 的解析结果由下面的越界 fail-open 接住。
+  for (const m of finalContent.matchAll(/\[(\d{1,3})\](?!\()/g)) {
     cited.add(Number(m[1]));
   }
   if (cited.size === 0) return refs;

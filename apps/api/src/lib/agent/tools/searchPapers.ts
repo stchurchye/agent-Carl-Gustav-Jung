@@ -1,4 +1,5 @@
 import { SEARCH_REF_TOP_N, toolRegistry, type ToolDef } from '../toolRegistry.js';
+import type { SearchQuality } from '../types.js';
 
 type SearchPapersInput = {
   query: string;
@@ -26,7 +27,7 @@ type SearchPapersOutput = {
    * R1-2 质量信号(实测驱动):OpenAlex 严格匹配对烂 query 真返 0,随后 CrossRef
    * 宽匹配会凑出一批低相关论文且无信号 —— 大脑会当真。fallback_loose=结果需核对。
    */
-  quality?: 'ok' | 'fallback_loose' | 'empty';
+  quality?: SearchQuality;
   note?: string;
   error?: string;
 };

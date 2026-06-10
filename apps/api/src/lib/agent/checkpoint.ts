@@ -186,17 +186,23 @@ export function buildListFinding(inner: unknown): string | null {
   if (typeof o.note === 'string' && o.note.length > 0 && o.quality !== 'ok') {
     lines.push(`⚠ ${o.note}`);
   }
+  // review 修正:超 5 条要声明总数 —— 否则大脑误以为"只搜到 5 条",决策基于片段数据。
+  if (arr.length > 5) lines.push(`(共 ${arr.length} 条,以下为前 5;近窗全文见 digestTail)`);
+  let itemLines = 0;
   for (const it of arr.slice(0, 5)) {
     if (it == null || typeof it !== 'object') continue;
     const r = it as { title?: unknown; url?: unknown; snippet?: unknown; abstract?: unknown; year?: unknown };
-    const title = typeof r.title === 'string' && r.title ? r.title.slice(0, 80) : '[无标题]';
+    const titleRaw = typeof r.title === 'string' && r.title ? r.title.slice(0, 80) : '';
+    const excerptRaw = typeof r.snippet === 'string' ? r.snippet : typeof r.abstract === 'string' ? r.abstract : '';
+    // review 修正:title 与摘录都缺的条目零信息量,不占槽位。
+    if (!titleRaw && !excerptRaw) continue;
     const url = typeof r.url === 'string' && r.url ? ` — ${r.url}` : '';
     const year = typeof r.year === 'number' ? ` (${r.year})` : '';
-    const excerptRaw = typeof r.snippet === 'string' ? r.snippet : typeof r.abstract === 'string' ? r.abstract : '';
     const excerpt = excerptRaw ? `\n  ${excerptRaw.slice(0, 200).replace(/\n/g, ' ')}` : '';
-    lines.push(`- ${title}${year}${url}${excerpt}`);
+    lines.push(`- ${titleRaw || '[无标题]'}${year}${url}${excerpt}`);
+    itemLines++;
   }
-  if (lines.length === 0) return null;
+  if (itemLines === 0) return null;
   return redactSecrets(lines.join('\n')) as string;
 }
 

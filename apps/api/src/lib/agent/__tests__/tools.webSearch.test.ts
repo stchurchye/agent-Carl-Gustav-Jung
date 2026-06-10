@@ -257,6 +257,28 @@ describe('webSearch tool', () => {
     expect(k3).toBe(k4);
   });
 
+  it('R-review:混合质量 → 有好结果时滤除 score<0.3 垃圾条目并 note 透出', async () => {
+    vi.stubEnv('TAVILY_API_KEY', 'tk');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            results: [
+              { title: '好', url: 'https://good', content: 'c', score: 0.85 },
+              { title: '垃圾', url: 'https://trash', content: 'c', score: 0.12 },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+    const out = await webSearchTool.handler({ query: 'q' }, fakeCtx);
+    expect(out.quality).toBe('ok');
+    expect(out.results.map((r) => r.url)).toEqual(['https://good']); // 垃圾被滤
+    expect(out.note).toMatch(/滤除|过滤/);
+  });
+
   it('idempotency key normalizes query case + maxResults', () => {
     const k1 = webSearchTool.computeIdempotencyKey!({
       query: ' Foo Bar ',

@@ -65,3 +65,27 @@ describe('R2-2:progress 摘要的搜索步行结构化', () => {
     expect(summary).not.toMatch(/\{"ok":true,"quality.{0,180}$/m); // 不再是截断的原始 JSON
   });
 });
+
+describe('R-review:buildListFinding 边界', () => {
+  it('title 与摘录都缺的条目不占槽位', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const out = buildListFinding({
+      ok: true,
+      results: [
+        { url: 'https://bare.example', year: 2020 }, // 无 title 无 snippet → 滤
+        { title: '有内容', url: 'https://x.example', snippet: 's' },
+      ],
+    });
+    expect(out).not.toContain('[无标题]');
+    expect(out).toContain('有内容');
+  });
+
+  it('结果超 5 条 → 标注「共 N 条,以下前 5」防大脑误以为只有 5 条', async () => {
+    const { buildListFinding } = await import('../checkpoint.js');
+    const results = Array.from({ length: 8 }, (_, i) => ({
+      title: `T${i}`, url: `https://e/${i}`, snippet: 's',
+    }));
+    const out = buildListFinding({ ok: true, results })!;
+    expect(out).toMatch(/共 8 条/);
+  });
+});
