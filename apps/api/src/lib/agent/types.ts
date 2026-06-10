@@ -299,6 +299,12 @@ export type AgentCheckpoint = {
    * 200 字更全，每条 ≤~1.5KB）。弥补本 agent「无逐字近窗」的架构短板。
    */
   digestTail: string;
+  /**
+   * P0-S6(issue 0001 #2b 轻解):跨轮累积的已完成 todo 文案(按文案去重并集)。
+   * applyReplanningIfNeeded 清 todos 后,round2 重建仍能看到 round1 完成了什么、不重做。
+   * 可选:旧 checkpoint 行无此字段,零迁移。
+   */
+  completedTodos?: string[];
 };
 
 /**

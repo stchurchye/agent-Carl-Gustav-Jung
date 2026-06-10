@@ -102,6 +102,15 @@ export function buildCheckpoint(
     .filter((t) => t.status !== 'completed')
     .map((t) => t.text);
 
+  // P0-S6:已完成 todo 文案跨轮并集去重 —— applyReplanningIfNeeded 清 todos 后,
+  // round2 重建仍知道 round1 完成了什么(issue 0001 #2b 的轻解;todo 身份按文案对齐)。
+  const completedTodos = Array.from(
+    new Set([
+      ...(prior?.completedTodos ?? []),
+      ...todos.filter((t) => t.status === 'completed').map((t) => t.text),
+    ]),
+  );
+
   return {
     version: 1,
     goal: opts.goal,
@@ -114,6 +123,7 @@ export function buildCheckpoint(
     successCount: opts.successCount,
     producedAtIdx: maxIdx,
     digestTail: buildDigestTail(steps),
+    completedTodos,
   };
 }
 

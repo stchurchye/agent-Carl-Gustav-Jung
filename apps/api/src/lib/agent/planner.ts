@@ -313,8 +313,13 @@ const CHECKPOINT_RENDER_MAX_CHARS = 10000;
 const CHECKPOINT_RENDER_DIGEST_MAX_CHARS = 6000;
 
 function renderCheckpointState(cp: AgentCheckpoint, isContinuation = true): string {
-  // 全空（无发现、无待办）→ 不渲染"自动续跑中"框架，避免给裸目标 + "别问是否继续"的误导。
-  if (cp.completed.length === 0 && cp.remainingPlan.length === 0) return '';
+  // 全空（无发现、无待办、无已完成 todo）→ 不渲染框架，避免给裸目标 + "别问是否继续"的误导。
+  if (
+    cp.completed.length === 0 &&
+    cp.remainingPlan.length === 0 &&
+    (cp.completedTodos?.length ?? 0) === 0
+  )
+    return '';
 
   // 先按条数取最近 20，再按字节预算从最近往前收（planner 偏好近期进展；富 finding 不撑爆）。
   const recent = cp.completed.slice(-CHECKPOINT_RENDER_MAX_FINDINGS);
@@ -333,6 +338,12 @@ function renderCheckpointState(cp: AgentCheckpoint, isContinuation = true): stri
         (overflow > 0 ? `（更早 ${overflow} 条已略）\n` : '') +
         keptLines.join('\n')
       : '';
+  // P0-S6:跨轮累积的已完成 todo —— round2 重建时 round1 完成项可见,不重做。
+  const doneTodos =
+    (cp.completedTodos?.length ?? 0) > 0
+      ? '\n已完成的 todo（不要重做）：\n' +
+        cp.completedTodos!.map((t) => `- ${t}`).join('\n')
+      : '';
   const remaining =
     cp.remainingPlan.length > 0
       ? '\n待完成：\n' + cp.remainingPlan.map((t) => `- ${t}`).join('\n')
@@ -348,12 +359,12 @@ function renderCheckpointState(cp: AgentCheckpoint, isContinuation = true): stri
   // 非续跑重规划用中性框架 —— 进展仅供参考、新指令优先,不复用续跑话术。
   if (!isContinuation) {
     return (
-      `\n\n# 已有任务进展（供参考）\n目标：${cp.goal}${done}${remaining}${tail}` +
+      `\n\n# 已有任务进展（供参考）\n目标：${cp.goal}${done}${doneTodos}${remaining}${tail}` +
       `\n（以上为此前进展，仅供参考避免重做；请优先遵循新指令/最新方向规划剩余步骤。）`
     );
   }
   return (
-    `\n\n# 任务状态（自动续跑中）\n目标：${cp.goal}${done}${remaining}${next}${tail}` +
+    `\n\n# 任务状态（自动续跑中）\n目标：${cp.goal}${done}${doneTodos}${remaining}${next}${tail}` +
     `\n（自动续跑仍在进行；请直接规划剩余步骤，不要问"是否继续"。）`
   );
 }
