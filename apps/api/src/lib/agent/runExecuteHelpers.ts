@@ -13,7 +13,7 @@
 import * as store from './store.js';
 import { recordStep } from './stepRecorder.js';
 import { toolRegistry, type ToolDef } from './toolRegistry.js';
-import { buildCheckpoint } from './checkpoint.js';
+import { buildCheckpoint, countProgressSteps } from './checkpoint.js';
 import type { AgentRun, PlanStep } from './types.js';
 
 /**
@@ -69,11 +69,7 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
   // 注:steer 路径 steerRun 已先清 plan/todos → remainingPlan 为空可接受(findings 是核心)。
   // fail-open:checkpoint 是增益,失败不挡 replan 主流程。
   try {
-    const successCount = steps.filter(
-      (s) =>
-        (s.kind === 'tool_call' && (s.error == null || s.error === '')) ||
-        s.kind === 'observe',
-    ).length;
+    const successCount = countProgressSteps(steps);
     const checkpoint = buildCheckpoint(run.contextCheckpoint, steps, run.todos ?? [], {
       goal: run.inputText ?? '',
       intent: run.plan?.intentSummary ?? run.contextCheckpoint?.intent ?? '',
@@ -83,7 +79,10 @@ export async function applyReplanningIfNeeded(run: AgentRun): Promise<AgentRun> 
     await store.updateAgentRun(run.id, { contextCheckpoint: checkpoint });
     run = { ...run, contextCheckpoint: checkpoint };
   } catch (e) {
-    console.warn('[applyReplanningIfNeeded] checkpoint 累积失败(忽略,不挡 replan)', e);
+    console.warn(
+      `[applyReplanningIfNeeded] checkpoint 累积失败(忽略,不挡 replan) run=${run.id}`,
+      e,
+    );
   }
   const lastSteer = [...steps].reverse().find((s) => s.kind === 'steer');
   // M1c：只认「真 deny」—— approval.ts denyRun(用户拒绝 / timeout 自动 deny)带 output{reason,by}；

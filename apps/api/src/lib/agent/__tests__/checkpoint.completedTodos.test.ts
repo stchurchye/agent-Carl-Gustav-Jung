@@ -36,10 +36,49 @@ describe('P0-S6:buildCheckpoint 累积 completedTodos(纯逻辑)', () => {
   });
 
   it('旧 checkpoint 行无 completedTodos 字段 → 容忍(可选字段零迁移)', () => {
-    const legacy = { ...buildCheckpoint(null, [], [], OPTS) } as AgentCheckpoint;
-    delete (legacy as { completedTodos?: string[] }).completedTodos;
+    const legacy: AgentCheckpoint = {
+      ...buildCheckpoint(null, [], [], OPTS),
+      completedTodos: undefined,
+    };
     const cp = buildCheckpoint(legacy, [], [todo('新活', 'completed')], OPTS);
     expect(cp.completedTodos).toEqual(['新活']);
+  });
+
+  it('文案 trim 去重:首尾空白差异不产生重复项', () => {
+    const prior = buildCheckpoint(null, [], [todo('搜文献', 'completed')], OPTS);
+    const cp = buildCheckpoint(prior, [], [todo(' 搜文献 ', 'completed')], OPTS);
+    expect(cp.completedTodos).toEqual(['搜文献']);
+  });
+
+  it('compactCheckpointViaLlm 压缩后 completedTodos 原样保留(不送 LLM,不被覆盖)', async () => {
+    const { compactCheckpointViaLlm } = await import('../checkpoint.js');
+    const cp: AgentCheckpoint = {
+      ...buildCheckpoint(null, [], [todo('搜文献', 'completed')], OPTS),
+      completedTodos: ['搜文献', '做对比'],
+    };
+    const llm = {
+      providerId: 'deepseek',
+      modelId: 't',
+      async chat() {
+        return {
+          content: JSON.stringify({
+            completed: [],
+            remainingPlan: [],
+            openQuestions: [],
+            nextStep: 'FINALIZE',
+            // 即便 LLM 幻造该字段也不得污染跨轮累积
+            completedTodos: ['LLM 幻造的'],
+          }),
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+    } as unknown as LlmChatClient;
+    const out = await compactCheckpointViaLlm({
+      checkpoint: cp,
+      llm,
+      signal: new AbortController().signal,
+    });
+    expect(out.completedTodos).toEqual(['搜文献', '做对比']);
   });
 });
 

@@ -36,6 +36,7 @@ import {
   buildCheckpoint,
   checkpointNeedsCompaction,
   compactCheckpointViaLlm,
+  countProgressSteps,
 } from './checkpoint.js';
 import { resolveLlmClient } from './runLlmClient.js';
 import { reflectGoalCompletion } from './reflection.js';
@@ -676,11 +677,7 @@ export async function executeRun(runId: string): Promise<void> {
     // tool_call 数没比上一轮续跑时多），就提前收尾，不傻等到 CONTINUATION_ROUND_CAP。
     // review：observe（idempotency 缓存命中 = 成功复用上一步结果）也算进展，否则
     // 全靠缓存推进的一轮会被误判无进展、提前收尾（还会盖掉 reflection 的"没完成"）。
-    const successCount = finalSteps.filter(
-      (s) =>
-        (s.kind === 'tool_call' && (s.error == null || s.error === '')) ||
-        s.kind === 'observe',
-    ).length;
+    const successCount = countProgressSteps(finalSteps);
     const lastContinuation = [...finalSteps]
       .reverse()
       .find(

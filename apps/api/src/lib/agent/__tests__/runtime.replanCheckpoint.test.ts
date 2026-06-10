@@ -114,6 +114,20 @@ describeDb('P0-S5:replan 统一写 checkpoint(applyReplanningIfNeeded 咽喉)', 
     expect(after.plan).toBeNull();
   });
 
+  it('steerRun 清 todos 前先累积 checkpoint → round1 已完成 todo 不丢(review #5)', async () => {
+    const { steerRun } = await import('../steer.js');
+    const run = await mkReplanningRun();
+    // mkPlan 的 t1 已是 completed;steer 前 run.todos 含它
+    await updateAgentRun(run.id, { status: 'running' });
+
+    const res = await steerRun({ runId: run.id, byUserId: run.ownerId, instruction: '改讲共时性' });
+    expect(res.accepted).toBe(true);
+
+    const after = (await getAgentRun(run.id))!;
+    expect(after.todos).toEqual([]); // steer 原行为:todos 已清
+    expect(after.contextCheckpoint?.completedTodos).toContain('第一步'); // 但完成项已先进 checkpoint
+  });
+
   it('已有 checkpoint 时按 producedAtIdx 增量累积,不重复折叠旧步', async () => {
     const run = await mkReplanningRun();
     const stale = (await getAgentRun(run.id))!;
