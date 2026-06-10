@@ -1,4 +1,4 @@
-import { beforeAll, expect, it } from 'vitest';
+import { describe, beforeAll, expect, it } from 'vitest';
 import { describeDb } from '../../../testUtils/dbGuard.js';
 import {
   buildCheckpoint,
@@ -77,7 +77,7 @@ const todos: TodoItem[] = [
   { id: 't2', text: '汇总', status: 'pending', stepRefs: [] },
 ];
 
-describeDb('buildCheckpoint (mechanical)', () => {
+describe('buildCheckpoint (mechanical)', () => {
   it('extracts a finding with ref from a successful tool_call and sets producedAtIdx', () => {
     const steps = [
       step({ idx: 0, kind: 'plan' }),
@@ -301,7 +301,7 @@ describeDb('buildCheckpoint (mechanical)', () => {
   });
 });
 
-describeDb('buildRichFinding per summaryKind (v4)', () => {
+describe('buildRichFinding per summaryKind (v4)', () => {
   it('text 工具：finding 保留最多 2000 字（远超旧版 200 字）', () => {
     const cp = buildCheckpoint(
       null,
@@ -376,7 +376,7 @@ describeDb('buildRichFinding per summaryKind (v4)', () => {
   });
 });
 
-describeDb('buildDigestTail 扩容 (v4)', () => {
+describe('buildDigestTail 扩容 (v4)', () => {
   const opts = { goal: 'g', intent: 'i', successCount: 0, toolMap };
 
   it('保留最近 8 步而不是 4 步', () => {
@@ -412,7 +412,7 @@ describeDb('buildDigestTail 扩容 (v4)', () => {
   });
 });
 
-describeDb('checkpointNeedsCompaction (S5)', () => {
+describe('checkpointNeedsCompaction (S5)', () => {
   const base = {
     version: 1 as const, goal: 'g', intent: 'i', remainingPlan: [], openQuestions: [],
     nextStep: '', successCount: 0, producedAtIdx: 0, digestTail: '',
@@ -431,7 +431,7 @@ describeDb('checkpointNeedsCompaction (S5)', () => {
   });
 });
 
-describeDb('compactCheckpointViaLlm (S4)', () => {
+describe('compactCheckpointViaLlm (S4)', () => {
   const big: AgentCheckpoint = {
     version: 1, goal: '研究 X', intent: 'i',
     completed: Array.from({ length: 10 }, (_, i) => ({ text: `t${i}`, finding: `f${i}`, refs: [] })),

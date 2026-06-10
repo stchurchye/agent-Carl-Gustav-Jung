@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describe, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
@@ -48,7 +48,7 @@ function installReflectCaptureFetch(goalMet: boolean, reason: string): {
   return { getLast: () => last };
 }
 
-describeDb('buildStepDigest with checkpoint (S2)', () => {
+describe('buildStepDigest with checkpoint (S2)', () => {
   it('prepends accumulated findings from the checkpoint so the judge sees the whole run', async () => {
     const { buildStepDigest } = await import('../reflection.js');
     const digest = buildStepDigest([], {

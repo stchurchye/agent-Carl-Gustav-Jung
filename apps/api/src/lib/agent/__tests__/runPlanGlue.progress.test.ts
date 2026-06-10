@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describe, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
@@ -60,7 +60,7 @@ function installPlannerCaptureFetch(intent: string): {
   return { getLast: () => last };
 }
 
-describeDb('buildProgressSummary 脱敏（送 planner 投影必须刮密钥）', () => {
+describe('buildProgressSummary 脱敏（送 planner 投影必须刮密钥）', () => {
   it('成功观察里的密钥不进 progress 摘要（与 digestTail/findings 脱敏纪律一致）', async () => {
     const { buildProgressSummary } = await import('../runPlanGlue.js');
     const SECRET = 'sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ';
@@ -77,7 +77,7 @@ describeDb('buildProgressSummary 脱敏（送 planner 投影必须刮密钥）',
   });
 });
 
-describeDb('readStashedReplanDirective (M1c steer/deny → LLM 重规划)', () => {
+describe('readStashedReplanDirective (M1c steer/deny → LLM 重规划)', () => {
   const mkReplan = (reason: string, directive?: string) => ({
     id: 's', runId: 'r', idx: 1, kind: 'replan' as const,
     toolName: null, toolCallKey: null, input: null,
