@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -118,7 +119,7 @@ describe('readStashedReplanDirective (M1c steer/deny → LLM 重规划)', () => 
   });
 });
 
-describe('buildInitialPlan: 续跑重建带「进展摘要」(issue 0001 B2+B3)', () => {
+describeDb('buildInitialPlan: 续跑重建带「进展摘要」(issue 0001 B2+B3)', () => {
   const ORIGINAL_VITEST = process.env.VITEST;
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
   const ORIGINAL_DS = process.env.DEEPSEEK_API_KEY;

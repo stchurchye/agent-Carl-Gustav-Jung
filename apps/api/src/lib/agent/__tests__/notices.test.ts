@@ -1,4 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
 import {
@@ -8,7 +9,7 @@ import {
   NOTICE_EVENT_TYPE,
 } from '../notices.js';
 
-describe('agent notices channel', () => {
+describeDb('agent notices channel', () => {
   beforeAll(async () => {
     await runMigrations();
   });

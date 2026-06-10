@@ -7,7 +7,8 @@
  *   - run.pendingUserStepIdx 被设为正确的步骤 index
  *   - executeRun 提前 return，不继续执行后续步骤
  */
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 
 import { runMigrations } from '../../../db/migrate.js';
@@ -27,7 +28,7 @@ async function ensureUser(tag: string) {
   });
 }
 
-describe('executor: ask_user pause semantics (M3 Task 2)', () => {
+describeDb('executor: ask_user pause semantics (M3 Task 2)', () => {
   beforeAll(async () => {
     await runMigrations();
     registerAskUser();
@@ -39,7 +40,6 @@ describe('executor: ask_user pause semantics (M3 Task 2)', () => {
   });
 
   it('ask_user returns paused:true → run.status = awaiting_user_input', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const user = await ensureUser('pause');
     const session = await createChatSession(user.id, 'askuser-pause');
@@ -84,7 +84,6 @@ describe('executor: ask_user pause semantics (M3 Task 2)', () => {
   });
 
   it('ask_user at step 1 → subsequent steps are not executed', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const user = await ensureUser('noskip');
     const session = await createChatSession(user.id, 'askuser-noskip');
@@ -160,7 +159,6 @@ describe('executor: ask_user pause semantics (M3 Task 2)', () => {
   });
 
   it('awaiting_user_input → executeRun early-exit (re-pickup guard)', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const user = await ensureUser('guard');
     const session = await createChatSession(user.id, 'askuser-guard');

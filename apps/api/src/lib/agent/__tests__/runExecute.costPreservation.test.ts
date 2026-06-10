@@ -8,7 +8,8 @@
  *  3. runExecute reload 最新 run → incrementUsage 在新基准上累加 steps
  *  4. 最终 costCny 应保持 X，而非被旧基准 0 覆盖
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
 import * as store from '../store.js';
@@ -16,7 +17,7 @@ import { DEFAULT_BUDGET } from '../types.js';
 import { incrementUsage } from '../stepRecorder.js';
 import { ensureUser } from './_groupFixture.js';
 
-describe('runExecute cost preservation（reload-before-increment）', { timeout: 15000 }, () => {
+describeDb('runExecute cost preservation（reload-before-increment）', { timeout: 15000 }, () => {
   beforeAll(async () => {
     await runMigrations();
   });

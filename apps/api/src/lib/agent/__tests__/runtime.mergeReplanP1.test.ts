@@ -9,13 +9,14 @@
  *   4. 校验 agent_runs.inputText 未被修改（关键 ADR-M7-13）
  *   5. 校验 agent_steps 含 1 条 replan(reason='merge_trigger')
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { it, expect, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import * as store from '../store.js';
 import { createAgentRun, executeRun } from '../runtime.js';
 import { applyMergeInTx } from '../store.js';
 import { ensureUser, ensureGroup } from './_groupFixture.js';
 
-describe('P1 merged_input triggers replan (M7 TB13)', () => {
+describeDb('P1 merged_input triggers replan (M7 TB13)', () => {
   let owner: { id: string };
   let groupId: string;
   let topicId: string;

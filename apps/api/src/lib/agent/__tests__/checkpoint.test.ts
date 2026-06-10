@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, beforeAll, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import {
   buildCheckpoint,
   checkpointNeedsCompaction,
@@ -546,7 +547,7 @@ describe('compactCheckpointViaLlm (S4)', () => {
  * 行为 5（DB 列）：context_checkpoint jsonb 列往返 —— updateAgentRun 写、getAgentRun 读，
  * readLatestCheckpoint 取出结构一致。
  */
-describe('context_checkpoint column round-trip', () => {
+describeDb('context_checkpoint column round-trip', () => {
   beforeAll(async () => {
     await runMigrations();
   });
@@ -592,7 +593,7 @@ describe('context_checkpoint column round-trip', () => {
  * 行为 6（集成）：续跑触发时 runExecute 把 checkpoint 写进 run 列。
  * 复用 continuationReplan 的 harness：单 soft-fail 步 → 进 replanning → 列被写、goal=inputText。
  */
-describe('runExecute writes checkpoint at continuation', () => {
+describeDb('runExecute writes checkpoint at continuation', () => {
   beforeAll(async () => {
     await runMigrations();
   });

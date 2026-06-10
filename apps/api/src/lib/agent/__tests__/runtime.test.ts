@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -16,7 +17,7 @@ async function ensureUser(name: string) {
   });
 }
 
-describe('agent runtime end-to-end (echo)', () => {
+describeDb('agent runtime end-to-end (echo)', () => {
   beforeAll(async () => {
     await runMigrations();
     registerEchoSleep();

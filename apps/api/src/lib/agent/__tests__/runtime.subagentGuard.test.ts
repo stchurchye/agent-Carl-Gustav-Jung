@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 
 import { runMigrations } from '../../../db/migrate.js';
@@ -32,7 +33,7 @@ async function ensureUser(name: string) {
  *  2. 非子 run(parentRunId=null) + 同一白名单外工具 → handler 正常被调用(护栏不误伤顶层)。
  *  3. 子 run + 白名单内工具(datetime_now) → handler 正常被调用。
  */
-describe('M3-S0 subagent tool whitelist exec-time guard', () => {
+describeDb('M3-S0 subagent tool whitelist exec-time guard', () => {
   beforeAll(async () => {
     await runMigrations();
   });

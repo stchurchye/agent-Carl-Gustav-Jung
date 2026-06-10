@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -13,7 +14,7 @@ import * as topicSkillsStore from '../topicSkills.js';
  * - disabled skill 不注入
  * - history 必须含成员 displayName 前缀
  */
-describe('snapshotForAgent group (T7)', () => {
+describeDb('snapshotForAgent group (T7)', () => {
   beforeAll(async () => await runMigrations());
   beforeEach(async () => {
     await getPool().query('DELETE FROM agent_steps');

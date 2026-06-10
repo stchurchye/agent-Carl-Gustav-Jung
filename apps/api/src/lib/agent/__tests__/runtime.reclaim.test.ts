@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -67,7 +68,7 @@ function buildPlan(): Plan {
   };
 }
 
-describe('runtime reclaim after worker A crash (T5)', () => {
+describeDb('runtime reclaim after worker A crash (T5)', () => {
   beforeAll(async () => {
     await runMigrations();
     if (!toolRegistry.get(reclaimTool.name)) {

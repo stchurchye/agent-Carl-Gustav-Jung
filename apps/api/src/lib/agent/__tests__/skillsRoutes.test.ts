@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { Hono } from 'hono';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -13,7 +14,7 @@ import { upsertSkill, getSkill } from '../topicSkills.js';
  * 端到端路由测试：/api/agent/skills CRUD。
  * 用 hono.fetch 模拟真实 HTTP 调用。
  */
-describe('agent /skills routes', () => {
+describeDb('agent /skills routes', () => {
   beforeAll(async () => await runMigrations());
   beforeEach(async () => {
     await getPool().query('DELETE FROM topic_skills');

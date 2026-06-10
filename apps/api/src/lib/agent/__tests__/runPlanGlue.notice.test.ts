@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -17,7 +18,7 @@ import { getPool } from '../../../db/client.js';
 
 const realFetch = global.fetch;
 
-describe('buildInitialPlan: PLANNER_LLM_FALLBACK on LLM error (M1e Task 13.4 + review)', () => {
+describeDb('buildInitialPlan: PLANNER_LLM_FALLBACK on LLM error (M1e Task 13.4 + review)', () => {
   const ORIGINAL_VITEST = process.env.VITEST;
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
   const ORIGINAL_DS = process.env.DEEPSEEK_API_KEY;

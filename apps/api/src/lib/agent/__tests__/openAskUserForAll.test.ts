@@ -6,7 +6,8 @@
  *   - 同事务 update group_messages.payload.askUser.openedForAll → true
  *   - emit ask_user.opened_for_all hook
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { it, expect, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { autoOpenAskUserForAll } from '../openAskUserForAll.js';
 import { agentHookBus } from '../hooks.js';
@@ -14,7 +15,7 @@ import { writeAskUserPrompt } from '../messageBridge.js';
 import { ensureUser, ensureGroup } from './_groupFixture.js';
 import { randomUUID } from 'crypto';
 
-describe('autoOpenAskUserForAll (M7 TB17)', () => {
+describeDb('autoOpenAskUserForAll (M7 TB17)', () => {
   let owner: { id: string };
   let groupId: string;
   let topicId: string;

@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
 import { createChatSession } from '../../../store/pg.js';
@@ -66,7 +67,7 @@ async function mkRunWithPlan(
   return run.id;
 }
 
-describe('runtime approval e2e (T4)', () => {
+describeDb('runtime approval e2e (T4)', () => {
   beforeAll(async () => {
     await runMigrations();
     registerEchoSleep();

@@ -1,4 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 
 vi.mock('../../integrations/magi.js', () => ({
@@ -70,7 +71,7 @@ function researchPlan(): Plan {
   };
 }
 
-describe('agent runtime E2E: research + idempotency (M1c, T10)', () => {
+describeDb('agent runtime E2E: research + idempotency (M1c, T10)', () => {
   beforeAll(async () => {
     await runMigrations();
     registerAgentTools();

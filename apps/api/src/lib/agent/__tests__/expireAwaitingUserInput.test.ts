@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
@@ -31,7 +32,7 @@ async function makeAwaitingRun(ownerId: string, expiresAt: Date | null) {
   return run;
 }
 
-describe('autoExpireAwaitingUserInput', { timeout: 15000 }, () => {
+describeDb('autoExpireAwaitingUserInput', { timeout: 15000 }, () => {
   beforeAll(async () => {
     await runMigrations();
   });

@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
 import { createChatSession } from '../../../store/pg.js';
@@ -11,7 +12,7 @@ import * as store from '../store.js';
 import { writePrivatePlaceholder } from '../messageBridge.js';
 import { ensureUser } from './_groupFixture.js';
 
-describe('runtime steer e2e (T11)', () => {
+describeDb('runtime steer e2e (T11)', () => {
   beforeAll(async () => {
     await runMigrations();
     registerEchoSleep();

@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -103,7 +104,7 @@ describe('buildStepDigest with checkpoint (S2)', () => {
   });
 });
 
-describe('reflectGoalCompletion (issue 0003)', () => {
+describeDb('reflectGoalCompletion (issue 0003)', () => {
   const ORIGINAL_VITEST = process.env.VITEST;
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
   const ORIGINAL_DS = process.env.DEEPSEEK_API_KEY;

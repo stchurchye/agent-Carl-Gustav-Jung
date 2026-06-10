@@ -5,7 +5,8 @@
  * 都用 `JSON.stringify(value)` 写入；当 value === null 时变成字符串 "null"，
  * `WHERE summary IS NULL` 不命中。artifact 已在 M5A 修；本测试守住其余字段。
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
 import * as store from '../store.js';
@@ -38,7 +39,7 @@ async function isNullInDb(runId: string, column: string): Promise<boolean> {
   return rows[0]?.is_null === true;
 }
 
-describe('store JSONB null-clear writes SQL NULL', { timeout: 15000 }, () => {
+describeDb('store JSONB null-clear writes SQL NULL', { timeout: 15000 }, () => {
   beforeAll(async () => {
     await runMigrations();
   });

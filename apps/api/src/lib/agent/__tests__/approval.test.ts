@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
 import * as store from '../store.js';
@@ -39,7 +40,7 @@ async function mkAwaiting(
   return r.id;
 }
 
-describe('approval (let-go model)', () => {
+describeDb('approval (let-go model)', () => {
   beforeAll(async () => {
     await runMigrations();
     registerRiskyEcho();

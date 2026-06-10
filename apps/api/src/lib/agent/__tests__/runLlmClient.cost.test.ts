@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
@@ -50,7 +51,7 @@ async function makeRun(ownerId: string, modelId: string) {
   });
 }
 
-describe('runLlmClient cost accounting', { timeout: 15000 }, () => {
+describeDb('runLlmClient cost accounting', { timeout: 15000 }, () => {
   beforeAll(async () => {
     process.env.DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'test-key';
     await runMigrations();

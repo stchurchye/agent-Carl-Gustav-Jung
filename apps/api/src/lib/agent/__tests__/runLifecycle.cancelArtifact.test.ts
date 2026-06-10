@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
 import * as store from '../store.js';
@@ -6,7 +7,7 @@ import { cancelRun } from '../runLifecycle.js';
 import { DEFAULT_BUDGET } from '../types.js';
 import { ensureUser } from './_groupFixture.js';
 
-describe('cancelRun idle path writes artifact', { timeout: 15000 }, () => {
+describeDb('cancelRun idle path writes artifact', { timeout: 15000 }, () => {
   beforeAll(async () => { await runMigrations(); });
   beforeEach(async () => {
     await getPool().query('DELETE FROM agent_steps');

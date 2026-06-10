@@ -1,7 +1,8 @@
 /**
  * M7 T5e：contextAdapter group 分支末尾拼 user_message_appended 作为 history。
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { it, expect, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { snapshotForAgent } from '../contextAdapter.js';
 import { applyMergeInTx } from '../store.js';
@@ -25,7 +26,7 @@ async function insertRun(opts: {
   return id;
 }
 
-describe('contextAdapter group includes user_message_appended (M7 T5e)', () => {
+describeDb('contextAdapter group includes user_message_appended (M7 T5e)', () => {
   let owner: { id: string };
   let groupId: string;
   let topicId: string;

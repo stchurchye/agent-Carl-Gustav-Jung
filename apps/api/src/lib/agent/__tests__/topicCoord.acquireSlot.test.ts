@@ -8,7 +8,8 @@
  * TB5: parentRunId 存在 → 强制 create_fresh
  * TB16: 同 topic 1 running + 1 queued → findBlocking 只返 running；不 merge 到 queued
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { it, expect, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { acquireTopicSlot, withTopicCoordination, type SlotDecision } from '../topicCoord.js';
 import { ensureUser, ensureGroup } from './_groupFixture.js';
@@ -52,7 +53,7 @@ async function insertRun(opts: {
   return id;
 }
 
-describe('acquireTopicSlot (M7 T2b)', () => {
+describeDb('acquireTopicSlot (M7 T2b)', () => {
   let user1: { id: string };
   let user2: { id: string };
   let groupId: string;

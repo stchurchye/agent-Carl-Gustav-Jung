@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
@@ -59,7 +60,7 @@ function buildPlanWithTwoSameTagSteps(): Plan {
   };
 }
 
-describe('runtime idempotency gate (M1c, T10)', () => {
+describeDb('runtime idempotency gate (M1c, T10)', () => {
   beforeAll(async () => {
     await runMigrations();
     if (!toolRegistry.get(countedTool.name)) {

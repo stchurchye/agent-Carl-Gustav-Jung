@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, beforeAll, expect, it } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { redactSecrets } from '../redact.js';
 import { runMigrations } from '../../../db/migrate.js';
 import * as store from '../store.js';
@@ -102,7 +103,7 @@ describe('redactSecrets', () => {
  * 但 step.output 保持原始（幂等 replay / extractRef 结构化读它，留到投影点脱敏），
  * 且 toolCallKey 原样（幂等 key 在 recordStep 之前已算好）。
  */
-describe('recordStep redaction', () => {
+describeDb('recordStep redaction', () => {
   beforeAll(async () => {
     await runMigrations();
   });

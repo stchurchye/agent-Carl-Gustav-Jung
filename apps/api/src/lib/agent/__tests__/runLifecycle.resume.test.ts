@@ -1,7 +1,8 @@
 /**
  * M3 Task 3：resumeAgentRun lib 测试。
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
 import * as store from '../store.js';
@@ -27,19 +28,16 @@ async function makeRun(ownerId?: string) {
   });
 }
 
-describe('resumeAgentRun', () => {
+describeDb('resumeAgentRun', () => {
   beforeAll(async () => {
-    if (!process.env.DATABASE_URL) return;
     await runMigrations();
   });
   beforeEach(async () => {
-    if (!process.env.DATABASE_URL) return;
     await getPool().query('DELETE FROM agent_steps');
     await getPool().query('DELETE FROM agent_runs');
   });
 
   it('awaiting_user_input → resumes to running + appends observe step', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const run = await makeRun();
     await store.updateAgentRun(run.id, {
@@ -69,7 +67,6 @@ describe('resumeAgentRun', () => {
   });
 
   it('wrong status → throws', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const run = await makeRun();
     // default status is 'draft'
@@ -79,7 +76,6 @@ describe('resumeAgentRun', () => {
   });
 
   it('empty userInput → throws', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     const run = await makeRun();
     await store.updateAgentRun(run.id, {
@@ -94,7 +90,6 @@ describe('resumeAgentRun', () => {
   });
 
   it('non-existent run → throws', async () => {
-    if (!process.env.DATABASE_URL) return;
 
     await expect(
       resumeAgentRun({ runId: '00000000-0000-0000-0000-000000000000', userInput: 'hi' }),

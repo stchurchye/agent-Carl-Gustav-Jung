@@ -1,7 +1,8 @@
 /**
  * M7 TB6：softComplete / cancelRun on group run → topic 队首 dequeue。
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { it, expect, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { softComplete, cancelRun } from '../runLifecycle.js';
 import * as store from '../store.js';
@@ -25,7 +26,7 @@ async function insertRun(opts: {
   return id;
 }
 
-describe('softComplete/cancelRun dequeues queued head (M7 TB6)', () => {
+describeDb('softComplete/cancelRun dequeues queued head (M7 TB6)', () => {
   let owner: { id: string };
   let groupId: string;
   let topicId: string;

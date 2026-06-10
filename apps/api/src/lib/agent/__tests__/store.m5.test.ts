@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
 import * as store from '../store.js';
@@ -13,7 +14,7 @@ const sampleArtifact: RunArtifact = {
   producedAt: '2026-05-23T00:00:00Z',
 };
 
-describe('store M5A: artifact column', { timeout: 15000 }, () => {
+describeDb('store M5A: artifact column', { timeout: 15000 }, () => {
   beforeAll(async () => { await runMigrations(); });
   beforeEach(async () => {
     await getPool().query('DELETE FROM agent_steps');

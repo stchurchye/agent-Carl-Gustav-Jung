@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
@@ -16,7 +17,7 @@ async function ensureUser(name: string): Promise<string> {
   return u.id;
 }
 
-describe('agent store', { timeout: 15000 }, () => {
+describeDb('agent store', { timeout: 15000 }, () => {
   beforeAll(async () => {
     await runMigrations();
   });

@@ -1,7 +1,8 @@
 /**
  * M7 TB15：long-poll 在 hold 期间订阅 4 个新 hook，命中立即出 batch。
  */
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { it, expect, beforeEach, beforeAll } from 'vitest';
+import { describeDb } from '../../testUtils/dbGuard.js';
 import { Hono } from 'hono';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../db/client.js';
@@ -34,7 +35,7 @@ async function tokenFor(u: { id: string; username: string; displayName: string }
 
 type TestUser = Awaited<ReturnType<typeof ensureUser>>;
 
-describe('long-poll subscribes to M7 status-only events (TB15)', () => {
+describeDb('long-poll subscribes to M7 status-only events (TB15)', () => {
   let owner: TestUser;
   let groupId: string;
   let topicId: string;

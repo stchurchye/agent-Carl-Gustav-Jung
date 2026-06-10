@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { it, expect, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../../db/client.js';
 import { runMigrations } from '../../../db/migrate.js';
@@ -33,7 +34,7 @@ function baseInsertInput(ownerId: string): agentStore.InsertAgentRunInput {
   };
 }
 
-describe('M4 Task 1: summary + pending_user_input_expires_at columns', { timeout: 15000 }, () => {
+describeDb('M4 Task 1: summary + pending_user_input_expires_at columns', { timeout: 15000 }, () => {
   beforeAll(async () => {
     await runMigrations();
   });

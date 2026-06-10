@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
+import { expect, it, beforeAll, beforeEach } from 'vitest';
+import { describeDb } from '../../../testUtils/dbGuard.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getPool } from '../../../db/client.js';
 import * as store from '../store.js';
@@ -28,7 +29,7 @@ async function mkRunningWithPlan(ownerId: string, text = '跑 5 步 echo') {
   return (await store.getAgentRun(r.id))!;
 }
 
-describe('steerRun', () => {
+describeDb('steerRun', () => {
   beforeAll(async () => await runMigrations());
   beforeEach(async () => {
     await getPool().query('DELETE FROM agent_steps');
