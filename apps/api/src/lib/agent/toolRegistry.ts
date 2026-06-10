@@ -50,6 +50,9 @@ export type ToolReplyMeta = {
   failureHint?: string;
 };
 
+/** P0-S7:搜索类工具 extractRefs 的统一限量(防 ref 洪水),三个搜索工具共用。 */
+export const SEARCH_REF_TOP_N = 3;
+
 export type ToolDef<I = unknown, O = unknown> = {
   name: string;
   description: string;

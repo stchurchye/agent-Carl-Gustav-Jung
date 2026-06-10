@@ -138,7 +138,7 @@ describe('P0-S7:checkpoint 去重修正 —— 搜索 ref 不吞同 URL 深读 f
   });
 });
 
-describe('P0-S7:runSummary refCount 含搜索 url ref', () => {
+describe('P0-S7:runSummary refCount 含搜索 url ref(真并集,不双计)', () => {
   it('search_web 2 hits + deep_research 1 citation → refCount=3', () => {
     const toolMap = new Map<string, ToolDef>([['search_web', webSearchTool as ToolDef]]);
     const steps = [
@@ -151,5 +151,18 @@ describe('P0-S7:runSummary refCount 含搜索 url ref', () => {
     ];
     const summary = buildRunSummary(steps, toolMap);
     expect(summary.refCount).toBe(3);
+  });
+
+  it('get_paper_citations 同时有 citations 字段与 extractRefs → 同一批论文不双计', () => {
+    const toolMap = new Map<string, ToolDef>([
+      ['get_paper_citations', getPaperCitationsTool as ToolDef],
+    ]);
+    const papers = [
+      { title: 'P1', url: 'https://doi.org/10.1/x' },
+      { title: 'P2', url: 'https://openalex.org/W2' },
+    ];
+    const steps = [step(1, 'get_paper_citations', { ok: true, paperId: 'W1', citations: papers })];
+    const summary = buildRunSummary(steps, toolMap);
+    expect(summary.refCount).toBe(2); // 修复前:citations 计 2 + extractRefs 计 2 = 4
   });
 });

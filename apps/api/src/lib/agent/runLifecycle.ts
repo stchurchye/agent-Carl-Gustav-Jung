@@ -268,11 +268,12 @@ export async function softComplete(
   // M4 Task 4：算 summary 并合并进 status update —— failed / cancelled / budget_exhausted
   // 同样落 summary，让任务面板列表能统一显示"做了什么"。
   const stepsForSummary = await store.listSteps(run.id);
-  const summary = buildRunSummary(stepsForSummary);
+  // P0-S7:toolMap 建一次给 buildRunSummary 与 collectReplyRefs 共用(免默认参数重建)。
+  const toolMap = new Map(toolRegistry.list().map((t) => [t.name, t]));
+  const summary = buildRunSummary(stepsForSummary, toolMap);
 
   // M5A Task 1: Build artifact for all terminal states.
   // Uses same toolRegistry as generateFinalReply for consistent ref extraction.
-  const toolMap = new Map(toolRegistry.list().map((t) => [t.name, t]));
   const refs = collectReplyRefs(stepsForSummary, toolMap);
   const artifact: RunArtifact = {
     finalContent,
@@ -453,10 +454,11 @@ export async function cancelRun(
   // M4 review fix：idle-path cancel（无 controller）不经过 softComplete，
   // 需要在这里计算 summary，保证所有 terminal status 都有 summary 落库。
   const stepsForSummary = await store.listSteps(runId);
-  const summary = buildRunSummary(stepsForSummary);
+  // P0-S7:toolMap 建一次共用(同 softComplete)。
+  const toolMap = new Map(toolRegistry.list().map((t) => [t.name, t]));
+  const summary = buildRunSummary(stepsForSummary, toolMap);
 
   // M5A Task 1: Build artifact for idle-path cancel (no active controller).
-  const toolMap = new Map(toolRegistry.list().map((t) => [t.name, t]));
   const refs = collectReplyRefs(stepsForSummary, toolMap);
   const artifact: RunArtifact = {
     finalContent: '[任务已取消]',

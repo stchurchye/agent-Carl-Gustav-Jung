@@ -93,6 +93,8 @@ export function buildCheckpoint(
       text: s.toolName ?? '<tool>',
       finding: buildRichFinding(s, tool),
       refs: collectReplyRefs([s], opts.toolMap),
+      // 折叠时就钉死类别 —— LLM 压缩可改写 text,toolMap 查找会失效(review S7 #2)。
+      kind: (tool?.replyMeta?.summaryKind === 'list' ? 'list' : 'content') as 'list' | 'content',
     };
   });
 
@@ -114,8 +116,11 @@ export function buildCheckpoint(
   const completed: CheckpointFinding[] = [];
   for (const f of [...(prior?.completed ?? []), ...newFindings]) {
     const ids = f.refs.map((r) => `${r.kind}:${r.id}`);
-    const tool = opts.toolMap.get(f.text);
-    const isListFinding = tool?.replyMeta?.summaryKind === 'list';
+    // 类别优先用折叠时钉死的 f.kind(扛 LLM 压缩改写 text);旧行无 kind 再回退 toolMap;
+    // 都查不到(合并条目)→ content(安全侧:深读不被吞,重复列举仍被 list∪content 去重)。
+    const isListFinding =
+      f.kind === 'list' ||
+      (f.kind == null && opts.toolMap.get(f.text)?.replyMeta?.summaryKind === 'list');
     const allSeen =
       ids.length > 0 &&
       (isListFinding

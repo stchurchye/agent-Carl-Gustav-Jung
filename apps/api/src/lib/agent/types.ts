@@ -283,6 +283,12 @@ export type CheckpointFinding = {
   text: string;
   finding: string;
   refs: ReplyRef[];
+  /**
+   * P0-S7:折叠时按工具 summaryKind 记下的发现类别(list=来源列举/content=内容深读),
+   * 供 buildCheckpoint 双类去重 —— LLM 压缩可能改写 text 导致 toolMap 查不到,
+   * 此字段让类别不随 text 漂移。可选:旧行/LLM 合并条目无此字段 → 按 content 处理(安全侧)。
+   */
+  kind?: 'list' | 'content';
 };
 export type AgentCheckpoint = {
   version: 1;

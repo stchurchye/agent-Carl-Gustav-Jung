@@ -64,8 +64,10 @@ export function collectReplyRefs(
         seen.add(key);
         refs.push(ref);
       }
-    } catch {
-      // tool extractRef/extractRefs throw 不应让 reply 整体崩
+    } catch (e) {
+      // tool extractRef/extractRefs throw 不应让 reply 整体崩;但要留痕,
+      // 否则实现 bug 会让该工具的 ref 静默消失、排查无据(review S7)。
+      console.warn(`[collectReplyRefs] extractRef(s) 抛错被忽略 tool=${s.toolName}`, e);
     }
   }
   return refs;

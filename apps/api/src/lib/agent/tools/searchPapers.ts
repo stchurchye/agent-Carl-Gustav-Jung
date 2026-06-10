@@ -1,4 +1,4 @@
-import { toolRegistry, type ToolDef } from '../toolRegistry.js';
+import { SEARCH_REF_TOP_N, toolRegistry, type ToolDef } from '../toolRegistry.js';
 
 type SearchPapersInput = {
   query: string;
@@ -156,7 +156,7 @@ export const searchPapersTool: ToolDef<SearchPapersInput, SearchPapersOutput> = 
       const papers = (output as { papers?: Paper[] } | null)?.papers ?? [];
       return papers
         .filter((p) => typeof p?.url === 'string' && p.url.length > 0)
-        .slice(0, 3)
+        .slice(0, SEARCH_REF_TOP_N)
         .map((p) => ({ kind: 'url' as const, id: p.url, label: p.title || p.url }));
     },
     failureHint:
@@ -217,7 +217,7 @@ export const getPaperCitationsTool: ToolDef<
       const citations = (output as { citations?: Paper[] } | null)?.citations ?? [];
       return citations
         .filter((p) => typeof p?.url === 'string' && p.url.length > 0)
-        .slice(0, 3)
+        .slice(0, SEARCH_REF_TOP_N)
         .map((p) => ({ kind: 'url' as const, id: p.url, label: p.title || p.url }));
     },
     failureHint:
