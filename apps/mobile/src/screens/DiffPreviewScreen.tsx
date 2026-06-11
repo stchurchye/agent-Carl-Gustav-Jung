@@ -66,7 +66,7 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
     setEditedText(newText);
   }, [revisionId, newText]);
 
-  const goWriting = () => void openWriting(navigation, { documentId, blockId });
+  const goWriting = () => void openWriting(navigation, { documentId, blockId, allowDisabled: true }); // 写作功能内部二跳
 
   const showRevisionError = (e: unknown) => {
     const { message, hint } = apiErrorText(e);
@@ -91,6 +91,7 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
         documentId,
         blockId,
         toast: '已经放进文章里了，您写得真好',
+        allowDisabled: true, // 写作功能内部二跳
       });
     } catch (e) {
       showRevisionError(e);

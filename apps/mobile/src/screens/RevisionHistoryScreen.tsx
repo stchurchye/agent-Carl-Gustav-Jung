@@ -46,6 +46,7 @@ export function RevisionHistoryScreen({ route, navigation }: Props) {
             void openWriting(navigation, {
               documentId,
               blockId: rev.blockId ?? undefined,
+              allowDisabled: true, // 写作功能内部二跳,入口已被门控
             });
           },
         },

@@ -16,6 +16,7 @@ jest.mock('./api', () => ({
   },
 }));
 jest.mock('./appAlert', () => ({ appAlert: (...a: unknown[]) => mockAppAlert(...a) }));
+jest.mock('./featureFlags', () => ({ WRITING_ENABLED: true }));
 jest.mock('./writingCache', () => ({
   getCachedTabs: () => [],
   getCachedDocument: () => null,
@@ -44,4 +45,39 @@ it('已有 documentId 但加载失败 → 仍导航(屏内可重试),id 不为�
     'WritingChapters',
     expect.objectContaining({ documentId: 'doc-1' }),
   );
+});
+
+// Review 2026-06-11 [P2][mobile-screens-misc] GroupListScreen.tsx:169
+// WRITING_ENABLED=false 时路由仍注册,旧深链/历史栈可绕过开关进入写作页。
+// 修后:openWriting 默认受开关门控;「我的→全部文稿」这一文档化入口用
+// allowDisabled 显式放行(featureFlags.ts 注释明确保留该入口)。
+describe('WRITING_ENABLED 门控', () => {
+  const flags = jest.requireMock('./featureFlags') as { WRITING_ENABLED: boolean };
+
+  it('开关关闭 → 默认不导航不报错,静默拒绝', async () => {
+    flags.WRITING_ENABLED = false;
+    await openWriting(navigation, { documentId: 'doc-1' });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('开关关闭 + allowDisabled(文档化入口)→ 正常进入', async () => {
+    flags.WRITING_ENABLED = false;
+    mockGetDocument.mockResolvedValue({
+      data: { id: 'doc-1', title: 'T', chapters: [] },
+    });
+    await openWriting(navigation, { documentId: 'doc-1', allowDisabled: true });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      'WritingChapters',
+      expect.objectContaining({ documentId: 'doc-1' }),
+    );
+  });
+
+  it('开关开启 → 行为不变', async () => {
+    flags.WRITING_ENABLED = true;
+    mockGetDocument.mockResolvedValue({
+      data: { id: 'doc-1', title: 'T', chapters: [] },
+    });
+    await openWriting(navigation, { documentId: 'doc-1' });
+    expect(mockNavigate).toHaveBeenCalled();
+  });
 });
