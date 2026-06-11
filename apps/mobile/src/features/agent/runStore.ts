@@ -83,7 +83,15 @@ function getEntry(runId: string): Entry {
 
 function emit(e: Entry, patch: Partial<RunSnapshot>) {
   e.snap = { ...e.snap, ...patch };
-  for (const l of e.listeners) l();
+  for (const l of e.listeners) {
+    try {
+      l();
+    } catch (err) {
+      // 单个订阅方(setState 等)抛错不能阻断其余 listener,否则后续订阅方
+      // 永久静默、轮询层看似活着 UI 却不更新(review P2)。
+      console.warn('[runStore] listener threw during emit (isolated)', err);
+    }
+  }
 }
 
 function mergeSteps(e: Entry, incoming: AgentStep[]): AgentStep[] {
@@ -205,6 +213,16 @@ export function subscribeRun(runId: string, listener: () => void): () => void {
     if (e.refCount <= 0) {
       e.refCount = 0;
       pauseEntry(e);
+      // missing(404/403)条目没有缓存价值:留着只会泄漏 listeners/旧快照,
+      // 且重订阅永远 serve 旧 missing 态。末位退订即清,重订阅可重新 bootstrap
+      // (run 被恢复/重建时能自愈)。(review P2)
+      if (e.snap.missing) {
+        entries.delete(runId);
+        if (entries.size === 0 && appStateSub) {
+          appStateSub.remove();
+          appStateSub = null;
+        }
+      }
     }
   };
 }

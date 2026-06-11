@@ -213,3 +213,44 @@ describe('transient error exponential backoff', () => {
     a.unmount();
   });
 });
+
+// Review 2026-06-11 [P2][mobile-agent] runStore.ts:84/:113
+describe('runStore 健壮性(P2)', () => {
+  it('某个 listener 抛错不阻断其他 listener(emit 错误隔离)', async () => {
+    const { subscribeRun, getRunSnapshot } = jest.requireActual('../runStore') as
+      typeof import('../runStore');
+    const calls: string[] = [];
+    const unsubA = subscribeRun('r1', () => {
+      calls.push('a');
+      throw new Error('listener a exploded');
+    });
+    const unsubB = subscribeRun('r1', () => {
+      calls.push('b');
+    });
+    await flush();
+    // bootstrap 完成会 emit;a 抛错不应吞掉 b
+    expect(calls).toContain('b');
+    expect(getRunSnapshot('r1').run?.status).toBe('running');
+    unsubA();
+    unsubB();
+  });
+
+  it('404 永久错误的条目在末位退订时被清理,重订阅可重新 bootstrap', async () => {
+    const err404 = Object.assign(new Error('not found'), { status: 404 });
+    mockFetchAgentRun.mockRejectedValue(err404);
+    const a = renderHook(() => useAgentRunPoll('r-gone'));
+    await flush();
+    expect(a.result.current.missing).toBe(true);
+    const bootstraps = mockFetchAgentRun.mock.calls.length;
+    a.unmount(); // 末位退订 → 条目应被清理,不再泄漏 listeners/旧快照
+
+    // run 之后恢复(例如被重新创建):重订阅应重新 bootstrap,而不是永远 serve 旧 missing 快照
+    mockFetchAgentRun.mockResolvedValue({ run: makeRun('running'), steps: [], notices: [] });
+    const b = renderHook(() => useAgentRunPoll('r-gone'));
+    await flush();
+    expect(mockFetchAgentRun.mock.calls.length).toBeGreaterThan(bootstraps);
+    expect(b.result.current.missing).toBeFalsy();
+    expect(b.result.current.run?.status).toBe('running');
+    b.unmount();
+  });
+});
