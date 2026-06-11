@@ -172,6 +172,9 @@ export function GroupChatScreen({ route, navigation }: Props) {
   const [messageActionBusy, setMessageActionBusy] = useState(false);
   const messageCountRef = useRef(0);
   messageCountRef.current = messages.length;
+  // 当前挂载的话题:同实例参数级换话题时,用它丢弃在途的旧话题响应(防跨话题污染)。
+  const topicRef = useRef(topicId);
+  topicRef.current = topicId;
 
   useEffect(() => {
     setDisplayTopicName(topicName);
@@ -237,6 +240,9 @@ export function GroupChatScreen({ route, navigation }: Props) {
     async (opts?: { poll?: boolean }) => {
       const after = opts?.poll ? lastIdRef.current ?? undefined : undefined;
       const res = await api.listGroupMessages(groupId, topicId, after ? { after } : undefined);
+      // 在途守卫:await 期间若已换话题(同实例参数级导航),丢弃这条旧话题响应,
+      // 否则旧话题消息(不同 id)会被 append 进新话题列表 —— dedupeById 按 id 去重挡不住跨话题污染。
+      if (topicId !== topicRef.current) return;
       if (opts?.poll && after && res.data.length === 0) return;
       if (opts?.poll && after) {
         // 新消息 append 后，列表内容撑高 → onContentSizeChange 会按「是否粘底」

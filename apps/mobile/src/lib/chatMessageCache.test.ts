@@ -101,6 +101,11 @@ describe('appendUniqueById', () => {
     const prev = [msg('a'), msg('b')];
     expect(appendUniqueById(prev, [msg('a'), msg('b')])).toBe(prev);
   });
+
+  it('dedupes ids within incoming itself (server emits same id twice in one batch)', () => {
+    const out = appendUniqueById([msg('a')], [msg('b'), msg('b'), msg('c')]);
+    expect(out.map((m) => m.id)).toEqual(['a', 'b', 'c']);
+  });
 });
 
 describe('dedupeById', () => {

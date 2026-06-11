@@ -67,7 +67,12 @@ export function mergeMessagesById<T extends { id: string }>(
 export function appendUniqueById<T extends { id: string }>(prev: T[], incoming: T[]): T[] {
   if (incoming.length === 0) return prev;
   const have = new Set(prev.map((m) => m.id));
-  const fresh = incoming.filter((m) => !have.has(m.id));
+  const fresh: T[] = [];
+  for (const m of incoming) {
+    if (have.has(m.id)) continue;
+    have.add(m.id); // 边追加边记:同时挡掉 incoming 自身内部的重复 id(单批回传两条同 id)
+    fresh.push(m);
+  }
   return fresh.length > 0 ? [...prev, ...fresh] : prev;
 }
 

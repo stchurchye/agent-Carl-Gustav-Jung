@@ -60,6 +60,11 @@ export function mergeGroupMessages(
 ): GroupMessage[] {
   if (!incoming?.length) return prev;
   const ids = new Set(prev.map((m) => m.id));
-  const added = incoming.filter((m) => !ids.has(m.id));
-  return [...prev, ...added];
+  const added: GroupMessage[] = [];
+  for (const m of incoming) {
+    if (ids.has(m.id)) continue;
+    ids.add(m.id); // 同时挡掉 incoming 自身内部的重复 id(否则同 id 双双进列表 → FlatList 重复 key)
+    added.push(m);
+  }
+  return added.length > 0 ? [...prev, ...added] : prev;
 }
