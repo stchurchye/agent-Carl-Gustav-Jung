@@ -170,6 +170,34 @@ function applyRule(
   return { id, forceChips: opts?.forceChips, candidates: build() };
 }
 
+/**
+ * persona_rename:「你以后就叫旺财」「给你起名叫骨头」→ 给狗改名;
+ * 「(以后)叫我老王」「称呼我老王」→ 改用户称呼。
+ * 疑问句(你叫什么)与空名不命中。只走规则不走 LLM 分类——改名是写操作,不容幻觉。
+ */
+export function matchPersonaRename(
+  text: string,
+): { target: 'assistant' | 'user'; name: string } | null {
+  const t = text.trim();
+  if (/[??]\s*$/.test(t) || /什么|啥/.test(t)) return null;
+  const clean = (s: string) =>
+    s.replace(/^[「"『'\s]+/, '').replace(/[」"』'\s。.!!~~]+$/, '').trim();
+  // 「叫我X」比「你叫X」更具体,先匹配,避免「你以后叫我老王」被狗规则抢走
+  const mu = t.match(/(?:以后|以後)?\s*(?:就)?\s*(?:请)?(?:叫|称呼)我\s*([^,。!?,.!?\s]{1,20})/);
+  if (mu) {
+    const name = clean(mu[1]);
+    if (name) return { target: 'user', name };
+  }
+  const ma =
+    t.match(/(?:给你|帮你|给它|给狗狗)?(?:起名|取名|改名)(?:叫|为)\s*([^,。!?,.!?\s]{1,20})/) ??
+    t.match(/(?:你|妳)(?:的名字)?(?:以后|以後)?(?:就)?(?:改)?叫\s*([^,。!?,.!?\s]{1,20})/);
+  if (ma) {
+    const name = clean(ma[1]);
+    if (name && !/^(谁|我)/.test(name)) return { target: 'assistant', name };
+  }
+  return null;
+}
+
 function collectRuleMatches(ctx: RuleMatchContext): RuleMatch[] {
   const text = ctx.text.trim();
   const t = text;
@@ -249,6 +277,23 @@ function collectRuleMatches(ctx: RuleMatchContext): RuleMatch[] {
       ],
       { forceChips: true },
     ),
+  );
+
+  const rename = matchPersonaRename(t);
+  push(
+    applyRule('persona_rename', rename !== null, () => [
+      {
+        kind: 'persona_rename',
+        label: rename!.target === 'assistant' ? '给狗狗改名' : '改我的称呼',
+        description:
+          rename!.target === 'assistant'
+            ? `以后它就叫「${rename!.name}」`
+            : `以后它叫你「${rename!.name}」`,
+        confidence: 0.95,
+        group: 'primary',
+        slots: { renameTarget: rename!.target, renameName: rename!.name },
+      },
+    ]),
   );
 
   push(

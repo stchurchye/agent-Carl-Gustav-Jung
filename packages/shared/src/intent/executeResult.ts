@@ -1,5 +1,6 @@
 import type { ChatMessage } from '../types.js';
 import type { GroupMessage } from '../social.js';
+import type { UserPersonaSettings } from '../persona/types.js';
 
 export type IntentExecuteResult =
   | {
@@ -29,6 +30,8 @@ export type IntentExecuteResult =
       assistantMessage?: ChatMessage;
       groupMessages?: GroupMessage[];
       confirmation: string;
+      /** persona_rename:改名后的最新 persona,mobile 据此即时刷新狗名 */
+      personaUpdated?: UserPersonaSettings;
     }
   | { type: 'skipped'; reason: string }
   | {

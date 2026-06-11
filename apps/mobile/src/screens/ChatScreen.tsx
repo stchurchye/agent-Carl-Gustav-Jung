@@ -200,11 +200,14 @@ export function ChatScreen({ route, navigation }: Props) {
   const { viewport: messageActionViewport, composeRect: messageActionComposeRect } =
     useMessageActionViewport(listHostRef, composeRef, messageAction !== null);
 
-  useEffect(() => {
-    void api.getPersona().then((r) => {
-      setAssistantName(personaAssistantDisplayName(r.data));
-    }).catch(() => {});
-  }, []);
+  // useFocusEffect 而非挂载一次:从「狗狗的名字」设置屏返回、或对话改名后切屏回来都要刷新
+  useFocusEffect(
+    useCallback(() => {
+      void api.getPersona().then((r) => {
+        setAssistantName(personaAssistantDisplayName(r.data));
+      }).catch(() => {});
+    }, []),
+  );
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -527,6 +530,9 @@ export function ChatScreen({ route, navigation }: Props) {
             // 直接重新拉取会话消息让 AgentRunCard 接管渲染。
             setMessages((prev) => prev.filter((m) => m.id !== assistantId));
             await loadMessages(sessionId);
+          },
+          onPersonaUpdated: (settings) => {
+            setAssistantName(personaAssistantDisplayName(settings));
           },
         });
         if (!ok && res.data.type === 'skipped') {

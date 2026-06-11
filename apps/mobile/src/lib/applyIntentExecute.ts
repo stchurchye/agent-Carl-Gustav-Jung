@@ -1,4 +1,9 @@
-import type { ChatMessage, GroupMessage, IntentExecuteResult } from '@xzz/shared';
+import type {
+  ChatMessage,
+  GroupMessage,
+  IntentExecuteResult,
+  UserPersonaSettings,
+} from '@xzz/shared';
 import type { ChatUiMessage } from './uiMessage';
 
 export function isIntentExecuteResult(data: unknown): data is IntentExecuteResult {
@@ -20,6 +25,8 @@ export type ChatIntentApplyCallbacks = {
    * 这里需要前端刷新本会话消息列表（payload 中带 agentRun 元数据）。
    */
   onAgent?: (meta: AgentIntentMeta) => void | Promise<void>;
+  /** persona_rename:对话里改了狗名/称呼,带回最新 persona 供 UI 即时刷新 */
+  onPersonaUpdated?: (settings: UserPersonaSettings) => void;
 };
 
 export async function applyPrivateIntentResult(
@@ -36,6 +43,9 @@ export async function applyPrivateIntentResult(
   }
   if (data.type === 'tool' && data.userMessage && data.assistantMessage) {
     callbacks.onTool(data.userMessage, data.assistantMessage);
+    if (data.personaUpdated && callbacks.onPersonaUpdated) {
+      callbacks.onPersonaUpdated(data.personaUpdated);
+    }
     return true;
   }
   if (data.type === 'agent') {

@@ -204,6 +204,44 @@ export async function executeIntent(
     return { type: 'skipped', reason: 'CLIENT_NAVIGATE' };
   }
 
+  if (input.kind === 'persona_rename') {
+    const target = slots.renameTarget;
+    const name = slots.renameName?.trim().slice(0, 20);
+    if (!target || !name) return { type: 'skipped', reason: 'RENAME_MISSING_SLOTS' };
+    const { updatePersonaSettings } = await import('../store/pg-profile.js');
+    const patch =
+      target === 'assistant'
+        ? { identity: { assistantName: name } }
+        : { user: { preferredName: name } };
+    const confirmation =
+      target === 'assistant'
+        ? `汪！记住了，我以后就叫「${name}」！`
+        : `好嘞，以后就叫你「${name}」！`;
+    if (input.channel === 'private') {
+      if (!input.sessionId) return { type: 'skipped', reason: 'RENAME_REQUIRES_SESSION' };
+      const persona = await updatePersonaSettings(input.userId, patch);
+      const res = await persistPrivateToolReply(
+        input.userId,
+        input.sessionId,
+        input.text,
+        confirmation,
+      );
+      return { ...res, personaUpdated: persona };
+    }
+    if (!input.groupId || !input.topicId) {
+      return { type: 'skipped', reason: 'RENAME_REQUIRES_GROUP_TOPIC' };
+    }
+    const persona = await updatePersonaSettings(input.userId, patch);
+    const res = await persistGroupToolReply(
+      input.userId,
+      input.groupId,
+      input.topicId,
+      input.text,
+      confirmation,
+    );
+    return { ...res, personaUpdated: persona };
+  }
+
   if (input.kind === 'agent_run') {
     const { createAgentRun } = await import('./agent/runtime.js');
     const providerId = input.agentOptions?.providerId; // undefined → DB default 'deepseek'
