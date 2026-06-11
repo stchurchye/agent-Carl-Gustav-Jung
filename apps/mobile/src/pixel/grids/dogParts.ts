@@ -322,27 +322,30 @@ export const DOG_PATTERN_GRIDS: Record<DogPattern, PixelGrid> = {
   spots: PATTERN_SPOTS,
 };
 
-// ---------- 配饰(颈部行12-14;flower 在头侧) ----------
+// ---------- 配饰(颈部行13-17,避开嘴帧行11-12;flower 在头侧) ----------
 
 export const DOG_ACCESSORY_GRIDS: Record<Exclude<DogAccessory, 'none'>, PixelGrid> = {
+  /** 围巾:两行 A 带 C 纹理,右侧垂角 */
   scarf: tail([
-    [12, 'AAAAAAAAAA', 7],
-    [13, 'AAAAAAAAAA', 7],
-    [14, 'CAA', 9],
-    [15, 'CA', 9],
-    [16, 'C', 9],
+    [13, 'IAAAAAAAAI', 7],
+    [14, 'IAACAACAAI', 7],
+    [15, 'IACI', 12],
+    [16, 'ICI', 12],
   ]),
+  /** 细项圈(全 I)+ 胸前小铃铛 */
   bell: tail([
-    [12, 'IIIIIIIIII', 7],
-    [13, 'IAAI', 10],
-    [14, 'IACI', 10],
-    [15, 'II', 11],
+    [13, 'IIIIIIIIII', 7],
+    [14, 'IAAI', 10],
+    [15, 'IACI', 10],
+    [16, 'II', 11],
   ]),
+  /** 三角巾:领口一圈 + 胸前倒三角 */
   bandana: tail([
-    [12, 'AAAAAAAAAA', 7],
-    [13, 'ACAACA', 9],
-    [14, 'AAAA', 10],
-    [15, 'AA', 11],
+    [13, 'IAAAAAAAAI', 7],
+    [14, 'IACAACAI', 8],
+    [15, 'IAAAAI', 9],
+    [16, 'IAAI', 10],
+    [17, 'II', 11],
   ]),
   flower: tail([
     [1, 'AA', 16],
