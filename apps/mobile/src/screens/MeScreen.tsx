@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { personaAssistantDisplayName } from '@xzz/shared';
 import { WeChatChatHeader } from '../components/WeChatChatHeader';
 import { ChatAvatar } from '../components/ChatAvatar';
-import { WeChatGroupedSection, WeChatLogoutSection } from '../components/wechat/WeChatGroupedSection';
-import { WeChatListCell } from '../components/wechat/WeChatListCell';
+import { PixelListCell } from '../components/pixel/PixelListCell';
 import { wechatChatStyles } from '../theme/wechatChat';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
@@ -29,6 +29,7 @@ const TTS_DIALECT = 'mandarin' as const;
 
 type Props = NativeStackScreenProps<GroupStackParamList, 'Settings'>;
 
+/** 设置页:一行一卡的像素风列表(Bow wow know 改版) */
 export function MeScreen({ navigation }: Props) {
   const { user, logout } = useAuth();
   const insets = useSafeAreaInsets();
@@ -37,12 +38,15 @@ export function MeScreen({ navigation }: Props) {
   const [voiceSummary, setVoiceSummary] = useState<string>(zh.me.voiceDefault);
   const [visibleDocCount, setVisibleDocCount] = useState(0);
   const [hiddenDocCount, setHiddenDocCount] = useState(0);
+  const [dogName, setDogName] = useState<string>('');
+  const [preferredName, setPreferredName] = useState<string>('');
 
   const loadSummaries = useCallback(async () => {
-    const [storedVoiceId, voices, docsRes] = await Promise.all([
+    const [storedVoiceId, voices, docsRes, personaRes] = await Promise.all([
       getStoredVoiceId(TTS_DIALECT),
       listVoicesForDialect(TTS_DIALECT),
       api.listDocuments().catch(() => ({ data: [] as Awaited<ReturnType<typeof api.listDocuments>>['data'] })),
+      api.getPersona().catch(() => null),
     ]);
 
     if (storedVoiceId === null) {
@@ -55,6 +59,11 @@ export function MeScreen({ navigation }: Props) {
     const docs = docsRes.data;
     setVisibleDocCount(filterVisibleDocuments(docs).length);
     setHiddenDocCount(docs.filter((d) => isDocumentHidden(d)).length);
+
+    if (personaRes) {
+      setDogName(personaAssistantDisplayName(personaRes.data));
+      setPreferredName(personaRes.data.user?.preferredName ?? '');
+    }
   }, []);
 
   useFocusEffect(
@@ -101,44 +110,56 @@ export function MeScreen({ navigation }: Props) {
             </Pressable>
           ) : null}
 
-          <WeChatGroupedSection>
-            <WeChatListCell
-              label={zh.me.voiceTitle}
-              value={voiceSummary}
-              onPress={() => navigation.navigate('SettingsVoice')}
-              showSeparator
+          <PixelListCell
+            label={zh.me.myName}
+            value={user?.displayName}
+            onPress={() => navigation.navigate('SettingsProfileName')}
+          />
+          <PixelListCell
+            label={zh.me.myDog}
+            value={user?.pixelAvatar ? zh.me.myDogAdopted : zh.me.myDogNotAdopted}
+            onPress={() => navigation.navigate('SettingsMyDog')}
+          />
+          <PixelListCell
+            label={zh.me.personalityAssistantName}
+            value={dogName}
+            onPress={() => navigation.navigate('SettingsPersonalityIdentity')}
+          />
+          <PixelListCell
+            label={zh.me.callMe}
+            value={preferredName || zh.me.notSet}
+            onPress={() => navigation.navigate('SettingsPersonalityUser')}
+          />
+          <PixelListCell
+            label={zh.me.voiceTitle}
+            value={voiceSummary}
+            onPress={() => navigation.navigate('SettingsVoice')}
+          />
+          <PixelListCell
+            label={zh.me.exportTitle}
+            onPress={() => navigation.navigate('SettingsTopicExport')}
+          />
+          <PixelListCell
+            label={zh.me.allDocs}
+            value={zh.me.docsCount(visibleDocCount)}
+            onPress={() => navigation.navigate('SettingsDocuments', { scope: 'visible' })}
+          />
+          {hiddenDocCount > 0 ? (
+            <PixelListCell
+              label={zh.me.hiddenDocsTitle}
+              value={zh.me.docsCount(hiddenDocCount)}
+              onPress={() => navigation.navigate('SettingsDocuments', { scope: 'hidden' })}
             />
-            <WeChatListCell
-              label={zh.me.clientLogTitle}
-              onPress={() => navigation.navigate('SettingsClientLogs')}
-              showSeparator
-            />
-            <WeChatListCell
-              label={zh.me.exportTitle}
-              onPress={() => navigation.navigate('SettingsTopicExport')}
-              showSeparator
-            />
-            <WeChatListCell
-              label={zh.me.allDocs}
-              value={zh.me.docsCount(visibleDocCount)}
-              onPress={() => navigation.navigate('SettingsDocuments', { scope: 'visible' })}
-              showSeparator={hiddenDocCount > 0}
-            />
-            {hiddenDocCount > 0 ? (
-              <WeChatListCell
-                label={zh.me.hiddenDocsTitle}
-                value={zh.me.docsCount(hiddenDocCount)}
-                onPress={() => navigation.navigate('SettingsDocuments', { scope: 'hidden' })}
-                showSeparator={false}
-              />
-            ) : null}
-          </WeChatGroupedSection>
-
-          <WeChatLogoutSection
+          ) : null}
+          <PixelListCell
+            label={zh.me.clientLogTitle}
+            onPress={() => navigation.navigate('SettingsClientLogs')}
+          />
+          <PixelListCell
             label={`退出登录${user ? `（${user.displayName}）` : ''}`}
+            destructive
             onPress={() => void logout()}
           />
-
         </TabletFrame>
       </ScrollView>
     </View>
@@ -152,7 +173,10 @@ const styles = StyleSheet.create({
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF7',
+    borderWidth: 2,
+    borderColor: '#3D3229',
+    borderRadius: 4,
     marginBottom: 12,
     paddingHorizontal: 16,
     paddingVertical: 16,
