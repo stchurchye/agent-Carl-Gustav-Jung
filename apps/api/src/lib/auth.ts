@@ -29,6 +29,21 @@ export async function verifyPassword(
   return bcrypt.compare(password, hash);
 }
 
+// review P2(routes/auth.ts:85):登录对不存在的用户名短路跳过 bcrypt,响应时间
+// (~1ms vs ~100ms)可枚举用户名。用户不存在时也对 dummy hash 跑一次比较恒时。
+// dummy hash 惰性生成一次,cost 与 hashPassword 一致。
+let dummyHashPromise: Promise<string> | null = null;
+
+export async function verifyPasswordOrDummy(
+  password: string,
+  hash: string | null | undefined,
+): Promise<boolean> {
+  if (hash) return bcrypt.compare(password, hash);
+  dummyHashPromise ??= hashPassword('timing-equalizer-not-a-real-password');
+  await bcrypt.compare(password, await dummyHashPromise);
+  return false;
+}
+
 export async function signAccessToken(user: User): Promise<{
   accessToken: string;
   expiresIn: number;
