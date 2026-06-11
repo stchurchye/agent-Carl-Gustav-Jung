@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, type ReactNode } from 'react';
 import {
   FlatList,
   Modal,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type FlatListProps,
   type ListRenderItem,
 } from 'react-native';
 
@@ -19,6 +20,13 @@ type Props<T> = {
   keyExtractor: (item: T, index: number) => string;
   /** 打开即滚到底(看最新);搜索跳转场景由 screen 自己 scrollToIndex */
   listRef?: React.RefObject<FlatList<T> | null>;
+  /**
+   * screen 的 viewport/朗读可见性等 FlatList 附加 props(useChatListViewport 产物)。
+   * 提供时内部不再做"打开滚到底"(交给 viewport hook 锚底)。
+   */
+  extraListProps?: Partial<FlatListProps<T>>;
+  /** 渲染在 Modal 内的附加层(长按菜单等——Modal 外的实例会被盖住) */
+  overlayChildren?: ReactNode;
 };
 
 /** 点角色/点气泡 → 经典消息列表浮层(完整历史 + 完整 agent 卡片) */
@@ -30,6 +38,8 @@ export function StageHistoryOverlay<T>({
   renderItem,
   keyExtractor,
   listRef,
+  extraListProps,
+  overlayChildren,
 }: Props<T>) {
   const innerRef = useRef<FlatList<T>>(null);
   const ref = listRef ?? innerRef;
@@ -52,13 +62,19 @@ export function StageHistoryOverlay<T>({
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}
-          onContentSizeChange={() => {
-            if (!didInitialScroll.current && data.length > 0) {
-              didInitialScroll.current = true;
-              ref.current?.scrollToEnd({ animated: false });
-            }
-          }}
+          onContentSizeChange={
+            extraListProps
+              ? undefined
+              : () => {
+                  if (!didInitialScroll.current && data.length > 0) {
+                    didInitialScroll.current = true;
+                    ref.current?.scrollToEnd({ animated: false });
+                  }
+                }
+          }
+          {...extraListProps}
         />
+        {overlayChildren}
       </View>
     </Modal>
   );

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type ViewToken,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -25,6 +25,7 @@ import {
   type IntentAnalyzeResult,
   type IntentKind,
   type MemoryIntentSlots,
+  type PixelAvatarSettings,
 } from '@xzz/shared';
 import { IntentChipBar } from '../components/IntentChipBar';
 import {
@@ -47,6 +48,11 @@ import {
   isDefaultSessionTitle,
 } from '../lib/brand';
 import { navigateBrainTab } from '../lib/navigateBrain';
+import { buildPrivateStage } from '../features/stage/adapters/privateStageAdapter';
+import { resolveStageCharacter } from '../features/stage/stageCharacters';
+import { StageView } from '../features/stage/components/StageView';
+import { StageHistoryOverlay } from '../features/stage/components/StageHistoryOverlay';
+import type { StageActor, StageLine } from '../features/stage/stageTypes';
 import { apiErrorText } from '../lib/apiError';
 import { isAuthErrorMessage } from '../lib/authEvents';
 import {
@@ -199,6 +205,40 @@ export function ChatScreen({ route, navigation }: Props) {
   });
   const { viewport: messageActionViewport, composeRect: messageActionComposeRect } =
     useMessageActionViewport(listHostRef, composeRef, messageAction !== null);
+
+  // ---- 像素舞台模式:经典列表整体迁入"点角色看历史"浮层 ----
+  const { height: windowHeight } = useWindowDimensions();
+  const [historyOpen, setHistoryOpen] = useState<boolean>(Boolean(scrollToMessageId));
+  const stageBubbleMaxHeight = Math.max(180, Math.round(windowHeight * 0.42));
+  const pixelMap = useMemo(() => {
+    const m = new Map<string, PixelAvatarSettings | null | undefined>();
+    m.set('self', user?.pixelAvatar);
+    if (user) m.set(user.id, user.pixelAvatar);
+    return m;
+  }, [user]);
+  const resolveCharacter = useCallback(
+    (actor: StageActor) => resolveStageCharacter(actor, pixelMap),
+    [pixelMap],
+  );
+  const stage = useMemo(() => {
+    const built = buildPrivateStage(messagesUi, {
+      userId: user?.id ?? 'me',
+      userName: user?.displayName ?? '我',
+      userAvatarUri: user?.avatarDisplayUrl,
+      assistantName,
+    });
+    if (built.lines.length === 0 && !initialLoading) {
+      // 空会话:狗狗给一条欢迎台词(原 ListEmptyComponent 的舞台化)
+      built.lines.push({
+        id: 'stage-empty-hint',
+        actorId: 'dog:self',
+        text: zh.chat.emptyHint(assistantName),
+        kind: 'chat',
+        createdAt: '',
+      });
+    }
+    return built;
+  }, [messagesUi, user, assistantName, initialLoading]);
 
   // useFocusEffect 而非挂载一次:从「狗狗的名字」设置屏返回、或对话改名后切屏回来都要刷新
   useFocusEffect(
@@ -1028,33 +1068,19 @@ export function ChatScreen({ route, navigation }: Props) {
       >
         <BubbleTextSelectionProvider>
         <View ref={listHostRef} style={styles.chatBody} collapsable={false}>
-          <FlatList
-            ref={listRef}
-            style={[styles.flex, listOpacityStyle]}
-            data={messagesUi}
-            keyExtractor={(m) => m.id}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={viewabilityConfig}
-            contentContainerStyle={
-              messagesUi.length === 0 ? styles.listContentEmpty : wechatChatStyles.listContent
-            }
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            onTouchEndCapture={bubbleTextSelectionTryDismissOnTouchEnd}
-            removeClippedSubviews={Platform.OS !== 'android'}
-            initialNumToRender={20}
-            maxToRenderPerBatch={12}
-            windowSize={9}
-            updateCellsBatchingPeriod={50}
-            renderItem={renderMessage}
-            {...viewportListProps}
-            ListEmptyComponent={
-              initialLoading ? null : (
-                <Text style={[styles.empty, isTablet && styles.emptyTablet]}>
-                  {zh.chat.emptyHint(assistantName)}
-                </Text>
-              )
-            }
+          <StageView
+            actors={stage.actors}
+            lines={stage.lines}
+            resolveCharacter={resolveCharacter}
+            selfUserId={user?.id}
+            maxSlots={isTablet ? 6 : 4}
+            maxBubbleHeight={stageBubbleMaxHeight}
+            onActorPress={() => setHistoryOpen(true)}
+            onBubblePress={() => setHistoryOpen(true)}
+            onRetry={(line: StageLine) => {
+              if (line.retryText) void sendText(line.retryText);
+            }}
+            onOverflowPress={() => setHistoryOpen(true)}
           />
           {initialLoading && messagesUi.length === 0 ? (
             <View style={styles.initialLoadingOverlay} pointerEvents="none">
@@ -1075,6 +1101,54 @@ export function ChatScreen({ route, navigation }: Props) {
         >
           {composeFooter}
         </View>
+        <StageHistoryOverlay
+          visible={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          title={chatSessionHeaderTitle(session)}
+          data={messagesUi}
+          renderItem={renderMessage}
+          keyExtractor={(m) => m.id}
+          listRef={listRef}
+          extraListProps={{
+            style: [styles.flex, listOpacityStyle],
+            onViewableItemsChanged,
+            viewabilityConfig,
+            contentContainerStyle: wechatChatStyles.listContent,
+            keyboardShouldPersistTaps: 'handled',
+            keyboardDismissMode: 'on-drag',
+            onTouchEndCapture: bubbleTextSelectionTryDismissOnTouchEnd,
+            removeClippedSubviews: Platform.OS !== 'android',
+            initialNumToRender: 20,
+            maxToRenderPerBatch: 12,
+            windowSize: 9,
+            updateCellsBatchingPeriod: 50,
+            ...viewportListProps,
+          }}
+          overlayChildren={
+            <ChatMessageActionMenu
+              visible={messageAction !== null}
+              anchor={messageAction?.anchor ?? null}
+              viewport={messageActionViewport}
+              composeRect={messageActionComposeRect}
+              canCopy={Boolean(messageAction?.copyText.trim())}
+              canMark={messageAction?.canMark ?? false}
+              canRemember={
+                messageAction?.message.role === 'user' &&
+                Boolean(messageAction.copyText.trim())
+              }
+              markActive={messageAction?.message.llmExclude?.active === true}
+              busy={messageActionBusy}
+              onClose={() => {
+                bubbleTextSelectionClearActive();
+                setMessageAction(null);
+              }}
+              onCopy={() => void handleCopyMessage()}
+              onMark={() => void handleMarkLlmExclude()}
+              onCancelMark={() => void handleCancelLlmExclude()}
+              onRemember={() => void handleRememberMessage()}
+            />
+          }
+        />
         </BubbleTextSelectionProvider>
       </KeyboardAvoidingView>
 

@@ -75,7 +75,7 @@ const BODY_ROUND: PixelGrid = [
   '.....IIIIIIIIIIIIII.....',
 ];
 
-/** 修长:窄身高挑(哈士奇/杜宾系) */
+/** 修长:窄肩细腰、坐姿臀部展开(哈士奇/杜宾系);臀部到列17,尾根才接得上 */
 const BODY_SLIM: PixelGrid = [
   E24,
   E24,
@@ -92,15 +92,15 @@ const BODY_SLIM: PixelGrid = [
   '......ISBBBBBBBBSI......',
   '.......IIBBBBBBII.......',
   '.......IBBBBBBBBI.......',
-  '.......IBBBLLBBBI.......',
-  '.......IBBBLLBBBI.......',
-  '.......IBBBBBBBBI.......',
-  '.......IBSBBBBSBI.......',
-  '.......IBSBBBBSBI.......',
-  '.......IBIBBBBIBI.......',
-  '.......IBIBBBBIBI.......',
-  '.......ILISSSSILI.......',
-  '.......IIIIIIIIII.......',
+  '......IBBBBLLBBBBI......',
+  '......IBBBBLLBBBBI......',
+  '......IBBBBBBBBBBI......',
+  '......IBSBBBBBBSBI......',
+  '......IBSBBBBBBSBI......',
+  '......IBBIBBBBIBBI......',
+  '......IBBIBBBBIBBI......',
+  '......ILLISSSSILLI......',
+  '......IIIIIIIIIIII......',
 ];
 
 /** 长身短腿(柯基/腊肠系):身体横向拉长 */
@@ -274,10 +274,10 @@ export const DOG_TAIL_GRIDS: Record<DogTail, { idle: PixelGrid; wag: PixelGrid }
 
 const PATTERN_SOLID: PixelGrid = Array(24).fill(E24);
 
-/** 柴犬式白脸围脖:口鼻+眉点+前胸 */
+/** 柴犬式白脸围脖:口鼻+眉点+前胸(眉点在行5,眼在行6-7,睁眼也露出) */
 const PATTERN_MASK: PixelGrid = tail([
-  [6, 'WW', 9],
-  [6, 'WW', 13],
+  [5, 'WW', 9],
+  [5, 'WW', 13],
   [9, 'WWW.WW.WWW', 7],
   [10, 'WWW.WW.WWW', 7],
   [11, 'WWWWWWWW', 8],
@@ -287,14 +287,13 @@ const PATTERN_MASK: PixelGrid = tail([
   [17, 'WW', 11],
 ]);
 
-/** 白手套:四爪 */
+/** 白手套:整段白足带(只染毛色格,管线保证不出轮廓;long 腿在行19-21,其余体型行20-22) */
 const PATTERN_SOCKS: PixelGrid = tail([
-  [20, 'WW', 6],
-  [20, 'WW', 16],
-  [21, 'WWW', 5],
-  [21, 'WWW', 16],
-  [22, 'WW', 6],
-  [22, 'WW', 16],
+  [19, 'WW', 4],
+  [19, 'WW', 18],
+  [20, 'WWWWWWWWWWWWWWWW', 4],
+  [21, 'WWWWWWWWWWWWWWWW', 4],
+  [22, 'WWWWWWWWWWWWWWWW', 4],
 ]);
 
 /** 单眼圈深斑 */
