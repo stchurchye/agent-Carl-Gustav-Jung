@@ -27,22 +27,39 @@ export function StudioTabIcon({ color, size = 24, focused }: IconProps) {
   );
 }
 
-/** 流浪猫大脑:猫头(双耳) */
-export function BrainTabIcon({ color, size = 24, focused }: IconProps) {
+/** my bow wow:狗头(垂耳+圆鼻+吐舌) */
+export function DogTabIcon({ color, size = 24, focused }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M5 10.5c0-1.6.5-3 1.4-4.2L5.6 3.2c-.1-.5.4-.9.8-.6l3 1.9a8 8 0 0 1 5.2 0l3-1.9c.4-.3.9.1.8.6l-.8 3.1A6.8 6.8 0 0 1 19 10.5c0 4.2-3.1 7-7 7s-7-2.8-7-7Z"
+        d="M6 9.5C6 6.6 8.7 4.5 12 4.5s6 2.1 6 5c0 4-2.7 7.5-6 7.5s-6-3.5-6-7.5Z"
         stroke={color}
         strokeWidth={focused ? 2 : 1.6}
         strokeLinejoin="round"
         fill={focused ? color : 'none'}
         fillOpacity={focused ? 0.15 : 0}
       />
-      <Circle cx={9.5} cy={11} r={1} fill={color} />
-      <Circle cx={14.5} cy={11} r={1} fill={color} />
-      <Path d="M10.8 14h2.4l-1.2 1.4L10.8 14Z" fill={color} />
-      <Path d="M12 17.5v3" stroke={color} strokeWidth={1.6} strokeLinecap="round" />
+      <Path
+        d="M6.3 6.3C4.7 7 3.7 9.1 4.2 11.4c.2.9 1.2 1.3 1.9.7"
+        stroke={color}
+        strokeWidth={focused ? 2 : 1.6}
+        strokeLinecap="round"
+      />
+      <Path
+        d="M17.7 6.3c1.6.7 2.6 2.8 2.1 5.1-.2.9-1.2 1.3-1.9.7"
+        stroke={color}
+        strokeWidth={focused ? 2 : 1.6}
+        strokeLinecap="round"
+      />
+      <Circle cx={9.8} cy={10.3} r={1} fill={color} />
+      <Circle cx={14.2} cy={10.3} r={1} fill={color} />
+      <Path d="M10.9 12.8h2.2l-1.1 1.3-1.1-1.3Z" fill={color} />
+      <Path
+        d="M12 14.3v2c0 1 1.7 1 1.7 0v-.7"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+      />
     </Svg>
   );
 }

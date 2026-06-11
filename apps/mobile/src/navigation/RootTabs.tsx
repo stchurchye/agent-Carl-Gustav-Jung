@@ -8,7 +8,7 @@ import { zh } from '../locales/zh-CN';
 import { brainTokens } from '../theme/brainTokens';
 import { colors } from '../theme/colors';
 import { wechat } from '../theme/wechat';
-import { BrainTabIcon, StudioTabIcon } from '../components/TabBarIcon';
+import { DogTabIcon, StudioTabIcon } from '../components/TabBarIcon';
 
 export type RootTabParamList = {
   StudioTab: NavigatorScreenParams<GroupStackParamList> | undefined;
@@ -67,7 +67,7 @@ export function RootTabs() {
           tabBarLabel: ({ focused }) => (
             <TabLabel label={zh.tabs.brain} focused={focused} brain />
           ),
-          tabBarIcon: ({ color, focused }) => <BrainTabIcon color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <DogTabIcon color={color} focused={focused} />,
           tabBarActiveTintColor: brainTokens.accent,
           tabBarInactiveTintColor: brainTokens.textMuted,
           tabBarStyle: [styles.tabBar, styles.tabBarBrain],
