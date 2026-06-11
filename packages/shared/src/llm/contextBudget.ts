@@ -272,13 +272,13 @@ export function assembleWritingIntentContext(params: {
   let { fitted, omitted, used } = fitHistoryFromEnd(params.history, historyBudget);
 
   if (omitted.length > 0 && params.documentBlock) {
+    // pendingUser 已含在 fixedWithoutDoc 里，这里不能再减一次
     const docBudget = Math.max(
       600,
       limitTokens -
         fixedWithoutDoc -
         used -
         estimateTokens(params.chapterBlock) -
-        breakdown.pendingUser -
         500,
     );
     const prefix = '全篇节选（供理解意图；实际改稿仍只改上面这一段）：\n';
@@ -287,10 +287,7 @@ export function assembleWritingIntentContext(params: {
       : trimTextToTokenBudget(`${prefix}${params.documentBlock}`, docBudget);
     breakdown.document =
       estimateTokens(params.chapterBlock) + estimateTokens(documentBlockForModel);
-    historyBudget = Math.max(
-      0,
-      limitTokens - fixedWithoutDoc - breakdown.document - breakdown.pendingUser,
-    );
+    historyBudget = Math.max(0, limitTokens - fixedWithoutDoc - breakdown.document);
     const retry = fitHistoryFromEnd(params.history, historyBudget);
     fitted = retry.fitted;
     omitted = retry.omitted;
