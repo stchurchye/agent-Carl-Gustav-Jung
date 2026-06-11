@@ -62,7 +62,7 @@ describe('ZenMuxLlmClient (M1e Task 11c)', () => {
     expect(observedBody!.model).toBe('moonshotai/kimi-k2.6');
   });
 
-  it('OpenAI model: caller-provided temperature wins over default', async () => {
+  it('OpenAI model (无硬约束): caller-provided temperature wins over default', async () => {
     let observedBody: Record<string, unknown> | null = null;
     mockFetchOnce(async (_input, init) => {
       observedBody = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
@@ -70,12 +70,45 @@ describe('ZenMuxLlmClient (M1e Task 11c)', () => {
         choices: [{ message: { content: 'ok' } }],
       });
     });
-    const c = new ZenMuxLlmClient('sk', 'moonshotai/kimi-k2.6');
+    // deepseek-v4-pro 无 fixedTemperature 硬约束 → caller 温度生效
+    const c = new ZenMuxLlmClient('sk', 'deepseek/deepseek-v4-pro');
     await c.chat(baseMessages, {
       signal: new AbortController().signal,
-      temperature: 0.5, // overrides default 1
+      temperature: 0.5,
     });
     expect(observedBody!.temperature).toBe(0.5);
+  });
+
+  it('OpenAI model (Kimi): fixedTemperature=1 强制覆盖 caller 传值(spike 陷阱 #3)', async () => {
+    let observedBody: Record<string, unknown> | null = null;
+    mockFetchOnce(async (_input, init) => {
+      observedBody = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      return jsonResponse(200, { choices: [{ message: { content: 'ok' } }] });
+    });
+    const c = new ZenMuxLlmClient('sk', 'moonshotai/kimi-k2.6');
+    // agent planner/reply 等会硬编码 temperature(如 0.3),硬约束必须压过它
+    await c.chat(baseMessages, { signal: new AbortController().signal, temperature: 0.3 });
+    expect(observedBody!.temperature).toBe(1);
+  });
+
+  it('OpenAI model: 未标注模型遇 temperature 400 → 重试一次 temperature=1 并成功', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    let call = 0;
+    global.fetch = vi.fn(async (_input, init) => {
+      bodies.push(JSON.parse(String((init as RequestInit)?.body ?? '{}')));
+      call += 1;
+      return call === 1
+        ? jsonResponse(400, {
+            error: { message: 'invalid temperature: only 1 is allowed for this model' },
+          })
+        : jsonResponse(200, { choices: [{ message: { content: 'ok' } }] });
+    }) as unknown as typeof fetch;
+    const c = new ZenMuxLlmClient('sk', 'deepseek/deepseek-v4-pro');
+    const r = await c.chat(baseMessages, { signal: new AbortController().signal, temperature: 0.5 });
+    expect(r.content).toBe('ok');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0].temperature).toBe(0.5);
+    expect(bodies[1].temperature).toBe(1);
   });
 
   it('OpenAI model: empty content → kind=empty_content (spike 陷阱 #2)', async () => {

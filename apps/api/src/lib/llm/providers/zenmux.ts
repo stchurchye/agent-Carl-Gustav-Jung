@@ -70,16 +70,17 @@ export class ZenMuxLlmClient implements LlmChatClient {
       );
     }
     const profile = resolveModelProfile(this.providerId, this.modelId);
-    const temperature = opts.temperature ?? profile.defaultTemperature;
     const maxTokens = opts.maxTokens ?? profile.defaultMaxTokens;
     const started = Date.now();
+    // fixedTemperature 是 server 硬约束(如 Kimi K2.6 强制 temperature=1),必须**压过**
+    // caller 传值(planner/reply 等会硬编码 0.2~0.4);没有硬约束才用 caller/profile 默认。
+    const forcedTemp = meta.fixedTemperature;
 
-    try {
+    const runOnce = async (temperature: number): Promise<LlmChatResult> => {
       const result =
         meta.provider === 'anthropic'
           ? await this.chatAnthropic(messages, temperature, maxTokens, opts.signal)
           : await this.chatOpenAi(messages, temperature, maxTokens, opts.signal);
-
       if (opts.log) {
         void recordLlmRequest({
           ...opts.log,
@@ -98,6 +99,25 @@ export class ZenMuxLlmClient implements LlmChatClient {
         providerId: this.providerId,
         modelId: this.modelId,
       };
+    };
+
+    try {
+      try {
+        return await runOnce(forcedTemp ?? opts.temperature ?? profile.defaultTemperature);
+      } catch (e) {
+        // 兜底:模型有 temperature=1 硬约束但目录未标注 fixedTemperature 时,按 server
+        // 错误信号(400 + "only 1")重试一次 temp=1,覆盖 qwen/gpt 等推理模型与未来模型。
+        if (
+          forcedTemp !== 1 &&
+          e instanceof LlmProviderError &&
+          (e.kind === 'bad_request' || e.status === 400) &&
+          /temperature/i.test(e.message) &&
+          /only\s*1|must be 1|=\s*1\b/i.test(e.message)
+        ) {
+          return await runOnce(1);
+        }
+        throw e;
+      }
     } catch (e) {
       const err = e instanceof LlmProviderError ? e : this.wrapNetworkError(e);
       this.logError(opts, messages, started, err);
