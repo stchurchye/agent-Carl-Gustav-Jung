@@ -1,3 +1,5 @@
+import { NETWORK_UNREACHABLE_PREFIX } from './brand';
+
 export type ApiRequestOptions = RequestInit & {
   timeoutMs?: number;
   /** 失败后额外重试次数，默认 LLM 为 2、其它为 0 */
@@ -78,7 +80,7 @@ function wrapFetchError(e: unknown, path: string): ApiRequestError {
       msg.includes('could not connect')
     ) {
       return new ApiRequestError(
-        '连不上小助手服务',
+        NETWORK_UNREACHABLE_PREFIX,
         'NETWORK',
         '请确认已运行 npm run dev:api；真机请把 apps/mobile/.env 里的 API 地址改成电脑的局域网 IP',
         undefined,

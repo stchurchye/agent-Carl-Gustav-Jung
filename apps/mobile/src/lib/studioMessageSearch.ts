@@ -1,5 +1,6 @@
 import type { GroupListItem } from '@xzz/shared';
 import { api } from './api';
+import { ASSISTANT_FALLBACK_NAME, DEFAULT_SESSION_TITLE, isDefaultSessionTitle } from './brand';
 import { formatChatListTime } from './formatChatListTime';
 
 export type StudioMessageSearchHit = {
@@ -124,11 +125,12 @@ export async function searchStudioChatMessages(
     sessions.map(async (session) => {
       try {
         const msgsRes = await api.getChatMessages(session.id);
-        const title = session.title?.trim() || '和小助手聊聊';
+        const rawTitle = session.title?.trim();
+        const title = rawTitle && !isDefaultSessionTitle(rawTitle) ? rawTitle : DEFAULT_SESSION_TITLE;
         for (const msg of msgsRes.data) {
           const body = msg.content?.trim() ?? '';
           if (!body || !includesQuery(body, q)) continue;
-          const author = msg.role === 'user' ? '我' : '小助手';
+          const author = msg.role === 'user' ? '我' : ASSISTANT_FALLBACK_NAME;
           const preview = truncate(`${author}: ${body}`);
           const key = `chat:${session.id}`;
           upsertBucket(

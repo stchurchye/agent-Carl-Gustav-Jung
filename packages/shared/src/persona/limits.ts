@@ -111,7 +111,7 @@ export function isPersonaCustomized(settings: UserPersonaSettings | undefined): 
 
 export function personaAssistantDisplayName(
   settings: UserPersonaSettings | undefined,
-  fallback = '小助手',
+  fallback = 'Bow wow',
 ): string {
   const name = settings?.identity?.assistantName?.trim();
   return name || fallback;

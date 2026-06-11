@@ -41,6 +41,11 @@ import {
   isIntentExecuteResult,
 } from '../lib/applyIntentExecute';
 import { api } from '../lib/api';
+import {
+  ASSISTANT_FALLBACK_NAME,
+  DEFAULT_SESSION_TITLE,
+  isDefaultSessionTitle,
+} from '../lib/brand';
 import { navigateBrainTab } from '../lib/navigateBrain';
 import { apiErrorText } from '../lib/apiError';
 import { isAuthErrorMessage } from '../lib/authEvents';
@@ -120,11 +125,9 @@ function localChatMessage(
 
 type ChatUiMessageRow = ChatUiMessage & { showTimestamp: boolean; timeLabel: string };
 
-const DEFAULT_SESSION_TITLE = '和小助手聊聊';
-
 function chatSessionHeaderTitle(session: ChatSession | null): string {
   const title = session?.title?.trim();
-  if (title && title !== DEFAULT_SESSION_TITLE) return title;
+  if (title && !isDefaultSessionTitle(title)) return title;
   return zh.chat.title;
 }
 
@@ -137,7 +140,7 @@ export function ChatScreen({ route, navigation }: Props) {
   const { user } = useAuth();
   const { isTablet } = useLayout();
   const textStyles = useTextStyles();
-  const [assistantName, setAssistantName] = useState('小助手');
+  const [assistantName, setAssistantName] = useState(ASSISTANT_FALLBACK_NAME);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<ChatUiMessage[]>([]);
@@ -222,7 +225,7 @@ export function ChatScreen({ route, navigation }: Props) {
       const s = target ?? session;
       if (!s) return;
       const current =
-        s.title?.trim() && s.title.trim() !== DEFAULT_SESSION_TITLE
+        s.title?.trim() && !isDefaultSessionTitle(s.title)
           ? s.title.trim()
           : DEFAULT_SESSION_TITLE;
       const title = await appPromptText(zh.chat.renameSessionTitle, '', current);

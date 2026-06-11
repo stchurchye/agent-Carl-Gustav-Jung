@@ -8,6 +8,7 @@ import {
   qwenVoicesForDialect,
   type QwenTtsVoice,
 } from '@xzz/shared';
+import { NETWORK_UNREACHABLE_PREFIX } from './brand';
 import { getDashScopeApiKey } from './dashscopeKey';
 import { isQwenPlaying, playQwenSpeech, stopQwenPlayback } from './qwenTtsPlayer';
 
@@ -187,7 +188,7 @@ function alertTtsFailure(e: unknown): void {
   if (err.code === 'DASHSCOPE_KEY_MISSING') {
     lines.push(zh.me.dashscopeNotConfigured);
   }
-  if (lines.length === 0 || lines[0]?.includes('连不上小助手服务')) {
+  if (lines.length === 0 || lines[0]?.includes(NETWORK_UNREACHABLE_PREFIX)) {
     lines.push('请确认本机已运行：npm run dev:api');
   }
   appAlert('朗读没成功', lines.join('\n'));
