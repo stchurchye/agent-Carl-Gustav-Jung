@@ -469,6 +469,7 @@ export function GroupChatScreen({ route, navigation }: Props) {
         if (data.type === 'skipped') {
           if (isGroupLlm) {
             setMessages((prev) => stripLocalGroupMessages(prev));
+            setInput((cur) => cur || text); // 服务端没执行,原文还给输入框
           }
           appAlert('无法执行', data.reason);
           return false;
@@ -510,14 +511,17 @@ export function GroupChatScreen({ route, navigation }: Props) {
             return true;
           }
         }
+        // 先拉到服务端落库的消息再清本地占位:反过来一旦 loadMessages 失败,
+        // 占位已被清、消息又没拉到 → 用户消息凭空消失(review P1)。
+        await loadMessages();
         if (isGroupLlm) {
           setMessages((prev) => stripLocalGroupMessages(prev));
         }
-        await loadMessages();
         return true;
       } catch (e) {
         if (isGroupLlm) {
           setMessages((prev) => stripLocalGroupMessages(prev));
+          setInput((cur) => cur || text); // 占位清掉的同时把原文还给输入框,不丢内容
         }
         const { message, hint } = apiErrorText(e);
         appAlert('操作失败', hint ? `${message}\n\n${hint}` : message);
