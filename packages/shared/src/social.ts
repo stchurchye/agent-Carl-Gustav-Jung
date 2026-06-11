@@ -131,6 +131,8 @@ export type IntentKind =
   | 'magi_content_link'
   | 'app_navigate'
   | 'agent_run'
+  /** 对话里直接给狗(assistant)或自己改名,写 persona */
+  | 'persona_rename'
   /** @deprecated 使用 app_navigate + navigateTarget personality */
   | 'persona_open_settings'
   | 'clarify';
@@ -152,6 +154,10 @@ export type MemoryIntentSlots = {
   explicitGlobal?: boolean;
   category?: MemoryCategory;
   navigateTarget?: AppNavigateTarget;
+  /** persona_rename:给谁改名(assistant=狗,user=自己的称呼) */
+  renameTarget?: 'assistant' | 'user';
+  /** persona_rename:新名字(规则层正则截取,≤20 字由执行层兜底) */
+  renameName?: string;
 };
 
 export type UserMemorySettings = {

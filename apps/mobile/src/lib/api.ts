@@ -15,6 +15,7 @@ import type {
   User,
   UserAiProfile,
   UserPersonaSettings,
+  PixelAvatarSettings,
   UserProfileHistory,
   IntentAnalyzeResult,
   IntentExecuteResult,
@@ -639,6 +640,13 @@ export const api = {
     request<{ user: User; tokens: AuthTokens }>('/api/users/me/avatar', {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+
+  /** 保存像素形象(狗+小人);null 清除。服务端过枚举白名单清洗。 */
+  updatePixelAvatar: (pixelAvatar: PixelAvatarSettings | null) =>
+    request<{ user: User }>('/api/users/me/pixel-avatar', {
+      method: 'PUT',
+      body: JSON.stringify({ pixelAvatar }),
     }),
 
   getProfileHistory: () => request<UserProfileHistory>('/api/users/me/profile-history'),

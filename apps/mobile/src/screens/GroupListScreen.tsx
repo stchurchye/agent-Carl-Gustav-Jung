@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -29,6 +29,7 @@ import { colors, typography } from '../theme/colors';
 import { wechat } from '../theme/wechat';
 import { wechatChatStyles } from '../theme/wechatChat';
 import { WeChatGroupedSection } from '../components/wechat/WeChatGroupedSection';
+import { useAuth } from '../components/AuthGate';
 import { zh } from '../locales/zh-CN';
 
 type Props = NativeStackScreenProps<GroupStackParamList, 'GroupList'>;
@@ -39,7 +40,18 @@ type GroupListUi = {
 };
 
 export function GroupListScreen({ navigation }: Props) {
+  const { user } = useAuth();
+  const adoptPromptedRef = useRef(false);
   const [groupRows, setGroupRows] = useState<GroupListUi[]>([]);
+
+  // 首启领养:还没挑过狗就带去挑一只(服务端字段判断;每次冷启动最多引导一次,可跳过返回)
+  useFocusEffect(
+    useCallback(() => {
+      if (!user || user.pixelAvatar || adoptPromptedRef.current) return;
+      adoptPromptedRef.current = true;
+      navigation.navigate('SettingsMyDog');
+    }, [user, navigation]),
+  );
   const [workbenchSessions, setWorkbenchSessions] = useState<WorkbenchSessionRow[]>([]);
   const [loading, setLoading] = useState(true);
 

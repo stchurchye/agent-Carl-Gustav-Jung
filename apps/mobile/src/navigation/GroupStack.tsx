@@ -12,6 +12,7 @@ import { SettingsTopicExportScreen } from '../screens/SettingsTopicExportScreen'
 import { SettingsProfileScreen } from '../screens/SettingsProfileScreen';
 import { SettingsProfileAvatarScreen } from '../screens/SettingsProfileAvatarScreen';
 import { SettingsProfileNameScreen } from '../screens/SettingsProfileNameScreen';
+import { SettingsPixelAvatarScreen } from '../screens/SettingsPixelAvatarScreen';
 import { SettingsPersonalityScreen } from '../screens/SettingsPersonalityScreen';
 import { SettingsPersonalityIdentityScreen } from '../screens/SettingsPersonalityIdentityScreen';
 import { SettingsPersonalitySoulScreen } from '../screens/SettingsPersonalitySoulScreen';
@@ -66,6 +67,11 @@ export function GroupStack() {
       <Stack.Screen
         name="SettingsProfileName"
         component={SettingsProfileNameScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SettingsMyDog"
+        component={SettingsPixelAvatarScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

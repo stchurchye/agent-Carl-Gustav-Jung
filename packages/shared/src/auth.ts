@@ -1,3 +1,5 @@
+import type { PixelAvatarSettings } from './avatar/types.js';
+
 export type GroupMemberRole = 'owner' | 'member';
 
 export interface User {
@@ -7,6 +9,8 @@ export interface User {
   createdAt: string;
   /** 压缩后的展示头像（data URL） */
   avatarDisplayUrl?: string | null;
+  /** Bow wow 像素形象配置(狗+小人);null/缺省 = 未领养,客户端按 seed 兜底 */
+  pixelAvatar?: PixelAvatarSettings | null;
 }
 
 export interface UserDisplayNameHistoryEntry {
@@ -50,6 +54,8 @@ export interface GroupMember {
   role: GroupMemberRole;
   displayName: string;
   joinedAt: string;
+  /** 群里展示成员的狗/小人用;服务端 listGroupMembers 下发 */
+  pixelAvatar?: PixelAvatarSettings | null;
 }
 
 export interface AuthTokens {

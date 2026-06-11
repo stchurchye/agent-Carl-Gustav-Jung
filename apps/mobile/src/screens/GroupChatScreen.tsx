@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   ActivityIndicator,
   AppState,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
@@ -21,10 +21,16 @@ import {
   type IntentAnalyzeResult,
   type IntentKind,
   type MemoryIntentSlots,
+  type PixelAvatarSettings,
 } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
 import { api } from '../lib/api';
 import { ASSISTANT_FALLBACK_NAME } from '../lib/brand';
+import { buildGroupStage } from '../features/stage/adapters/groupStageAdapter';
+import { resolveStageCharacter } from '../features/stage/stageCharacters';
+import { StageView } from '../features/stage/components/StageView';
+import { StageHistoryOverlay } from '../features/stage/components/StageHistoryOverlay';
+import type { StageActor } from '../features/stage/stageTypes';
 import { navigateBrainTab } from '../lib/navigateBrain';
 import { apiErrorText } from '../lib/apiError';
 import { isAuthErrorMessage } from '../lib/authEvents';
@@ -231,6 +237,34 @@ export function GroupChatScreen({ route, navigation }: Props) {
     });
   const { viewport: messageActionViewport, composeRect: messageActionComposeRect } =
     useMessageActionViewport(listHostRef, composeRef, messageAction !== null);
+
+  // ---- 像素舞台模式:多人多狗,谁说话显示谁 ----
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth >= 768;
+  const [historyOpen, setHistoryOpen] = useState<boolean>(Boolean(scrollToMessageId));
+  const stageBubbleMaxHeight = Math.max(180, Math.round(windowHeight * 0.4));
+  const [memberPixelMap, setMemberPixelMap] = useState<
+    ReadonlyMap<string, PixelAvatarSettings | null | undefined>
+  >(new Map());
+  useEffect(() => {
+    // 进群拉一次成员表:别人的狗/小人配置(listGroupMembers 已下发 pixel_avatar)
+    void api
+      .listGroupMembers(groupId)
+      .then((res) => {
+        const m = new Map<string, PixelAvatarSettings | null | undefined>();
+        for (const member of res.data) m.set(member.userId, member.pixelAvatar);
+        setMemberPixelMap(m);
+      })
+      .catch(() => {});
+  }, [groupId]);
+  const resolveCharacter = useCallback(
+    (actor: StageActor) => resolveStageCharacter(actor, memberPixelMap),
+    [memberPixelMap],
+  );
+  const stage = useMemo(
+    () => buildGroupStage(messagesUi, { selfUserId: user?.id ?? '' }),
+    [messagesUi, user?.id],
+  );
 
   useEffect(() => {
     void getChatLlmModel().then(setChatModel);
@@ -679,21 +713,16 @@ export function GroupChatScreen({ route, navigation }: Props) {
       >
         <BubbleTextSelectionProvider>
         <View ref={listHostRef} style={styles.chatBody} collapsable={false}>
-          <FlatList
-            ref={listRef}
-            style={[styles.flex, listOpacityStyle]}
-            data={messagesUi}
-            keyExtractor={(m) => m.id}
-            renderItem={renderItem}
-            contentContainerStyle={wechatChatStyles.listContent}
-            keyboardShouldPersistTaps="handled"
-            onTouchEndCapture={bubbleTextSelectionTryDismissOnTouchEnd}
-            removeClippedSubviews={Platform.OS !== 'android'}
-            initialNumToRender={20}
-            maxToRenderPerBatch={12}
-            windowSize={9}
-            updateCellsBatchingPeriod={50}
-            {...viewportListProps}
+          <StageView
+            actors={stage.actors}
+            lines={stage.lines}
+            resolveCharacter={resolveCharacter}
+            selfUserId={user?.id}
+            maxSlots={isTablet ? 6 : 4}
+            maxBubbleHeight={stageBubbleMaxHeight}
+            onActorPress={() => setHistoryOpen(true)}
+            onBubblePress={() => setHistoryOpen(true)}
+            onOverflowPress={() => setHistoryOpen(true)}
           />
           {initialLoading && messagesUi.length === 0 ? (
             <View style={styles.initialLoadingOverlay} pointerEvents="none">
@@ -800,6 +829,52 @@ export function GroupChatScreen({ route, navigation }: Props) {
             />
           </View>
         </View>
+        <StageHistoryOverlay
+          visible={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          title={displayTopicName}
+          data={messagesUi}
+          renderItem={renderItem}
+          keyExtractor={(m) => m.id}
+          listRef={listRef}
+          extraListProps={{
+            style: [styles.flex, listOpacityStyle],
+            contentContainerStyle: wechatChatStyles.listContent,
+            keyboardShouldPersistTaps: 'handled',
+            onTouchEndCapture: bubbleTextSelectionTryDismissOnTouchEnd,
+            removeClippedSubviews: Platform.OS !== 'android',
+            initialNumToRender: 20,
+            maxToRenderPerBatch: 12,
+            windowSize: 9,
+            updateCellsBatchingPeriod: 50,
+            ...viewportListProps,
+          }}
+          overlayChildren={
+            <ChatMessageActionMenu
+              visible={messageAction !== null}
+              anchor={messageAction?.anchor ?? null}
+              viewport={messageActionViewport}
+              composeRect={messageActionComposeRect}
+              canCopy={Boolean(messageAction?.copyText.trim())}
+              canMark={messageAction?.canMark ?? false}
+              canRemember={
+                messageAction?.message.kind === 'human' &&
+                messageAction.message.authorId === user?.id &&
+                Boolean(messageAction.copyText.trim())
+              }
+              markActive={messageAction?.message.llmExclude?.active === true}
+              busy={messageActionBusy}
+              onClose={() => {
+                bubbleTextSelectionClearActive();
+                setMessageAction(null);
+              }}
+              onCopy={() => void handleCopyMessage()}
+              onMark={() => void handleMarkLlmExclude()}
+              onCancelMark={() => void handleCancelLlmExclude()}
+              onRemember={() => void handleRememberMessage()}
+            />
+          }
+        />
         </BubbleTextSelectionProvider>
       </KeyboardAvoidingView>
 

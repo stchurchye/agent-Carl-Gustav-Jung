@@ -46,7 +46,7 @@ function defaultChatKind(input: AnalyzeIntentInput): IntentKind {
 }
 
 function chatLabel(input: AnalyzeIntentInput): string {
-  return input.channel === 'group' ? '请 AI 回复' : '和小助手聊聊';
+  return input.channel === 'group' ? '请 AI 回复' : '和 Bow wow 聊聊';
 }
 
 /** @internal exported for tests (M1e Task 13.5). */

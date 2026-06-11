@@ -1,8 +1,12 @@
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { brainIcons } from '../../assets/brainIcons';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { presetDogForSeed } from '@xzz/shared';
+import { PixelCharacter } from '../../components/pixel/PixelCharacter';
+import { buildDogCharacter } from '../../pixel/buildDog';
+import { PERSONALITY_MOTION } from '../../pixel/palette';
+import { useAuth } from '../../components/AuthGate';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBrainSnapshot } from '../../brain/useBrainSnapshot';
 import { API_KEY_KINDS, loadApiKeyStatus } from '../../lib/apiKeyKind';
@@ -23,6 +27,8 @@ type SectionKey = keyof typeof SECTION_ROUTES;
 
 export function BrainHubScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const heroDog = user?.pixelAvatar?.dog ?? presetDogForSeed(user?.id ?? 'bowwow').dog;
   const { snapshot, loading, error, refresh } = useBrainSnapshot();
   const [keysConfiguredCount, setKeysConfiguredCount] = useState(0);
 
@@ -46,13 +52,15 @@ export function BrainHubScreen({ navigation }: Props) {
             <Text style={styles.heroTitle}>{zh.brain.hubTitle}</Text>
             <Text style={styles.heroSub}>{zh.brain.hubSubtitle}</Text>
           </View>
-          <Image
-            source={brainIcons.catBrain}
-            style={styles.heroIcon}
-            resizeMode="contain"
-            accessibilityIgnoresInvertColors
-            accessibilityLabel={zh.brain.hubTitle}
-          />
+          {/* hero = 你自己的狗(会呼吸眨眼);没领养则按 seed 兜底预设 */}
+          <View accessibilityLabel={zh.brain.hubTitle}>
+            <PixelCharacter
+              character={buildDogCharacter(heroDog)}
+              size={56}
+              motion={PERSONALITY_MOTION[heroDog.personality]}
+              animated
+            />
+          </View>
         </View>
         <View style={styles.statusRow}>
           <View style={styles.statusDot} />
@@ -138,11 +146,6 @@ const styles = StyleSheet.create({
   heroTextCol: {
     flex: 1,
     paddingRight: 12,
-  },
-  heroIcon: {
-    width: 44,
-    height: 44,
-    marginTop: 2,
   },
   heroTitle: {
     color: brainTokens.accentBright,

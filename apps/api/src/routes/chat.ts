@@ -39,7 +39,7 @@ chatRouter.post('/sessions', async (c) => {
   const body = await c.req.json<{ title?: string }>();
   const session = await pg.createChatSession(
     userId,
-    body.title?.trim() || '和小助手聊聊',
+    body.title?.trim() || '和 Bow wow 聊聊',
   );
   return c.json({ ok: true, data: session, requestId: c.get('requestId') }, 201);
 });

@@ -1,6 +1,8 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { wechatChat } from '../theme/wechatChat';
 import { avatarPalette } from '../theme/avatarPalette';
+import { PixelSprite } from './pixel/PixelSprite';
+import type { CompiledSprite } from '../pixel/types';
 
 const PALETTE = avatarPalette;
 
@@ -17,12 +19,39 @@ type Props = {
   seed: string;
   size?: number;
   imageUri?: string | null;
+  /** 像素形象(still 编译精灵);提供时优先于照片与首字母 */
+  pixelSprite?: CompiledSprite | null;
 };
 
-export function ChatAvatar({ name, seed, size = wechatChat.avatarSize, imageUri }: Props) {
+export function ChatAvatar({
+  name,
+  seed,
+  size = wechatChat.avatarSize,
+  imageUri,
+  pixelSprite,
+}: Props) {
   const bg = PALETTE[paletteIndex(seed)]!;
   const label = (name.trim()[0] ?? '?').toUpperCase();
   const radius = wechatChat.avatarRadius;
+
+  if (pixelSprite) {
+    return (
+      <View
+        style={[
+          styles.circle,
+          {
+            width: size,
+            height: size,
+            borderRadius: radius,
+            backgroundColor: '#F4EFE4',
+            overflow: 'hidden',
+          },
+        ]}
+      >
+        <PixelSprite sprite={pixelSprite} size={size * 0.92} />
+      </View>
+    );
+  }
 
   if (imageUri) {
     return (

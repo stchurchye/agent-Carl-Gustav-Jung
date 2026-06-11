@@ -28,7 +28,7 @@ export function formatHistoryForCompact(
 ): string {
   return messages
     .map((m) => {
-      const label = m.role === 'user' ? '用户' : '小助手';
+      const label = m.role === 'user' ? '用户' : 'Bow wow';
       return `${label}：${m.content.trim()}`;
     })
     .join('\n\n');

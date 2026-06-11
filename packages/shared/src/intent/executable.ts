@@ -13,6 +13,7 @@ export const EXECUTABLE_INTENT_KINDS: IntentKind[] = [
   'magi_content_link',
   'app_navigate',
   'agent_run',
+  'persona_rename',
   'persona_open_settings',
 ];
 

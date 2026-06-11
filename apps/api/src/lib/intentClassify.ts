@@ -35,12 +35,12 @@ const NAV_LABELS: Record<AppNavigateTarget, string> = {
   memory_short: '查看短记忆',
   memory_session: '查看会话记忆',
   memory_topic: '查看话题记忆',
-  api_keys: '流浪猫通讯方式',
+  api_keys: '狗狗的联络方式',
   voice: '朗读声音设置',
   export: '导出聊天记录',
   documents: '打开文稿列表',
   profile: '个人资料',
-  llm_logs: '流浪猫通讯记录',
+  llm_logs: '狗狗通讯记录',
   client_logs: '客户端日志',
   studio_settings: '打开设置',
 };
@@ -50,7 +50,7 @@ function chatKind(channel: IntentChannel): IntentKind {
 }
 
 function chatLabel(channel: IntentChannel): string {
-  return channel === 'group' ? '请 AI 回复' : '和小助手聊聊';
+  return channel === 'group' ? '请 AI 回复' : '和 Bow wow 聊聊';
 }
 
 export async function classifyIntent(

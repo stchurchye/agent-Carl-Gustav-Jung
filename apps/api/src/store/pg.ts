@@ -15,6 +15,7 @@ import {
   formatChapterTitle,
   normalizeWritingDocument,
   personaAssistantDisplayName,
+  sanitizePixelAvatarSettings,
 } from '@xzz/shared';
 import { getPool } from '../db/client.js';
 
@@ -28,6 +29,7 @@ function rowUser(row: {
   display_name: string;
   created_at: Date;
   avatar_display_key?: string | null;
+  pixel_avatar?: unknown;
 }): User {
   return {
     id: row.id,
@@ -35,10 +37,11 @@ function rowUser(row: {
     displayName: row.display_name,
     createdAt: row.created_at.toISOString(),
     avatarDisplayUrl: row.avatar_display_key ?? null,
+    pixelAvatar: sanitizePixelAvatarSettings(row.pixel_avatar),
   };
 }
 
-const USER_SELECT = 'id, username, display_name, created_at, avatar_display_key';
+const USER_SELECT = 'id, username, display_name, created_at, avatar_display_key, pixel_avatar';
 
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -228,7 +231,7 @@ export async function listGroupMembers(
   );
   if (member.rows.length === 0) return null;
   const { rows } = await getPool().query(
-    `SELECT m.group_id, m.user_id, m.role, m.joined_at, u.display_name
+    `SELECT m.group_id, m.user_id, m.role, m.joined_at, u.display_name, u.pixel_avatar
      FROM group_members m
      INNER JOIN users u ON u.id = m.user_id
      WHERE m.group_id = $1
@@ -240,6 +243,7 @@ export async function listGroupMembers(
     userId: r.user_id,
     role: r.role,
     displayName: r.display_name,
+    pixelAvatar: sanitizePixelAvatarSettings(r.pixel_avatar),
     joinedAt: r.joined_at.toISOString(),
   }));
 }

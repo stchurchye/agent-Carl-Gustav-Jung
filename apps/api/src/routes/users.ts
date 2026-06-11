@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import {
   ErrorCodes,
   PROFILE_AVATAR_ORIGINAL_MAX_BYTES,
+  sanitizePixelAvatarSettings,
   type UserPersonaSettings,
 } from '@xzz/shared';
 import type { AppVariables } from '../types.js';
@@ -103,6 +104,21 @@ usersRouter.post('/me/avatar', async (c) => {
   if (!user) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
   const tokens = await signAccessToken(user);
   return c.json({ ok: true, data: { user, tokens }, requestId: c.get('requestId') });
+});
+
+usersRouter.put('/me/pixel-avatar', async (c) => {
+  const userId = c.get('userId')!;
+  const body = await c.req.json<{ pixelAvatar?: unknown }>();
+  if (body.pixelAvatar === null) {
+    const cleared = await profilePg.updateUserPixelAvatar(userId, null);
+    if (!cleared) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+    return c.json({ ok: true, data: { user: cleared }, requestId: c.get('requestId') });
+  }
+  const sanitized = sanitizePixelAvatarSettings(body.pixelAvatar);
+  if (!sanitized) return jsonError(c, ErrorCodes.VALIDATION, 400);
+  const user = await profilePg.updateUserPixelAvatar(userId, sanitized);
+  if (!user) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+  return c.json({ ok: true, data: { user }, requestId: c.get('requestId') });
 });
 
 usersRouter.get('/me/profile-history', async (c) => {
