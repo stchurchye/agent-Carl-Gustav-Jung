@@ -56,7 +56,13 @@ export function StageView({
   const currentActor = current ? actorById.get(current.actorId) : null;
   const previousActor = previous ? actorById.get(previous.actorId) : null;
 
-  const lastSystem = [...lines].reverse().find((l) => l.kind === 'system');
+  // 单趟扫描:最后一条 system + 每个 actor 的最新行(替代每 actor 一次 reverse().find 的 O(行×角色) 拷贝)
+  let lastSystem: StageLine | undefined;
+  const latestLineByActor = new Map<string, StageLine>();
+  for (const l of lines) {
+    if (l.kind === 'system') lastSystem = l;
+    else latestLineByActor.set(l.actorId, l);
+  }
 
   const attentionForActor = (actorId: string): boolean => {
     // 该角色最新一条 agent 行且在等待输入/授权时,由气泡 tone 表达;
@@ -115,9 +121,7 @@ export function StageView({
         {arranged.visible.map((actor) => {
           const resolved = resolveCharacter(actor);
           // 非当前说话者的最新一条是 agent 行 → 头顶迷你状态点(跑完自动消失)
-          const latestLine = [...lines].reverse().find(
-            (l) => l.actorId === actor.id && l.kind !== 'system',
-          );
+          const latestLine = latestLineByActor.get(actor.id);
           const busyRunId =
             current?.actorId !== actor.id && latestLine?.kind === 'agent'
               ? latestLine.agentRunId
