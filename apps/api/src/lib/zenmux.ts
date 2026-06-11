@@ -4,7 +4,6 @@ import {
   zenmuxBaseUrlForModel,
   zenmuxChatModelMeta,
   type LlmRequestLogContext,
-  type ZenmuxChatProvider,
 } from '@xzz/shared';
 import { recordLlmRequest } from './llmRequestLog.js';
 
@@ -239,15 +238,35 @@ export async function zenmuxChatFromMessages(
 ): Promise<ZenmuxChatResult> {
   const logCtx = options?.log;
   const started = Date.now();
-  try {
-    const provider: ZenmuxChatProvider = zenmuxChatModelMeta(model).provider;
-    let result: ZenmuxChatResult;
-    if (provider === 'anthropic') {
-      result = await zenmuxAnthropicChat(apiKey, model, messages, options);
-    } else if (provider === 'google') {
+  const meta = zenmuxChatModelMeta(model);
+  // 某些模型(如 Kimi K2.6 / 推理模型)server 强制 temperature=1,传别的值会 400 拒。
+  // dispatch(t):按指定温度发一次;t=undefined 时沿用调用方/下游默认温度。
+  const dispatch = async (temperature?: number): Promise<ZenmuxChatResult> => {
+    const opts = temperature != null ? { ...options, temperature } : options;
+    if (meta.provider === 'anthropic') return zenmuxAnthropicChat(apiKey, model, messages, opts);
+    if (meta.provider === 'google') {
       throw new ZenMuxError('当前未配置 Google Vertex 对话模型，请换其他模型');
-    } else {
-      result = await zenmuxOpenAiChat(apiKey, model, messages, options);
+    }
+    return zenmuxOpenAiChat(apiKey, model, messages, opts);
+  };
+  try {
+    let result: ZenmuxChatResult;
+    try {
+      // 目录标了 fixedTemperature 的模型直接用它覆盖(避免无谓的首发被拒)。
+      result = await dispatch(meta.fixedTemperature ?? options?.temperature);
+    } catch (e) {
+      // 兜底:模型有 temperature=1 硬约束但目录未标注时,按 server 错误信号重试一次。
+      if (
+        meta.fixedTemperature !== 1 &&
+        e instanceof ZenMuxError &&
+        e.status === 400 &&
+        /temperature/i.test(e.message) &&
+        /only\s*1|must be 1|=\s*1\b/i.test(e.message)
+      ) {
+        result = await dispatch(1);
+      } else {
+        throw e;
+      }
     }
     if (logCtx) {
       recordLlmRequest({

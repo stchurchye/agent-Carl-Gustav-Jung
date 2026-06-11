@@ -11,6 +11,12 @@ export type ZenmuxChatModel = {
   label: string;
   provider: ZenmuxChatProvider;
   group: ZenmuxChatModelGroup;
+  /**
+   * 该模型 server 端强制的固定温度(传别的值会 400 拒绝)。
+   * 例:Kimi K2.6 强制 temperature=1（spike 陷阱 #3）。标了就覆盖调用方温度。
+   * 未标注但确实有此约束的模型,由 zenmuxChatFromMessages 的错误重试兜底。
+   */
+  fixedTemperature?: number;
 };
 
 export type ZenmuxChatModelGroupDef = {
@@ -71,6 +77,7 @@ export const ZENMUX_CHAT_MODEL_GROUPS: ZenmuxChatModelGroupDef[] = [
         label: 'Kimi K2.6',
         provider: 'openai',
         group: 'domestic',
+        fixedTemperature: 1, // server 强制 temperature=1,传 0/0.7 会 400 拒
       },
       {
         id: 'qwen/qwen3-235b-a22b-thinking-2507',
