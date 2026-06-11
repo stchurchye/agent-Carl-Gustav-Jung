@@ -12,8 +12,10 @@ type Props = {
   speaking?: boolean;
   /** 等授权/等回答:头顶「!」 */
   attention?: boolean;
-  /** 点按飘字(狗汪猫喵);缺省按 kind 兜底 */
-  bark?: string;
+  /** 摸一摸彩蛋:连点轮换(物种×性格,resolver 提供);缺省按 kind 兜底 */
+  reactions?: string[];
+  /** 该角色在后台跑任务(非当前说话者)→ 头顶迷你状态点 */
+  busyProbe?: React.ReactNode;
   onPress?: (actor: StageActor) => void;
   testID?: string;
 };
@@ -30,7 +32,8 @@ export function ActorSlot({
   size,
   speaking,
   attention,
-  bark,
+  reactions,
+  busyProbe,
   onPress,
   testID,
 }: Props) {
@@ -79,7 +82,13 @@ export function ActorSlot({
           <Animated.Text
             style={[styles.bark, { opacity: barkOp, transform: [{ translateY: barkY }] }]}
           >
-            {bark ?? (actor.kind === 'dog' ? '汪!' : '!')}
+            {(() => {
+              const list =
+                reactions && reactions.length > 0
+                  ? reactions
+                  : [actor.kind === 'dog' ? '汪!' : '!'];
+              return list[(barkCount - 1) % list.length];
+            })()}
           </Animated.Text>
         ) : null}
         {attention ? (
@@ -87,6 +96,7 @@ export function ActorSlot({
             <Text style={styles.badgeText}>!</Text>
           </View>
         ) : null}
+        {busyProbe}
         <Animated.View style={{ marginTop: 18, transform: [{ scaleY }, { scaleX }] }}>
           <PixelCharacter
             character={character}

@@ -3,13 +3,14 @@ import { buildCatCharacter } from '../../pixel/buildCat';
 import { buildDogCharacter } from '../../pixel/buildDog';
 import { buildHumanCharacter } from '../../pixel/buildHuman';
 import { HUMAN_MOTION, PERSONALITY_MOTION } from '../../pixel/palette';
+import { HUMAN_REACTIONS, petReactionsFor } from './petReactions';
 import type { ResolvedCharacter } from './components/StageView';
 import type { StageActor } from './stageTypes';
 
 /**
  * actor → 编译角色。pixelMap 按 userId 提供各自的 pixelAvatar
  * ('self' 键 = 私聊里自己的配置);没配置的按 seed 落到预设(人人有狗)。
- * species=cat 时 agent 渲染成德文卷毛猫,点按飘「喵!」。
+ * species=cat 时 agent 渲染成德文卷毛猫;摸一摸彩蛋按 物种×性格 分级。
  */
 export function resolveStageCharacter(
   actor: StageActor,
@@ -22,17 +23,21 @@ export function resolveStageCharacter(
       return {
         character: buildCatCharacter(settings.cat),
         motion: PERSONALITY_MOTION[settings.cat.personality],
-        bark: '喵!',
+        reactions: petReactionsFor('cat', settings.cat.personality),
       };
     }
     const dog = settings?.dog ?? presetDogForSeed(actor.seed).dog;
     return {
       character: buildDogCharacter(dog),
       motion: PERSONALITY_MOTION[dog.personality],
-      bark: '汪!',
+      reactions: petReactionsFor('dog', dog.personality),
     };
   }
   const userKey = actor.id.startsWith('user:') ? actor.id.slice('user:'.length) : actor.seed;
   const human = pixelMap.get(userKey)?.human ?? presetHumanForSeed(actor.seed).human;
-  return { character: buildHumanCharacter(human), motion: HUMAN_MOTION };
+  return {
+    character: buildHumanCharacter(human),
+    motion: HUMAN_MOTION,
+    reactions: HUMAN_REACTIONS,
+  };
 }

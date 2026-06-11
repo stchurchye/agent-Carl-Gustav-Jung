@@ -26,7 +26,7 @@ import {
 import type { GroupStackParamList } from '../navigation/types';
 import { api } from '../lib/api';
 import { ASSISTANT_FALLBACK_NAME } from '../lib/brand';
-import { buildGroupStage } from '../features/stage/adapters/groupStageAdapter';
+import { buildGroupStage, messageBelongsToActor } from '../features/stage/adapters/groupStageAdapter';
 import { resolveStageCharacter } from '../features/stage/stageCharacters';
 import { StageView } from '../features/stage/components/StageView';
 import { StageHistoryOverlay } from '../features/stage/components/StageHistoryOverlay';
@@ -242,6 +242,9 @@ export function GroupChatScreen({ route, navigation }: Props) {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const isTablet = windowWidth >= 768;
   const [historyOpen, setHistoryOpen] = useState<boolean>(Boolean(scrollToMessageId));
+  // 「只看 TA」:点谁进的浮层就记谁;chip 默认关(全部历史),点 chip 才过滤
+  const [focusActor, setFocusActor] = useState<StageActor | null>(null);
+  const [filterOn, setFilterOn] = useState(false);
   const stageBubbleMaxHeight = Math.max(180, Math.round(windowHeight * 0.4));
   const [memberPixelMap, setMemberPixelMap] = useState<
     ReadonlyMap<string, PixelAvatarSettings | null | undefined>
@@ -724,9 +727,19 @@ export function GroupChatScreen({ route, navigation }: Props) {
             selfUserId={user?.id}
             maxSlots={isTablet ? 6 : 4}
             maxBubbleHeight={stageBubbleMaxHeight}
-            onActorPress={() => setHistoryOpen(true)}
-            onBubblePress={() => setHistoryOpen(true)}
-            onOverflowPress={() => setHistoryOpen(true)}
+            onActorPress={(actor) => {
+              setFocusActor(actor);
+              setFilterOn(false);
+              setHistoryOpen(true);
+            }}
+            onBubblePress={() => {
+              setFocusActor(null);
+              setHistoryOpen(true);
+            }}
+            onOverflowPress={() => {
+              setFocusActor(null);
+              setHistoryOpen(true);
+            }}
           />
           {initialLoading && messagesUi.length === 0 ? (
             <View style={styles.initialLoadingOverlay} pointerEvents="none">
@@ -837,10 +850,23 @@ export function GroupChatScreen({ route, navigation }: Props) {
           visible={historyOpen}
           onClose={() => setHistoryOpen(false)}
           title={displayTopicName}
-          data={messagesUi}
+          data={
+            filterOn && focusActor
+              ? messagesUi.filter((m) => messageBelongsToActor(m, focusActor.id))
+              : messagesUi
+          }
           renderItem={renderItem}
           keyExtractor={(m) => m.id}
           listRef={listRef}
+          filterChip={
+            focusActor
+              ? {
+                  label: `只看 ${focusActor.name}`,
+                  active: filterOn,
+                  onToggle: () => setFilterOn((v) => !v),
+                }
+              : undefined
+          }
           extraListProps={{
             style: [styles.flex, listOpacityStyle],
             contentContainerStyle: wechatChatStyles.listContent,

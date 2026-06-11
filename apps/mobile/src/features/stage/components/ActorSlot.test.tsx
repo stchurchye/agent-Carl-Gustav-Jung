@@ -39,4 +39,23 @@ describe('ActorSlot', () => {
     );
     expect(getByTestId('slot-attention')).toBeTruthy();
   });
+
+  it('连点按 reactions 轮换(摸狗彩蛋分级)', () => {
+    const { getByTestId, getByText } = render(
+      <ActorSlot
+        actor={actor}
+        character={character}
+        motion={MOTION}
+        size={64}
+        reactions={['汪!', '汪汪汪!', '(开心转圈)']}
+        testID="slot"
+      />,
+    );
+    fireEvent(getByTestId('slot'), 'pressOut');
+    expect(getByText('汪!')).toBeTruthy();
+    fireEvent(getByTestId('slot'), 'pressOut');
+    expect(getByText('汪汪汪!')).toBeTruthy();
+    fireEvent(getByTestId('slot'), 'pressOut');
+    expect(getByText('(开心转圈)')).toBeTruthy();
+  });
 });

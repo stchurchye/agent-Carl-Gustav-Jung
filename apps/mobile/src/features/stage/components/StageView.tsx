@@ -4,14 +4,15 @@ import type { CharacterMotion, CompiledCharacter } from '../../../pixel/types';
 import { arrangeActors, selectStageDialog } from '../stageDialog';
 import type { StageActor, StageLine } from '../stageTypes';
 import { ActorSlot } from './ActorSlot';
+import { AgentBusyDot } from './AgentBusyDot';
 import { AgentSpeechBubble } from './AgentSpeechBubble';
 import { SpeechBubble } from './SpeechBubble';
 
 export type ResolvedCharacter = {
   character: CompiledCharacter;
   motion: CharacterMotion;
-  /** 点按飘字:狗「汪!」猫「喵!」;缺省按 actor.kind 兜底 */
-  bark?: string;
+  /** 摸一摸彩蛋:连点按 物种×性格 轮换(ActorSlot 用 count % len 取) */
+  reactions: string[];
 };
 
 type Props = {
@@ -113,13 +114,26 @@ export function StageView({
       <View style={styles.actorRow}>
         {arranged.visible.map((actor) => {
           const resolved = resolveCharacter(actor);
+          // 非当前说话者的最新一条是 agent 行 → 头顶迷你状态点(跑完自动消失)
+          const latestLine = [...lines].reverse().find(
+            (l) => l.actorId === actor.id && l.kind !== 'system',
+          );
+          const busyRunId =
+            current?.actorId !== actor.id && latestLine?.kind === 'agent'
+              ? latestLine.agentRunId
+              : undefined;
           return (
             <ActorSlot
               key={actor.id}
               actor={actor}
               character={resolved.character}
               motion={resolved.motion}
-              bark={resolved.bark}
+              reactions={resolved.reactions}
+              busyProbe={
+                busyRunId ? (
+                  <AgentBusyDot runId={busyRunId} testID={`busy-${actor.id}`} />
+                ) : null
+              }
               size={SPRITE_SIZE}
               speaking={current?.actorId === actor.id}
               attention={attentionForActor(actor.id)}
