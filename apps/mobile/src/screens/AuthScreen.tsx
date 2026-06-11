@@ -14,6 +14,7 @@ import { PROFILE_DISPLAY_NAME_MAX } from '@xzz/shared';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppTextInput } from '../components/AppTextInput';
 import { WeChatGroupedSection } from '../components/wechat/WeChatGroupedSection';
+import { BRAND_NAME } from '../lib/brand';
 import { API_BASE_URL } from '../lib/config';
 import { colors, typography } from '../theme/colors';
 import { saveAuthSession } from '../lib/authSession';
@@ -86,9 +87,9 @@ export function AuthScreen({ onAuthenticated }: Props) {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.brand}>agent-Carl-Gustav-Jung</Text>
+        <Text style={styles.brand}>{BRAND_NAME}</Text>
         <Text style={styles.subtitle}>
-          {mode === 'login' ? '请先登录后再继续' : '注册新账号'}
+          {mode === 'login' ? '汪！请先登录，Bow wow 在门口等你' : '注册新账号'}
         </Text>
 
         <WeChatGroupedSection>
