@@ -389,7 +389,7 @@ agentRouter.post('/runs/:id/retry', async (c) => {
   // optimistic 防连点；这是后端最终防线（多设备 / 网络重试也兜得住）。
   const dedup = await getPool().query(
     `SELECT id FROM agent_runs
-      WHERE owner_id = $1 AND input_text = $2
+      WHERE owner_id = $1 AND md5(input_text) = md5($2) AND input_text = $2
         AND created_at > now() - interval '10 seconds'
         AND id <> $3
       ORDER BY created_at DESC LIMIT 1`,
