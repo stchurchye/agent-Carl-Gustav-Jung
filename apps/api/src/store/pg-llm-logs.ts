@@ -2,6 +2,8 @@ import type { LlmRequestLogDetail, LlmRequestLogListItem } from '@xzz/shared';
 import { getPool } from '../db/client.js';
 
 const MAX_PER_USER = 500;
+// 日志含用户消息内容,条数上限之外再加时间留存:超过 14 天即清
+const RETENTION_DAYS = 14;
 
 function rowToListItem(row: {
   id: string;
@@ -80,13 +82,16 @@ export async function insertLlmRequestLog(
   await pool.query(
     `DELETE FROM llm_request_logs
      WHERE user_id = $1
-       AND id NOT IN (
-         SELECT id FROM llm_request_logs
-         WHERE user_id = $1
-         ORDER BY created_at DESC
-         LIMIT $2
+       AND (
+         created_at < now() - make_interval(days => $3)
+         OR id NOT IN (
+           SELECT id FROM llm_request_logs
+           WHERE user_id = $1
+           ORDER BY created_at DESC
+           LIMIT $2
+         )
        )`,
-    [userId, MAX_PER_USER],
+    [userId, MAX_PER_USER, RETENTION_DAYS],
   );
 }
 
