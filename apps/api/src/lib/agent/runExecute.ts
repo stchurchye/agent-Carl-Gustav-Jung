@@ -226,6 +226,16 @@ export async function executeRun(runId: string): Promise<void> {
       // 仅 SELECT 2 列，<1ms（R12）。inputText 永不改写（ADR-M7-13），追问只进 merged_inputs。
       const mergedCounts = await store.getMergedInputCounts(runId);
       if (mergedCounts && mergedCounts.total > mergedCounts.consumed) {
+        // 并发 steer 可能已把 status 写成 replanning(steer 竞态,review P1):
+        // 此时只标记追问已消化(重规划的 planner 读 run.mergedInputs 全量,不丢),
+        // 不再重复写 status、也不发假的 running→replanning 事件污染审计。
+        const cur = await store.getAgentRun(runId);
+        if (cur?.status === 'replanning') {
+          await store.updateAgentRun(runId, {
+            mergedInputsConsumedCount: mergedCounts.total,
+          });
+          return;
+        }
         const fromStatus = run.status;
         await recordStep({
           runId,
@@ -484,6 +494,13 @@ export async function executeRun(runId: string): Promise<void> {
             input: planStep.input,
             error: String(err2),
           });
+          // recordStep await 期间 steer/cancel 可能已落地:此时再抛 err2 会被外层
+          // catch 当普通错误 softComplete('failed'),把 steer 设好的 replanning 覆盖掉。
+          if (abortController.signal.aborted) {
+            const cur = await store.getAgentRun(runId);
+            if (cur?.status === 'replanning') throw new AgentCancelled('steer');
+            throw new AgentCancelled('user');
+          }
           throw err2;
         }
       }
