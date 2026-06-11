@@ -739,13 +739,19 @@ export async function executeRun(runId: string): Promise<void> {
             });
             shouldContinue = !reflection.goalMet;
             reflectionReason = reflection.reason;
-          } catch {
+          } catch (reflectErr) {
             // 取消 → 重抛 AgentCancelled，别让外层误标 failed；其它错 → fail-open 收尾。
             if (abortController.signal.aborted) {
               const cur = await store.getAgentRun(runId);
               if (cur?.status === 'replanning') throw new AgentCancelled('steer');
               throw new AgentCancelled('user');
             }
+            // fail-open 保留,但不能无声:LLM 挂了时收尾决策悄悄退化成「直接 completed」,
+            // 排查时一条线索都没有(review P2 :727)。
+            console.warn(
+              `[executeRun] reflection LLM 调用失败(fail-open 收尾,不挡完成) run=${runId}`,
+              reflectErr,
+            );
             shouldContinue = false;
           }
         }
