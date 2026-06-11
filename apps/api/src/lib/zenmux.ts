@@ -239,6 +239,15 @@ export async function zenmuxChatFromMessages(
   const logCtx = options?.log;
   const started = Date.now();
   const meta = zenmuxChatModelMeta(model);
+  // 越界温度(NaN/-0.5/5)原样发出会被服务端 400 拒,且非「must be 1」类错误不会重试:
+  // 入口钳到 [0,2](OpenAI 协议上限);非数值则丢弃走默认(review P2)。
+  if (options?.temperature != null) {
+    const t = Number(options.temperature);
+    options = {
+      ...options,
+      temperature: Number.isFinite(t) ? Math.min(2, Math.max(0, t)) : undefined,
+    };
+  }
   // 某些模型(如 Kimi K2.6 / 推理模型)server 强制 temperature=1,传别的值会 400 拒。
   // dispatch(t):按指定温度发一次;t=undefined 时沿用调用方/下游默认温度。
   const dispatch = async (temperature?: number): Promise<ZenmuxChatResult> => {

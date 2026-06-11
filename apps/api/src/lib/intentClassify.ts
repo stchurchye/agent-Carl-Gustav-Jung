@@ -121,7 +121,13 @@ memory_remember|memory_correct|memory_forget|context_compact|persona_style|perso
       }))
       .filter((i) => i.confidence > 0.35)
       .slice(0, 6);
-  } catch {
+  } catch (e) {
+    // LLM 没按格式回 JSON:照旧优雅降级(调用方 fallback 到普通聊天),
+    // 但留日志 —— 否则格式回归毫无信号,排查无门(review P2)。
+    console.warn(
+      `[classifyIntent] LLM 输出无法解析为 JSON,降级为空候选: ${String(line).slice(0, 120)}`,
+      e,
+    );
     return [];
   }
 }
