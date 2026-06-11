@@ -12,7 +12,10 @@ import {
   DOG_PERSONALITIES,
   DOG_PRESETS,
   DOG_TAILS,
+  HUMAN_HAIR_COLORS,
+  HUMAN_HAIRS,
   HUMAN_PRESETS,
+  HUMAN_SKINS,
   presetDogForSeed,
   presetHumanForSeed,
   type AvatarSpecies,
@@ -290,21 +293,45 @@ export function SettingsPixelAvatarScreen({ navigation }: Props) {
         ) : null}
 
         {tab === 'human' ? (
-          <View style={styles.grid}>
-            {HUMAN_PRESETS.map((p) => {
-              const selected = JSON.stringify(p.human) === JSON.stringify(human);
-              return (
-                <Pressable
-                  key={p.id}
-                  onPress={() => setHuman(p.human)}
-                  style={[styles.cellBox, isTablet && styles.cellBoxTablet, selected && styles.cellSelected]}
-                  testID={`human-${p.id}`}
-                >
-                  <PixelSprite sprite={buildHumanCharacter(p.human).still} size={56} />
-                  <Text style={styles.cellName}>{p.name}</Text>
-                </Pressable>
-              );
-            })}
+          <View>
+            <View style={styles.grid}>
+              {HUMAN_PRESETS.map((p) => {
+                const selected = JSON.stringify(p.human) === JSON.stringify(human);
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => setHuman(p.human)}
+                    style={[styles.cellBox, isTablet && styles.cellBoxTablet, selected && styles.cellSelected]}
+                    testID={`human-${p.id}`}
+                  >
+                    <PixelSprite sprite={buildHumanCharacter(p.human).still} size={56} />
+                    <Text style={styles.cellName}>{p.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.humanDims}>
+              {dimChips(zh.pixelAvatar.dims.skin, HUMAN_SKINS, human.skin, zh.pixelAvatar.skinNames, (v) =>
+                setHuman({ ...human, skin: v }),
+              )}
+              {dimChips(zh.pixelAvatar.dims.hair, HUMAN_HAIRS, human.hair, zh.pixelAvatar.hairNames, (v) =>
+                setHuman({ ...human, hair: v }),
+              )}
+              {dimChips(
+                zh.pixelAvatar.dims.hairColor,
+                HUMAN_HAIR_COLORS,
+                human.hairColor,
+                zh.pixelAvatar.hairColorNames,
+                (v) => setHuman({ ...human, hairColor: v }),
+              )}
+              {dimChips(
+                zh.pixelAvatar.dims.outfit,
+                ACCENT_COLORS,
+                human.outfit,
+                zh.pixelAvatar.accentNames,
+                (v) => setHuman({ ...human, outfit: v }),
+              )}
+            </View>
           </View>
         ) : null}
 
@@ -409,6 +436,7 @@ const styles = StyleSheet.create({
   chipActive: { borderColor: '#C15F3C', backgroundColor: '#FBF1E9' },
   chipText: { fontSize: 13, color: '#3D3229' },
   chipTextActive: { fontWeight: '700', color: '#A1502F' },
+  humanDims: { marginTop: 12 },
   nameBlock: { marginTop: 16, gap: 6 },
   nameLabel: { fontSize: 13, fontWeight: '700', color: '#6E6759', marginTop: 6 },
   saveBtn: {

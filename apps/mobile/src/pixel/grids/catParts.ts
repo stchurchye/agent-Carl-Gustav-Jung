@@ -98,10 +98,11 @@ export const CAT_ACCESSORY_GRIDS: Record<Exclude<DogAccessory, 'none'>, PixelGri
     [14, 'ACCA', 10],
     [15, 'AA', 11],
   ]),
+  // 同 dogParts:花瓣悬顶 + I 茎并入描边,不咬轮廓
   flower: grid([
-    [1, 'AA', 13],
-    [2, 'ACA', 12],
-    [3, 'AA', 13],
+    [0, 'AA', 13],
+    [1, 'ACA', 12],
+    [2, 'I', 13],
   ]),
 };
 

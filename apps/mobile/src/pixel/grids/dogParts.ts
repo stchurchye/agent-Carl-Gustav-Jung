@@ -347,10 +347,11 @@ export const DOG_ACCESSORY_GRIDS: Record<Exclude<DogAccessory, 'none'>, PixelGri
     [16, 'IAAI', 10],
     [17, 'II', 11],
   ]),
+  // 花瓣悬在头顶上方,茎用 I 并入头顶描边(同字符覆盖=无痕),不再咬掉轮廓(西施打磨)
   flower: tail([
-    [1, 'AA', 16],
-    [2, 'ACA', 15],
-    [3, 'AA', 16],
+    [0, 'AA', 15],
+    [1, 'ACA', 14],
+    [2, 'I', 15],
   ]),
 };
 

@@ -27,6 +27,8 @@ type Props<T> = {
   extraListProps?: Partial<FlatListProps<T>>;
   /** 渲染在 Modal 内的附加层(长按菜单等——Modal 外的实例会被盖住) */
   overlayChildren?: ReactNode;
+  /** 「只看 TA」过滤 chip(群聊点角色进来时提供) */
+  filterChip?: { label: string; active: boolean; onToggle: () => void };
 };
 
 /** 点角色/点气泡 → 经典消息列表浮层(完整历史 + 完整 agent 卡片) */
@@ -40,6 +42,7 @@ export function StageHistoryOverlay<T>({
   listRef,
   extraListProps,
   overlayChildren,
+  filterChip,
 }: Props<T>) {
   const innerRef = useRef<FlatList<T>>(null);
   const ref = listRef ?? innerRef;
@@ -52,6 +55,21 @@ export function StageHistoryOverlay<T>({
           <Text style={styles.title} numberOfLines={1}>
             {title ?? '完整对话'}
           </Text>
+          {filterChip ? (
+            <Pressable
+              onPress={filterChip.onToggle}
+              style={[styles.filterChip, filterChip.active && styles.filterChipActive]}
+              accessibilityRole="button"
+              testID="overlay-filter-chip"
+            >
+              <Text
+                style={[styles.filterText, filterChip.active && styles.filterTextActive]}
+                numberOfLines={1}
+              >
+                {filterChip.label}
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable onPress={onClose} style={styles.closeBtn} accessibilityRole="button" testID="overlay-close">
             <Text style={styles.closeText}>收起</Text>
           </Pressable>
@@ -94,6 +112,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFDF7',
   },
   title: { fontSize: 16, fontWeight: '700', color: '#3D3229', flex: 1 },
+  filterChip: {
+    borderWidth: 2,
+    borderColor: '#3D3229',
+    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#FFFDF7',
+    marginRight: 8,
+    maxWidth: 130,
+  },
+  filterChipActive: { backgroundColor: '#C15F3C', borderColor: '#3D3229' },
+  filterText: { fontWeight: '700', color: '#3D3229', fontSize: 13 },
+  filterTextActive: { color: '#FFFDF7' },
   closeBtn: {
     borderWidth: 2,
     borderColor: '#3D3229',

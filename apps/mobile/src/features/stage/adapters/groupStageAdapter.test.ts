@@ -1,5 +1,5 @@
 import type { GroupMessage } from '@xzz/shared';
-import { buildGroupStage } from './groupStageAdapter';
+import { buildGroupStage, messageBelongsToActor } from './groupStageAdapter';
 
 const gm = (over: Partial<GroupMessage> & Record<string, unknown>): GroupMessage =>
   ({
@@ -75,5 +75,20 @@ describe('buildGroupStage', () => {
     );
     expect(actors.filter((a) => a.id === 'dog:u2').length).toBe(1);
     expect(actors.find((a) => a.id === 'user:u2')?.name).toBe('成员');
+  });
+});
+
+describe('messageBelongsToActor(只看 TA 过滤)', () => {
+  it('人:只匹配该用户的 human 消息', () => {
+    expect(messageBelongsToActor(gm({ kind: 'human', authorId: 'u1' }), 'user:u1')).toBe(true);
+    expect(messageBelongsToActor(gm({ kind: 'human', authorId: 'u2' }), 'user:u1')).toBe(false);
+    expect(messageBelongsToActor(gm({ kind: 'ai', invokerUserId: 'u1' }), 'user:u1')).toBe(false);
+  });
+
+  it('狗:只匹配该用户发起的 ai 消息;dog:unknown 收无主 ai', () => {
+    expect(messageBelongsToActor(gm({ kind: 'ai', invokerUserId: 'u1' }), 'dog:u1')).toBe(true);
+    expect(messageBelongsToActor(gm({ kind: 'ai', invokerUserId: 'u2' }), 'dog:u1')).toBe(false);
+    expect(messageBelongsToActor(gm({ kind: 'ai', invokerUserId: null }), 'dog:unknown')).toBe(true);
+    expect(messageBelongsToActor(gm({ kind: 'system' }), 'dog:u1')).toBe(false);
   });
 });

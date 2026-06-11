@@ -1,6 +1,16 @@
 import React from 'react';
 import { Text } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
+
+const mockPoll = jest.fn((_runId: string) => ({
+  run: null,
+  steps: [],
+  notices: [],
+  connected: false,
+}));
+jest.mock('../../agent/hooks/useAgentRunPoll', () => ({
+  useAgentRunPoll: (runId: string) => mockPoll(runId),
+}));
 import type { CompiledCharacter, CompiledSprite } from '../../../pixel/types';
 import type { StageActor, StageLine } from '../stageTypes';
 import { StageView } from './StageView';
@@ -17,7 +27,7 @@ const character: CompiledCharacter = {
   mouthTalk: sp('#6'),
 };
 const MOTION = { blinkMinMs: 3000, blinkMaxMs: 5000, wagMs: 0, bounceRatio: 0.05 };
-const resolveCharacter = () => ({ character, motion: MOTION });
+const resolveCharacter = () => ({ character, motion: MOTION, reactions: ['汪!'] });
 
 const actor = (id: string, name: string, kind: StageActor['kind'] = 'human'): StageActor => ({
   id,
@@ -71,6 +81,47 @@ describe('StageView', () => {
     fireEvent.press(getByTestId('actor-dog:self'));
     expect(onActorPress).toHaveBeenCalled();
     expect(getByTestId('stage-overflow')).toBeTruthy();
+  });
+
+  it('非当前说话者的狗在跑任务 → 头顶迷你状态点;跑完消失', () => {
+    mockPoll.mockReturnValue({
+      run: { id: 'r1', status: 'running', createdAt: new Date().toISOString() } as never,
+      steps: [],
+      notices: [],
+      connected: true,
+    });
+    const two = [actor('dog:a', '旺财', 'dog'), actor('user:u1', '老王')];
+    const lines = [
+      { id: '1', actorId: 'dog:a', text: '', kind: 'agent' as const, agentRunId: 'r1', createdAt: '1' },
+      line('2', 'user:u1', '继续'),
+    ];
+    const { getByTestId, queryByTestId, rerender } = render(
+      <StageView
+        actors={two}
+        lines={lines}
+        resolveCharacter={resolveCharacter}
+        maxBubbleHeight={300}
+        onActorPress={jest.fn()}
+      />,
+    );
+    expect(getByTestId('busy-dog:a')).toBeTruthy();
+
+    mockPoll.mockReturnValue({
+      run: { id: 'r1', status: 'completed', createdAt: new Date().toISOString() } as never,
+      steps: [],
+      notices: [],
+      connected: true,
+    });
+    rerender(
+      <StageView
+        actors={two}
+        lines={lines}
+        resolveCharacter={resolveCharacter}
+        maxBubbleHeight={300}
+        onActorPress={jest.fn()}
+      />,
+    );
+    expect(queryByTestId('busy-dog:a')).toBeNull();
   });
 
   it('system 行进字幕条不进对话框', () => {

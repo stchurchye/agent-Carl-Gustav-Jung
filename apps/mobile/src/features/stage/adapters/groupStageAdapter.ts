@@ -2,6 +2,21 @@ import type { GroupMessage } from '@xzz/shared';
 import { ASSISTANT_FALLBACK_NAME } from '../../../lib/brand';
 import type { StageActor, StageLine } from '../stageTypes';
 
+/**
+ * 历史浮层「只看 TA」过滤:消息是否属于某个舞台角色。
+ * 人 = 该用户发的 human 消息;狗 = 该用户发起(invoker)的 ai 消息(dog:unknown 收无主 ai)。
+ */
+export function messageBelongsToActor(m: GroupMessage, actorId: string): boolean {
+  if (actorId.startsWith('user:')) {
+    return m.kind === 'human' && m.authorId === actorId.slice('user:'.length);
+  }
+  if (actorId === 'dog:unknown') return m.kind === 'ai' && !m.invokerUserId;
+  if (actorId.startsWith('dog:')) {
+    return m.kind === 'ai' && m.invokerUserId === actorId.slice('dog:'.length);
+  }
+  return false;
+}
+
 /** 群聊:人说话显示人,AI 说话显示发起人(invoker)的狗。system/link_card 走字幕条。 */
 export function buildGroupStage(
   messages: GroupMessage[],
