@@ -9,8 +9,10 @@ import type {
 import {
   isPersonaCustomized,
   mergeUserPersonaSettings,
+  sanitizePixelAvatarSettings,
   sanitizeUserPersonaSettings,
   validateProfileDisplayName,
+  type PixelAvatarSettings,
 } from '@xzz/shared';
 import { getPool } from '../db/client.js';
 
@@ -24,6 +26,7 @@ function rowUser(row: {
   display_name: string;
   created_at: Date;
   avatar_display_key?: string | null;
+  pixel_avatar?: unknown;
 }): User {
   return {
     id: row.id,
@@ -31,10 +34,11 @@ function rowUser(row: {
     displayName: row.display_name,
     createdAt: row.created_at.toISOString(),
     avatarDisplayUrl: row.avatar_display_key ?? null,
+    pixelAvatar: sanitizePixelAvatarSettings(row.pixel_avatar),
   };
 }
 
-const USER_SELECT = `id, username, display_name, created_at, avatar_display_key`;
+const USER_SELECT = `id, username, display_name, created_at, avatar_display_key, pixel_avatar`;
 
 export async function getUserById(userId: string): Promise<User | null> {
   const { rows } = await getPool().query(
@@ -105,6 +109,19 @@ export async function updateUserAvatar(
     `UPDATE users SET avatar_original_key = $2, avatar_display_key = $3 WHERE id = $1`,
     [userId, input.originalDataUrl, input.displayDataUrl],
   );
+  return getUserById(userId);
+}
+
+export async function updateUserPixelAvatar(
+  userId: string,
+  settings: PixelAvatarSettings | null,
+): Promise<User | null> {
+  const current = await getUserById(userId);
+  if (!current) return null;
+  await getPool().query(`UPDATE users SET pixel_avatar = $2::jsonb WHERE id = $1`, [
+    userId,
+    settings ? JSON.stringify(settings) : null,
+  ]);
   return getUserById(userId);
 }
 
