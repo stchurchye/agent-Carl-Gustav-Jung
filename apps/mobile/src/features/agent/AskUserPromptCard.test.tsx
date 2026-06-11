@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 jest.mock('./hooks/useAgentRunPoll', () => ({ useAgentRunPoll: () => ({ run: null }) }));
 jest.mock('../../components/AuthGate', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
@@ -38,4 +38,33 @@ it('renders the submit button with the brand action color (not a stray blue)', (
 
   expect(bgs).toContain(colors.link); // 提交按钮底=品牌绿
   expect(bgs.some((c) => c === '#0a66c2')).toBe(false); // 蓝色绝迹
+});
+
+// Review 2026-06-11 [P1][mobile-agent] AskUserPromptCard.tsx:65
+// setSubmitting(true) 异步刷新,同帧双击时第二击闭包里 submitting 仍是 false
+// → resumeAgentRun 重复发两次。修后:ref 同步守卫。
+it('rapid double-press only fires resumeAgentRun once', async () => {
+  const { resumeAgentRun } = jest.requireMock('./agentApi') as {
+    resumeAgentRun: jest.Mock;
+  };
+  resumeAgentRun.mockReset();
+  let resolveResume: () => void = () => {};
+  resumeAgentRun.mockImplementation(() => new Promise<void>((r) => (resolveResume = r)));
+
+  const { getByText, getByPlaceholderText } = render(
+    <AskUserPromptCard
+      runId="r1"
+      initial={{ question: '继续吗?', target: 'u1', openedForAll: true }}
+    />,
+  );
+  fireEvent.changeText(getByPlaceholderText('输入你的回答…'), '继续');
+  const btn = getByText('提交');
+  await act(async () => {
+    fireEvent.press(btn);
+    fireEvent.press(btn); // 重渲染前的第二击
+  });
+  expect(resumeAgentRun).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    resolveResume();
+  });
 });

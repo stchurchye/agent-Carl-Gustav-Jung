@@ -11,7 +11,7 @@
  *   - askUserOpenedForAllAt 非空 → 任意群成员可见
  *   - 否则隐藏（仅显示"请 @target 回答 + 30s 倒计时"）
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAgentRunPoll } from './hooks/useAgentRunPoll';
 import { resumeAgentRun } from './agentApi';
@@ -36,6 +36,8 @@ export function AskUserPromptCard(props: AskUserPromptCardProps) {
   const userId = user?.id ?? null;
   const [input, setInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // state 异步刷新堵不住同帧双击(闭包里 submitting 仍是 false),用 ref 做同步守卫
+  const submittingRef = useRef(false);
 
   const question = run?.pendingUserPrompt ?? initial.question;
   const target = run?.askUserTargetUserId ?? initial.target;
@@ -59,7 +61,8 @@ export function AskUserPromptCard(props: AskUserPromptCardProps) {
 
   const onSubmit = async () => {
     const trimmed = input.trim();
-    if (!trimmed || submitting || !userId) return; // 未登录直接挡掉，避免 403
+    if (!trimmed || submittingRef.current || !userId) return; // 未登录直接挡掉，避免 403
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await resumeAgentRun(runId, trimmed);
@@ -67,6 +70,7 @@ export function AskUserPromptCard(props: AskUserPromptCardProps) {
     } catch (e) {
       appAlert('提交失败', String(e));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };

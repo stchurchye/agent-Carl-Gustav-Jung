@@ -1,16 +1,33 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, TextInput, TouchableOpacity, Text } from 'react-native';
 import { colors } from '../../theme/colors';
 
 type Props = {
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string) => void | Promise<void>;
   disabled?: boolean;
   placeholder?: string;
 };
 
 export function AgentSteerInput({ onSubmit, disabled, placeholder }: Props) {
   const [text, setText] = useState('');
-  const canSubmit = !disabled && text.trim().length > 0;
+  const [pending, setPending] = useState(false);
+  // state 异步刷新堵不住同帧双击,用 ref 做同步守卫
+  const pendingRef = useRef(false);
+  const canSubmit = !disabled && !pending && text.trim().length > 0;
+
+  const handlePress = async () => {
+    if (!canSubmit || pendingRef.current) return;
+    pendingRef.current = true;
+    setPending(true);
+    const trimmed = text.trim();
+    setText('');
+    try {
+      await onSubmit(trimmed);
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
+  };
 
   return (
     <View style={{ flexDirection: 'row', marginTop: 8, alignItems: 'center' }}>
@@ -31,11 +48,7 @@ export function AgentSteerInput({ onSubmit, disabled, placeholder }: Props) {
       />
       <TouchableOpacity
         disabled={!canSubmit}
-        onPress={() => {
-          if (!canSubmit) return;
-          onSubmit(text.trim());
-          setText('');
-        }}
+        onPress={() => void handlePress()}
         style={{
           marginLeft: 6,
           paddingHorizontal: 12,
