@@ -11,6 +11,7 @@ import { isReplyRefKind, TERMINAL_RUN_STATUSES, type AgentRole, type AgentRun, t
 import * as store from './store.js';
 import { createAgentRun, cancelRun } from './runLifecycle.js';
 import { dispatchChildRun } from './childExecutor.js';
+import { SUBAGENT_MAX_SECONDS } from './runtimeShared.js';
 
 export type SubagentCitation = { kind: string; id: string; label?: string };
 
@@ -24,7 +25,9 @@ export type RunChildSubagentResult = {
 };
 
 const POLL_INTERVAL_MS = 500;
-const MAX_WAIT_MS = 5 * 60_000;
+// 父轮询窗口需 > 子预算 SUBAGENT_MAX_SECONDS(300s),留余量观察子 run 终态;
+// 且 < HIGH_COST_TOOL_TIMEOUT_MS(360s),避免父工具超时早于轮询结束。
+const MAX_WAIT_MS = 330_000;
 /** 子 run 回流父 run 的引用上限(防子报告/扇出聚合的引用洪水冲垮父资源清单)。 */
 export const MAX_CITATIONS = 10;
 
@@ -116,7 +119,7 @@ export async function runChildSubagent(params: {
     modelId: parentRun.modelId,
     parentRunId: parentRun.id,
     role, // M3-S1：子 run 角色决定工具子集
-    budget: { maxSteps, maxSeconds: 120, maxTokens: 50_000 },
+    budget: { maxSteps, maxSeconds: SUBAGENT_MAX_SECONDS, maxTokens: 50_000 },
     surfaceMode: isParentGroup ? 'child_card' : 'default',
   });
   const childRunId = childResult.run.id;

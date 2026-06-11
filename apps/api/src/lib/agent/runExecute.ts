@@ -386,7 +386,8 @@ export async function executeRun(runId: string): Promise<void> {
           const stepIdxNow = await store.maxStepIdx(runId);
           await store.updateAgentRun(runId, {
             status: 'awaiting_approval',
-            awaitingApprovalUntil: new Date(Date.now() + 60_000),
+            // 工具审批等待窗:给用户更充裕的反应时间(移动端可能没盯着屏),原 60s 易自动超时。
+            awaitingApprovalUntil: new Date(Date.now() + 180_000),
             awaitingApprovalStepIdx: stepIdxNow,
             pendingApprovalToolName: tool.name,
           });

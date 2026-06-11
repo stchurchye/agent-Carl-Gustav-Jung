@@ -17,13 +17,29 @@ export class ApiRequestError extends Error {
   }
 }
 
-function timeoutForPath(path: string): number {
-  if (path.includes('/asr') || path.includes('/ocr')) return 90_000;
-  if (path.includes('/assistant') || (path.includes('/chat/sessions') && path.includes('/messages'))) {
-    return 120_000;
+/**
+ * LLM/agent 类请求宽容超时:5 分钟。这类请求(聊天回复/intent 执行/agent 入口)会同步
+ * 等 LLM —— 慢推理模型、长文、链式(分类+执行+记忆蒸馏)、deep_research/多工具/子 agent
+ * 都可能跑很久。宁可多等也别误杀(server 还在跑、app 已报超时,体验最差)。
+ */
+const LLM_TIMEOUT_MS = 300_000;
+/** ASR/OCR 媒体处理 */
+const MEDIA_TIMEOUT_MS = 120_000;
+/** 普通 CRUD/查询 */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+export function timeoutForPath(path: string): number {
+  if (path.includes('/asr') || path.includes('/ocr')) return MEDIA_TIMEOUT_MS;
+  if (
+    path.includes('/assistant') ||
+    (path.includes('/chat/sessions') && path.includes('/messages')) ||
+    path.includes('/ai') ||
+    path.includes('/llm/invoke') ||
+    path.includes('/intent/execute')
+  ) {
+    return LLM_TIMEOUT_MS;
   }
-  if (path.includes('/ai') || path.includes('/llm/invoke')) return 120_000;
-  return 30_000;
+  return DEFAULT_TIMEOUT_MS;
 }
 
 function defaultRetries(path: string): number {
