@@ -80,3 +80,63 @@ describeDb('listGroupMessages after-cursor same-millisecond tiebreak', () => {
     expect(new Set(collected).size).toBe(collected.length); // 无重复
   });
 });
+
+/**
+ * Review 2026-06-11 [P1][api-routes-store] pg-social.ts:253
+ * after=无效/已删除的消息 id 时,锚点子查询返回 NULL,元组比较整体为 NULL
+ * → 静默返回空数组(客户端误以为没有新消息)。修后:锚点不存在 → 忽略游标,
+ * 退化为从头列出(等价首次拉取,客户端按 id 去重)。
+ */
+describeDb('listGroupMessages after-cursor invalid anchor', () => {
+  let groupId: string;
+  let topicId: string;
+  let authorId: string;
+
+  beforeAll(async () => {
+    await runMigrations();
+  });
+
+  beforeEach(async () => {
+    await getPool().query('DELETE FROM group_messages');
+    const u = await ensureUser('cursor-invalid');
+    authorId = u.id;
+    const g = await ensureGroup(u.id);
+    groupId = g.groupId;
+    topicId = g.topicId;
+  });
+
+  async function insertMsg(id: string, createdAtIso: string, content = id) {
+    await getPool().query(
+      `INSERT INTO group_messages (id, group_id, topic_id, author_id, kind, payload, created_at)
+       VALUES ($1, $2, $3, $4, 'human', $5::jsonb, $6)`,
+      [id, groupId, topicId, authorId, JSON.stringify({ content }), createdAtIso],
+    );
+  }
+
+  itDb('after 指向不存在的消息 → 忽略游标从头列出,而非静默空结果', async () => {
+    await insertMsg('m-a', '2026-06-11T00:00:00.000Z');
+    await insertMsg('m-b', '2026-06-11T00:00:00.001Z');
+
+    const page = await listGroupMessages(authorId, groupId, topicId, {
+      after: 'no-such-message-id',
+    });
+    expect(page?.map((m) => m.id)).toEqual(['m-a', 'm-b']);
+  });
+
+  itDb('after 指向已删除的消息 → 同样回退从头列出', async () => {
+    await insertMsg('m-a', '2026-06-11T00:00:00.000Z');
+    await insertMsg('m-b', '2026-06-11T00:00:00.001Z');
+    await insertMsg('m-gone', '2026-06-11T00:00:00.002Z');
+    await getPool().query(`DELETE FROM group_messages WHERE id = 'm-gone'`);
+
+    const page = await listGroupMessages(authorId, groupId, topicId, { after: 'm-gone' });
+    expect(page?.map((m) => m.id)).toEqual(['m-a', 'm-b']);
+  });
+
+  itDb('合法 after 行为不变', async () => {
+    await insertMsg('m-a', '2026-06-11T00:00:00.000Z');
+    await insertMsg('m-b', '2026-06-11T00:00:00.001Z');
+    const page = await listGroupMessages(authorId, groupId, topicId, { after: 'm-a' });
+    expect(page?.map((m) => m.id)).toEqual(['m-b']);
+  });
+});
