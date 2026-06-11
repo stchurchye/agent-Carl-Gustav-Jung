@@ -3,7 +3,38 @@
 66 个 agent:8 个分区 finder × 逐条对抗验证(CONFIRMED/PLAUSIBLE/REFUTED)。
 结果:**确认 27 / 存疑 5 / 驳回 26**。
 
-已就地修复:mobile-chat 两条 P0(私聊 loadMessages preserveLocal,commit a14c5c3)。其余待排期。
+已就地修复:mobile-chat 两条 P0(私聊 loadMessages preserveLocal,commit a14c5c3)。
+
+## 修复状态(2026-06-11,分支 fix/whole-project-review-25)
+
+**27 项 CONFIRMED 全部修复**(2 项 P0 在 a14c5c3,其余 25 项在本分支,每项 TDD 复现测试 + 小切片提交):
+
+| 切片 | 覆盖项 | commit |
+|---|---|---|
+| shared contextBudget pendingUser 双重扣减(:281/:292) | P1 ×2 | 58fa617 |
+| mobile runStore 瞬时错误指数退避(:103) | P1 | d3aa35e |
+| mobile steer/ask_user ref 同步守卫防重复提交 | P1 ×2 | 135dc54 |
+| api 群聊 after 游标无效锚点回退(pg-social:253) | P1 | 1ef7902 |
+| api LLM 请求日志截断 4k + 14 天 TTL(llmRequestLog:85) | P1 | 95187b8 |
+| mobile openWriting 空 documentId 不导航(:72) | P1 | c0bedf2 |
+| mobile 群聊 LLM 失败不丢用户输入(GroupChatScreen:507) | P1 | 249d1b9 |
+| agent steer 竞态 ×2(runExecute:467/:254) | P1 ×2 | 77a51db |
+| agent reclaim 按新 plan 时代计数 + reflection 留痕(:186/:727) | P2 ×2 | a6919a5 |
+| api LLM 解析卫生(deepseek:268/intentClassify:88/zenmux:256) | P2 ×3 | efbd719 |
+| api agent_runs retry 去重 md5 表达式索引(agent.ts:390) | P2 | c2dc434 |
+| api 登录恒时校验防用户名枚举(auth.ts:85) | P2 | 71eb04a |
+| shared persona 字段换行折叠防注入(buildPersonaPrompt:18) | P2 | 6f10ea5 |
+| mobile runStore emit 隔离 + missing 条目清理 + AppState 回收 | P2 ×3 | da987c2 |
+| mobile Qwen TTS 资源回收(qwenTtsPlayer:102 + WritingScreen:293) | P2 ×2 | e943cda |
+| mobile openWriting 受 WRITING_ENABLED 门控(GroupListScreen:169) | P2 | 28da11a |
+
+**5 项 PLAUSIBLE 验证结论**:
+
+- ①(P1)ChatScreen:283 renameSession 旧闭包 → **驳回**:`refreshSessions()` 已把改名写进会话列表,`switchSession` 切回时取新数据,无实际丢失;极端并发窗口最多标题瞬时不刷新。
+- ②(P1)CORS null Origin → **驳回**:浏览器沙箱/file:// 发送的是字符串 `"null"` 而非空值,`if (!origin)` 不放行它,需命中白名单;真正无 Origin 的请求只来自非浏览器客户端(CORS 头对其无效),且认证走 Bearer 头、无 cookie,`*` 不构成可利用面。
+- ③(P1)zenmux Authorization Bearer 无额外加密 → **驳回(wontfix)**:HTTPS + Bearer 是行业标准;服务端到 LLM 网关不适用客户端证书锁定,攻击前提(TLS 已被攻破)超出威胁模型。
+- ④(P2)memory.ts:98 limit 未验证 → **验证为真,已修**:`Math.min(-1,30)=-1`、NaN 都直达 SQL LIMIT 让 PostgreSQL 报 500;现钳到 [1,30],非数值回默认 15(含复现测试)。
+- ⑤(P2)authSession SecureStore 明文 JSON → **驳回(wontfix)**:expo-secure-store 的 Keychain/EncryptedSharedPreferences 即平台级加密方案,应用层再套一层密钥仍需存在设备上,无净收益;且存的只是 displayName 级资料,非凭据。
 
 ## 确认(CONFIRMED)
 
