@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -30,6 +31,11 @@ import * as Clipboard from 'expo-clipboard';
 import { appAlert } from '../lib/appAlert';
 import { appPromptText } from '../lib/appPrompt';
 import { attachChatTimeFlags } from '../lib/chatTime';
+import {
+  getCachedMessages,
+  mergeMessagesById,
+  setCachedMessages,
+} from '../lib/chatMessageCache';
 import { getChatLlmModel, setChatLlmModel } from '../lib/chatLlmModel';
 import { AskAiHubSheet } from '../components/AskAiHubSheet';
 import { AskAiModelPickerSheet } from '../components/AskAiModelPickerSheet';
@@ -135,6 +141,8 @@ export function GroupChatScreen({ route, navigation }: Props) {
   const [displayTopicName, setDisplayTopicName] = useState(topicName);
   const { user } = useAuth();
   const [messages, setMessages] = useState<GroupMessage[]>([]);
+  // 首载指示:仅在「无缓存可显」时兜底渲染 spinner(缓存命中则瞬时出内容)。
+  const [initialLoading, setInitialLoading] = useState(true);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [thinkingLine] = useState(zh.chat.thinking);
@@ -221,6 +229,7 @@ export function GroupChatScreen({ route, navigation }: Props) {
     void getChatLlmModel().then(setChatModel);
   }, []);
 
+  const cacheKey = `${groupId}:${topicId}`;
   const loadMessages = useCallback(
     async (opts?: { poll?: boolean }) => {
       const after = opts?.poll ? lastIdRef.current ?? undefined : undefined;
@@ -231,7 +240,9 @@ export function GroupChatScreen({ route, navigation }: Props) {
         // 决定自动跟随到底（修复「新消息来了纹丝不动」），翻历史时不打扰。
         setMessages((prev) => [...prev, ...res.data]);
       } else {
-        setMessages(res.data);
+        // W1b:全量刷新对旧列表做引用稳定 merge,未变消息不重渲染;
+        // preserveLocal 保住发送中的乐观占位(否则空话题轮询/聚焦重拉会吞掉它们)。
+        setMessages((prev) => mergeMessagesById(prev, res.data, { preserveLocal: true }));
       }
       const last = res.data[res.data.length - 1];
       if (last) lastIdRef.current = last.id;
@@ -239,16 +250,41 @@ export function GroupChatScreen({ route, navigation }: Props) {
     [groupId, topicId],
   );
 
+  // 本地变更/轮询追加都回写缓存;local- 占位不入缓存。
+  // topicId 字段守卫:同实例换话题瞬间旧列表不写进新话题的缓存键(终审随注)。
+  useEffect(() => {
+    const settled = messages.filter((m) => !m.id.startsWith('local-') && m.topicId === topicId);
+    if (settled.length > 0) setCachedMessages(cacheKey, settled);
+  }, [messages, cacheKey, topicId]);
+
+  // 同实例换 topic(无 getId 的参数级导航)时 lastIdRef 残留旧话题游标,
+  // 会让缓存 seed 被跳过且轮询带跨话题 after 漏消息 —— 参数变更即归零。
   useEffect(() => {
     lastIdRef.current = null;
-    void loadMessages().catch((e) => appAlert('消息加载失败', apiErrorText(e).message));
-    pollRef.current = setInterval(() => {
-      void loadMessages({ poll: true }).catch(() => {});
-    }, 4000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [loadMessages]);
+  }, [groupId, topicId]);
+
+  // W1b + W1 顺手:进话题先渲染缓存;轮询只在屏幕聚焦时跑,且 app 退后台时跳过 tick。
+  useFocusEffect(
+    useCallback(() => {
+      if (lastIdRef.current === null) {
+        const cached = getCachedMessages<GroupMessage>(cacheKey);
+        if (cached) {
+          setMessages(cached);
+          lastIdRef.current = cached[cached.length - 1]?.id ?? null;
+        }
+      }
+      void loadMessages()
+        .catch((e) => appAlert('消息加载失败', apiErrorText(e).message))
+        .finally(() => setInitialLoading(false));
+      pollRef.current = setInterval(() => {
+        if (AppState.currentState !== 'active') return;
+        void loadMessages({ poll: true }).catch(() => {});
+      }, 4000);
+      return () => {
+        if (pollRef.current) clearInterval(pollRef.current);
+      };
+    }, [loadMessages, cacheKey]),
+  );
 
   useEffect(() => {
     void api
@@ -647,6 +683,11 @@ export function GroupChatScreen({ route, navigation }: Props) {
             updateCellsBatchingPeriod={50}
             {...viewportListProps}
           />
+          {initialLoading && messagesUi.length === 0 ? (
+            <View style={styles.initialLoadingOverlay} pointerEvents="none">
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null}
           <DraggableAskAiFab
             active={askAiMode}
             onTap={() => setAskAiMode((v) => !v)}
@@ -834,13 +875,18 @@ const styles = StyleSheet.create({
   },
   flex: { flex: 1 },
   chatBody: { flex: 1, position: 'relative', minHeight: 0 },
+  initialLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   messageCell: {
     flexGrow: 0,
     flexShrink: 0,
     width: '100%',
   },
   messageHighlight: {
-    backgroundColor: 'rgba(255, 152, 0, 0.14)',
+    backgroundColor: colors.messageHighlight,
   },
   contextHint: {
     fontSize: 12,
@@ -862,7 +908,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 4,
     paddingHorizontal: 8,
-    backgroundColor: '#f0f4ff',
+    backgroundColor: colors.selectedBg,
     borderRadius: 12,
     alignSelf: 'flex-start',
     marginBottom: 4,
@@ -870,6 +916,6 @@ const styles = StyleSheet.create({
   },
   agentModelChipText: {
     fontSize: 12,
-    color: '#0050cc',
+    color: colors.link,
   },
 });

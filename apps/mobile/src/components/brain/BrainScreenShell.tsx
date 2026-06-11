@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -33,6 +33,13 @@ export function BrainScreenShell({
   children,
 }: Props) {
   const insets = useSafeAreaInsets();
+  // W2 防闪:记录「内容是否展示过」。聚焦重拉(loading 再变 true)时不再卸载 children
+  // 整屏换 spinner —— 已有内容静默刷新,只有首载/出错才占屏。
+  const [hasShownContent, setHasShownContent] = useState(false);
+  useEffect(() => {
+    if (!loading && !error) setHasShownContent(true);
+  }, [loading, error]);
+  const showFullLoader = loading && !hasShownContent;
 
   return (
     <View style={[styles.page, { paddingTop: insets.top }]}>
@@ -58,7 +65,7 @@ export function BrainScreenShell({
 
       <BrainLogicBanner hint={hint} />
 
-      {loading ? (
+      {showFullLoader ? (
         <ActivityIndicator color={brainTokens.accent} style={styles.loader} />
       ) : error ? (
         <Text style={styles.error}>{error}</Text>

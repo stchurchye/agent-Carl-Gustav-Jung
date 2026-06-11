@@ -23,6 +23,7 @@ export function BrainAgentTaskDetailScreen({ navigation, route }: Props) {
       <ScrollView contentContainerStyle={{ padding: 12 }}>
         <AgentRunCard
           runId={runId}
+          expanded
           onRetry={(newId) =>
             // M1e task 7：push（不是 replace），保留旧任务在 back stack，
             // 用户能回去对比新旧任务的不同结果。

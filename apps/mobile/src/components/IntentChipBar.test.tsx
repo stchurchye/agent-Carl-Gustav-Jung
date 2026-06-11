@@ -47,6 +47,7 @@ it('uses the brand orange tint (not the retired EVA bright orange) for emphasis'
 
   // 退役亮橙(255,140,26)不得再出现在任何渲染样式里。
   expect(allColorValues.some((v) => v.includes('255, 140, 26'))).toBe(false);
-  // 推荐行的弱底用品牌橙 hue。
-  expect(allColorValues.some((v) => v.includes('224, 123, 0'))).toBe(true);
+  // 推荐行的弱底用品牌赤陶 hue(U7 起 #C15F3C;原品牌橙 224,123,0 已随换肤退役)。
+  expect(allColorValues.some((v) => v.includes('193, 95, 60'))).toBe(true);
+  expect(allColorValues.some((v) => v.includes('224, 123, 0'))).toBe(false);
 });

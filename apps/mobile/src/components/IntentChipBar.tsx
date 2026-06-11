@@ -25,11 +25,11 @@ const intentChip = {
   panelBg: '#FFFFFF',
   border: '#E5E5E5',
   borderSubtle: 'rgba(229, 229, 229, 0.6)',
-  accent: '#E07B00', // 品牌橙(白底可读)
-  accentTintSoft: 'rgba(224, 123, 0, 0.06)', // 推荐行弱底
-  accentTintStrong: 'rgba(224, 123, 0, 0.12)', // 推荐 badge 底
-  accentPressed: 'rgba(224, 123, 0, 0.08)', // 按压态
-  textPrimary: '#191919',
+  accent: '#C15F3C', // 赤陶(与全局 primary 一致)
+  accentTintSoft: 'rgba(193, 95, 60, 0.06)', // 推荐行弱底
+  accentTintStrong: 'rgba(193, 95, 60, 0.12)', // 推荐 badge 底
+  accentPressed: 'rgba(193, 95, 60, 0.08)', // 按压态
+  textPrimary: '#1F1E1D',
   textSecondary: '#888888',
   textTertiary: '#B2B2B2',
   agentAccent: '#576B95', // agent_run 用微信蓝区分

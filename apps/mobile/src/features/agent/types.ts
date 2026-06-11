@@ -11,6 +11,17 @@ export type AgentRunStatus =
   | 'cancelled'
   | 'budget_exhausted';
 
+/** 终态集合的唯一出口(与后端 TERMINAL_RUN_STATUSES 对齐)——勿在组件里各抄一份。 */
+export const TERMINAL_RUN_STATUSES: AgentRunStatus[] = [
+  'completed',
+  'failed',
+  'cancelled',
+  'budget_exhausted',
+];
+export function isTerminalRunStatus(s: AgentRunStatus): boolean {
+  return TERMINAL_RUN_STATUSES.includes(s);
+}
+
 // 必须与后端 `apps/api/src/lib/agent/types.ts` 的 StepKind 联合类型对齐（M1e task 6/7）。
 export type AgentStepKind =
   | 'plan'
@@ -28,6 +39,8 @@ export type AgentStepKind =
   | 'approval_grant'
   | 'approval_deny'
   | 'approval_timeout'
+  // M3-S0:子 run 调白名单外工具被执行期护栏拦截。
+  | 'subagent_tool_denied'
   | 'cancel'
   | 'reclaim'
   | 'heartbeat' // 老 run 兼容
@@ -155,6 +168,8 @@ export type NoticeCode =
   | 'NO_API_KEY'
   | 'RETRY_DEDUPED'
   | 'PLANNER_LLM_FALLBACK'
+  // issue 0005:planner 产出未知工具名时的提示。
+  | 'PLANNER_UNKNOWN_TOOL'
   | 'REPLY_LLM_FALLBACK'
   | 'SKILL_WARN_KEYWORD'
   | 'SKILL_DROPPED'

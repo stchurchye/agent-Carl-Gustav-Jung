@@ -62,6 +62,11 @@ import { useAgentModelPicker } from '../features/agent/useAgentModelPicker';
 import { AgentModelPickerSheet } from '../features/agent/AgentModelPickerSheet';
 import { zenmuxChatModelLabel } from '../lib/chatLlmModel';
 import { attachChatTimeFlags } from '../lib/chatTime';
+import {
+  getCachedMessages,
+  mergeMessagesById,
+  setCachedMessages,
+} from '../lib/chatMessageCache';
 import { ChatComposeBar } from '../components/ChatComposeBar';
 import { SlashCommandsTip } from '../components/SlashCommandsTip';
 import { ChatMessageRow, chatBubbleTextStyle } from '../components/ChatMessageRow';
@@ -135,6 +140,8 @@ export function ChatScreen({ route, navigation }: Props) {
   const [session, setSession] = useState<ChatSession | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<ChatUiMessage[]>([]);
+  // 首载指示:仅在「无缓存可显」时兜底渲染 spinner(缓存命中则瞬时出内容)。
+  const [initialLoading, setInitialLoading] = useState(true);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [thinkingLine, setThinkingLine] = useState<string>(zh.chat.thinking);
@@ -268,13 +275,26 @@ export function ChatScreen({ route, navigation }: Props) {
     return created.data.id;
   }, [refreshSessions]);
 
+  // W1b:刷新对缓存做引用稳定 merge —— 未变消息复用旧引用,整体未变时连重渲染都没有。
+  // loadSeqRef:切会话时在途响应乱序返回会把旧会话消息渲染进新会话(review-w1),序号守卫丢弃过期响应。
+  const loadSeqRef = useRef(0);
   const loadMessages = useCallback(
     async (sessionId: string) => {
+      const seq = ++loadSeqRef.current;
       const res = await api.getChatMessages(sessionId);
-      setMessages(res.data.map((m) => ({ ...m, status: 'done' as const })));
+      if (seq !== loadSeqRef.current) return;
+      const fresh = res.data.map((m) => ({ ...m, status: 'done' as const }));
+      const merged = mergeMessagesById(getCachedMessages<ChatUiMessage>(sessionId) ?? [], fresh);
+      setCachedMessages(sessionId, merged);
+      setMessages(merged);
     },
     [],
   );
+
+  // 进屏/切会话先渲染缓存(stale-while-revalidate),不再等网络白屏。
+  const seedFromCache = useCallback((sessionId: string) => {
+    setMessages(getCachedMessages<ChatUiMessage>(sessionId) ?? []);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -285,14 +305,18 @@ export function ChatScreen({ route, navigation }: Props) {
         if (cancelled) return;
         if (found) {
           setSession(found);
+          seedFromCache(found.id);
           await loadMessages(found.id);
           return;
         }
       }
       const id = await ensureSession();
       if (cancelled) return;
+      seedFromCache(id);
       await loadMessages(id);
-    })();
+    })().finally(() => {
+      if (!cancelled) setInitialLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -302,6 +326,17 @@ export function ChatScreen({ route, navigation }: Props) {
   const messageCountRef = useRef(0);
   sessionIdRef.current = session?.id ?? null;
   messageCountRef.current = messages.length;
+
+  // 本地变更(发送/流式/撤回)也回写缓存,重开会话不丢最新视图。
+  // sessionId 字段守卫:切会话瞬间旧列表不写进新会话的缓存键。
+  useEffect(() => {
+    const sid = session?.id;
+    if (!sid) return;
+    const settled = messages.filter(
+      (m) => (m.status ?? 'done') === 'done' && !m.id.startsWith('local-') && m.sessionId === sid,
+    );
+    if (settled.length > 0) setCachedMessages(sid, settled);
+  }, [messages, session?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -604,6 +639,7 @@ export function ChatScreen({ route, navigation }: Props) {
         const found = list.find((s) => s.id === sessionId);
         if (found) setSession(found);
       }
+      seedFromCache(sessionId);
       await loadMessages(sessionId);
       void refreshContextUsage();
     },
@@ -890,7 +926,7 @@ export function ChatScreen({ route, navigation }: Props) {
               if (text) {
                 setInput((v) => (v ? `${v}\n${text}` : text));
               } else {
-                appAlert('提示', '图片里没认出文字');
+                appAlert('提示', zh.chat.ocrNoText);
               }
             } catch (e) {
               appAlert('识图失败', apiErrorText(e).message);
@@ -1002,11 +1038,18 @@ export function ChatScreen({ route, navigation }: Props) {
             renderItem={renderMessage}
             {...viewportListProps}
             ListEmptyComponent={
-              <Text style={[styles.empty, isTablet && styles.emptyTablet]}>
-                {zh.chat.emptyHint}
-              </Text>
+              initialLoading ? null : (
+                <Text style={[styles.empty, isTablet && styles.emptyTablet]}>
+                  {zh.chat.emptyHint}
+                </Text>
+              )
             }
           />
+          {initialLoading && messagesUi.length === 0 ? (
+            <View style={styles.initialLoadingOverlay} pointerEvents="none">
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null}
           <DraggableAskAiFab
             active={false}
             onTap={() => setAskAiHubOpen(true)}
@@ -1116,8 +1159,13 @@ const styles = StyleSheet.create({
   pageHost: { position: 'relative' },
   flex: { flex: 1 },
   chatBody: { flex: 1, position: 'relative', minHeight: 0 },
+  initialLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   messageHighlight: {
-    backgroundColor: 'rgba(255, 152, 0, 0.14)',
+    backgroundColor: colors.messageHighlight,
   },
   headerActions: {
     flexDirection: 'row',
@@ -1177,7 +1225,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 4,
     paddingHorizontal: 8,
-    backgroundColor: '#f0f4ff',
+    backgroundColor: colors.selectedBg,
     borderRadius: 12,
     alignSelf: 'flex-start',
     marginBottom: 4,
@@ -1185,6 +1233,6 @@ const styles = StyleSheet.create({
   },
   agentModelChipText: {
     fontSize: 12,
-    color: '#0050cc',
+    color: colors.link,
   },
 });

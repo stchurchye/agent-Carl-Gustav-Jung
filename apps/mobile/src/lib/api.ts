@@ -34,7 +34,7 @@ import { ApiRequestError, fetchJsonWithRetry } from './apiRequest';
 import { getDeepSeekApiKey } from './deepseekKey';
 import { getZenMuxApiKey } from './zenmuxKey';
 import { getDashScopeApiKey } from './dashscopeKey';
-import { getStoredDialect } from './tts';
+import { getStoredDialect } from './ttsDialect';
 import { getAccessToken } from './authSession';
 import { isAuthErrorMessage, notifyUnauthorized } from './authEvents';
 import {
@@ -113,9 +113,14 @@ async function request<T>(
       ) {
         notifyUnauthorized();
       }
-      const err = new Error(e.message) as Error & { hint?: string; code?: string };
+      const err = new Error(e.message) as Error & {
+        hint?: string;
+        code?: string;
+        status?: number;
+      };
       err.hint = e.hint;
       err.code = e.code;
+      err.status = e.status; // 永久错误判定(404/403)依赖 status,勿丢
       throw err;
     }
     throw new Error(networkErrorMessage());

@@ -381,13 +381,13 @@ const styles = StyleSheet.create({
     height: 36,
     marginRight: 8,
     borderRadius: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: wechatChat.searchBg,
     paddingHorizontal: 10,
     gap: 6,
   },
   inputIcon: {
     fontSize: 18,
-    color: '#B2B2B2',
+    color: colors.textTertiary,
   },
   input: {
     flex: 1,
@@ -448,7 +448,7 @@ const styles = StyleSheet.create({
   },
   historyDivider: {
     fontSize: typography.small,
-    color: '#D0D0D0',
+    color: colors.border,
   },
   historyTrash: {
     fontSize: 16,
@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
   },
   historyClock: {
     fontSize: 14,
-    color: '#B2B2B2',
+    color: colors.textTertiary,
   },
   historyChipText: {
     flex: 1,

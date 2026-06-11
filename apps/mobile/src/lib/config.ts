@@ -1,12 +1,12 @@
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
-import NativeSourceCode from 'react-native/Libraries/NativeModules/specs/NativeSourceCode';
+import { NativeModules, Platform } from 'react-native';
 import { XZZ_API_PORT } from '@xzz/shared';
 
 /** 从 Metro bundle 地址取电脑 IP（真机与 Metro 同机时最可靠） */
 function hostFromScriptUrl(): string | null {
   try {
-    const scriptURL = NativeSourceCode.getConstants().scriptURL;
+    // 公开 API 取代 react-native/Libraries 深 import(Metro 弃用警告)
+    const scriptURL: string | undefined = NativeModules.SourceCode?.getConstants?.().scriptURL;
     if (!scriptURL || scriptURL.startsWith('file:')) return null;
     const host = scriptURL.match(/^https?:\/\/([^/:]+)/)?.[1];
     if (!host || host === 'localhost' || host === '127.0.0.1') return null;

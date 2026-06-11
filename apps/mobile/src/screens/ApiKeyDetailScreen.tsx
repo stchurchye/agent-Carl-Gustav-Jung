@@ -76,7 +76,7 @@ export function ApiKeyDetailScreen({ route, navigation }: Props) {
     try {
       if (!trimmed) {
         if (!hasStored) {
-          appAlert('提示', '请先填入密钥');
+          appAlert('提示', zh.brain.homeKeysDetail.keyRequired);
           return;
         }
         await cfg.clearLocal();

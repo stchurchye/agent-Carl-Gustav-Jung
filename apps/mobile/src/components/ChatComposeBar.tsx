@@ -63,7 +63,7 @@ type Props = {
   composeIconVariant?: ComposeIconVariant;
 };
 
-const ASK_AI_ORANGE = '#FF9800';
+const ASK_AI_ORANGE = colors.accent; // 赤陶(原 #FF9800)
 
 /**
  * 微信式底部栏：左切换语音/键盘 · 中输入或按住说话 · 内嵌听写麦 · 键盘「发送」/右加号
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
   fieldShellAskAi: {
     borderWidth: 2,
     borderColor: ASK_AI_ORANGE,
-    backgroundColor: 'rgba(255, 152, 0, 0.06)',
+    backgroundColor: colors.accentSoftBg,
   },
   input: {
     paddingLeft: 10,

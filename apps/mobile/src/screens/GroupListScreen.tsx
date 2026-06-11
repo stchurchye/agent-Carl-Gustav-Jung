@@ -130,7 +130,8 @@ export function GroupListScreen({ navigation }: Props) {
     <View style={wechatChatStyles.page}>
       <WeChatChatHeader title={zh.tabs.groups} left={headerLeft} right={headerRight} />
       <StudioSearchBar onPress={() => navigation.navigate('StudioSearch')} />
-      {loading ? (
+      {/* W2 防闪:已有内容时聚焦重拉静默刷新,只有首载(无数据)才占屏 spinner */}
+      {loading && groupRows.length === 0 && workbenchSessions.length === 0 ? (
         <ActivityIndicator style={styles.loader} color={colors.primary} />
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>

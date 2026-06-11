@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { colors } from '../theme/colors';
 import {
   View, Text, TextInput, TouchableOpacity,
   ActivityIndicator, StyleSheet,
@@ -80,43 +81,43 @@ export default function AskUserPrompt({ runId, question, options, onResumed, res
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff8e1',
+    backgroundColor: colors.warningBg,
     borderLeftWidth: 3,
-    borderLeftColor: '#f9a825',
+    borderLeftColor: colors.warning,
     borderRadius: 6,
     padding: 12,
     marginVertical: 6,
   },
-  question: { fontSize: 14, color: '#333', marginBottom: 8, fontWeight: '500' },
+  question: { fontSize: 14, color: colors.text, marginBottom: 8, fontWeight: '500' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: colors.infoBg,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#90caf9',
+    borderColor: colors.info,
   },
   chipDisabled: { opacity: 0.5 },
-  chipText: { fontSize: 13, color: '#1565c0' },
+  chipText: { fontSize: 13, color: colors.info },
   inputRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: colors.border,
     borderRadius: 6,
     padding: 8,
     minHeight: 36,
     fontSize: 14,
   },
   sendBtn: {
-    backgroundColor: '#1976d2',
+    backgroundColor: colors.link,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 6,
     justifyContent: 'center',
   },
   sendBtnDisabled: { opacity: 0.5 },
-  sendText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-  errorText: { color: '#c62828', fontSize: 12, marginTop: 6 },
+  sendText: { color: colors.onPrimary, fontWeight: '600', fontSize: 14 },
+  errorText: { color: colors.danger, fontSize: 12, marginTop: 6 },
 });
