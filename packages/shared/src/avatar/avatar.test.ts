@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_CAT,
   DEFAULT_DOG,
   DEFAULT_HUMAN,
   DOG_BODIES,
@@ -112,5 +113,45 @@ describe('presetDogForSeed 无配置兜底', () => {
       ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'u7', 'u8'].map((s) => presetDogForSeed(s).id),
     );
     expect(picks.size).toBeGreaterThan(2);
+  });
+});
+
+describe('德文卷毛猫(species=cat)', () => {
+  it('species 缺省为 dog,cat 字段缺省不补', () => {
+    const out = sanitizePixelAvatarSettings({ v: 1 });
+    expect(out!.species).toBe('dog');
+    expect(out!.cat ?? null).toBeNull();
+  });
+
+  it('species=cat 时必有 cat 配置(缺省补 DEFAULT_CAT)', () => {
+    const out = sanitizePixelAvatarSettings({ v: 1, species: 'cat' });
+    expect(out!.species).toBe('cat');
+    expect(out!.cat).toEqual(DEFAULT_CAT);
+  });
+
+  it('cat 字段过白名单:非法毛色/品种回退,未知键剥掉', () => {
+    const out = sanitizePixelAvatarSettings({
+      v: 1,
+      species: 'cat',
+      cat: { breed: 'persian', coat: 'rainbow', accessory: 'scarf', personality: 'sassy', evil: 1 },
+    });
+    expect(out!.cat!.breed).toBe('devonrex'); // 仅支持德文卷毛猫
+    expect(out!.cat!.coat).toBe(DEFAULT_CAT.coat);
+    expect(out!.cat!.accessory).toBe('scarf');
+    expect(out!.cat!.personality).toBe('sassy');
+    expect((out!.cat as Record<string, unknown>).evil).toBeUndefined();
+  });
+
+  it('合法猫配置原样保留;非法 species 回退 dog', () => {
+    const cat = {
+      breed: 'devonrex',
+      coat: 'snow',
+      accessory: 'bell',
+      accessoryColor: 'teal',
+      personality: 'playful',
+    } as const;
+    const out = sanitizePixelAvatarSettings({ v: 1, species: 'cat', cat });
+    expect(out!.cat).toEqual(cat);
+    expect(sanitizePixelAvatarSettings({ v: 1, species: 'fish' })!.species).toBe('dog');
   });
 });

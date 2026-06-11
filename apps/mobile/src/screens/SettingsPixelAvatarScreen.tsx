@@ -3,6 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ACCENT_COLORS,
+  DEFAULT_CAT,
   DOG_ACCESSORIES,
   DOG_BODIES,
   DOG_COATS,
@@ -14,6 +15,8 @@ import {
   HUMAN_PRESETS,
   presetDogForSeed,
   presetHumanForSeed,
+  type AvatarSpecies,
+  type CatConfig,
   type DogConfig,
   type HumanConfig,
 } from '@xzz/shared';
@@ -25,6 +28,7 @@ import { useAuth } from '../components/AuthGate';
 import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
 import { appAlert } from '../lib/appAlert';
+import { buildCatCharacter } from '../pixel/buildCat';
 import { buildDogCharacter } from '../pixel/buildDog';
 import { buildHumanCharacter } from '../pixel/buildHuman';
 import { HUMAN_MOTION, PERSONALITY_MOTION } from '../pixel/palette';
@@ -34,7 +38,7 @@ import type { GroupStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<GroupStackParamList, 'SettingsMyDog'>;
 
-type Tab = 'pick' | 'custom' | 'human';
+type Tab = 'pick' | 'custom' | 'cat' | 'human';
 
 function randomOf<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -51,6 +55,9 @@ export function SettingsPixelAvatarScreen({ navigation }: Props) {
   const [human, setHuman] = useState<HumanConfig>(
     () => user?.pixelAvatar?.human ?? presetHumanForSeed(seed).human,
   );
+  const [cat, setCat] = useState<CatConfig>(() => user?.pixelAvatar?.cat ?? DEFAULT_CAT);
+  // 编辑哪个物种,搭档就是哪个:狗 tab(选一只/自定义)→ dog,小猫 tab → cat
+  const [species, setSpecies] = useState<AvatarSpecies>(user?.pixelAvatar?.species ?? 'dog');
   const [tab, setTab] = useState<Tab>('pick');
   const [dogName, setDogName] = useState('');
   const [callMe, setCallMe] = useState('');
@@ -68,13 +75,18 @@ export function SettingsPixelAvatarScreen({ navigation }: Props) {
       .catch(() => setNamesLoaded(true));
   }, []);
 
-  const dogCharacter = useMemo(() => buildDogCharacter(dog), [dog]);
+  const partnerCharacter = useMemo(
+    () => (species === 'cat' ? buildCatCharacter(cat) : buildDogCharacter(dog)),
+    [species, cat, dog],
+  );
+  const partnerMotion =
+    PERSONALITY_MOTION[species === 'cat' ? cat.personality : dog.personality];
   const humanCharacter = useMemo(() => buildHumanCharacter(human), [human]);
 
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      const res = await api.updatePixelAvatar({ v: 1, dog, human });
+      const res = await api.updatePixelAvatar({ v: 1, species, dog, human, cat });
       await applyAuthUser(res.data.user);
       const personaPatch: Parameters<typeof api.patchPersona>[0] = {};
       if (dogName.trim()) personaPatch.identity = { assistantName: dogName.trim() };
@@ -123,26 +135,35 @@ export function SettingsPixelAvatarScreen({ navigation }: Props) {
 
         <View style={styles.previewRow}>
           <PixelCharacter
-            character={dogCharacter}
+            character={partnerCharacter}
             size={120}
-            motion={PERSONALITY_MOTION[dog.personality]}
+            motion={partnerMotion}
             animated
             testID="dog-preview"
           />
           <PixelCharacter character={humanCharacter} size={72} motion={HUMAN_MOTION} animated />
         </View>
+        <Text style={styles.partnerHint} testID="partner-hint">
+          {species === 'cat' ? zh.pixelAvatar.partnerCat : zh.pixelAvatar.partnerDog}
+        </Text>
 
         <View style={styles.segmentRow}>
           {(
             [
               ['pick', zh.pixelAvatar.segmentPick],
               ['custom', zh.pixelAvatar.segmentCustom],
+              ['cat', zh.pixelAvatar.segmentCat],
               ['human', zh.pixelAvatar.segmentHuman],
             ] as Array<[Tab, string]>
           ).map(([key, label]) => (
             <Pressable
               key={key}
-              onPress={() => setTab(key)}
+              onPress={() => {
+                setTab(key);
+                // 进狗 tab 编辑狗 → 搭档=狗;进小猫 tab → 搭档=猫;小人 tab 不动物种
+                if (key === 'pick' || key === 'custom') setSpecies('dog');
+                if (key === 'cat') setSpecies('cat');
+              }}
               style={[styles.segment, tab === key && styles.segmentActive]}
               testID={`segment-${key}`}
             >
@@ -236,6 +257,38 @@ export function SettingsPixelAvatarScreen({ navigation }: Props) {
           </View>
         ) : null}
 
+        {tab === 'cat' ? (
+          <View>
+            <Text style={styles.intro}>{zh.pixelAvatar.catIntro}</Text>
+            {dimChips(zh.pixelAvatar.dims.coat, DOG_COATS, cat.coat, zh.pixelAvatar.coatNames, (v) =>
+              setCat({ ...cat, coat: v }),
+            )}
+            {dimChips(
+              zh.pixelAvatar.dims.accessory,
+              DOG_ACCESSORIES,
+              cat.accessory,
+              zh.pixelAvatar.accessoryNames,
+              (v) => setCat({ ...cat, accessory: v }),
+            )}
+            {cat.accessory !== 'none'
+              ? dimChips(
+                  zh.pixelAvatar.dims.accessoryColor,
+                  ACCENT_COLORS,
+                  cat.accessoryColor,
+                  zh.pixelAvatar.accentNames,
+                  (v) => setCat({ ...cat, accessoryColor: v }),
+                )
+              : null}
+            {dimChips(
+              zh.pixelAvatar.dims.personality,
+              DOG_PERSONALITIES,
+              cat.personality,
+              zh.pixelAvatar.personalityNames,
+              (v) => setCat({ ...cat, personality: v }),
+            )}
+          </View>
+        ) : null}
+
         {tab === 'human' ? (
           <View style={styles.grid}>
             {HUMAN_PRESETS.map((p) => {
@@ -304,6 +357,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFDF7',
     marginBottom: 12,
   },
+  partnerHint: { fontSize: 12, color: '#8A8377', textAlign: 'center', marginBottom: 10 },
   segmentRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   segment: {
     flex: 1,

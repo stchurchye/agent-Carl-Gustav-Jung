@@ -85,6 +85,24 @@ describeDb('PUT /api/users/me/pixel-avatar + 群成员下发', () => {
     expect(res.status).toBe(400);
   });
 
+  it('species=cat(德文卷毛猫)配置入库读回;非法品种回退 devonrex', async () => {
+    const user = await ensureUser('pix-cat');
+    const { accessToken } = await signAccessToken(user);
+    const res = await putPixelAvatar(accessToken, {
+      pixelAvatar: {
+        v: 1,
+        species: 'cat',
+        cat: { breed: 'persian', coat: 'snow', accessory: 'bell', accessoryColor: 'teal', personality: 'playful' },
+      },
+    });
+    expect(res.status).toBe(200);
+    const fetched = await getUserById(user.id);
+    expect(fetched?.pixelAvatar?.species).toBe('cat');
+    expect(fetched?.pixelAvatar?.cat?.breed).toBe('devonrex');
+    expect(fetched?.pixelAvatar?.cat?.coat).toBe('snow');
+    expect(fetched?.pixelAvatar?.cat?.personality).toBe('playful');
+  });
+
   it('listGroupMembers 下发各成员 pixelAvatar(群里别人能看到我的狗)', async () => {
     const owner = await ensureUser('pix-owner');
     const friend = await ensureUser('pix-friend');

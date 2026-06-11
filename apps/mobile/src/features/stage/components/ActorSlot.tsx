@@ -12,6 +12,8 @@ type Props = {
   speaking?: boolean;
   /** 等授权/等回答:头顶「!」 */
   attention?: boolean;
+  /** 点按飘字(狗汪猫喵);缺省按 kind 兜底 */
+  bark?: string;
   onPress?: (actor: StageActor) => void;
   testID?: string;
 };
@@ -28,6 +30,7 @@ export function ActorSlot({
   size,
   speaking,
   attention,
+  bark,
   onPress,
   testID,
 }: Props) {
@@ -76,7 +79,7 @@ export function ActorSlot({
           <Animated.Text
             style={[styles.bark, { opacity: barkOp, transform: [{ translateY: barkY }] }]}
           >
-            {actor.kind === 'dog' ? '汪!' : '!'}
+            {bark ?? (actor.kind === 'dog' ? '汪!' : '!')}
           </Animated.Text>
         ) : null}
         {attention ? (

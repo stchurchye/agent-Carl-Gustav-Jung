@@ -1,5 +1,8 @@
 import {
   ACCENT_COLORS,
+  AVATAR_SPECIES,
+  CAT_BREEDS,
+  DEFAULT_CAT,
   DEFAULT_DOG,
   DEFAULT_HUMAN,
   DOG_ACCESSORIES,
@@ -12,6 +15,7 @@ import {
   HUMAN_HAIR_COLORS,
   HUMAN_HAIRS,
   HUMAN_SKINS,
+  type CatConfig,
   type DogConfig,
   type HumanConfig,
   type PixelAvatarSettings,
@@ -57,5 +61,19 @@ export function sanitizePixelAvatarSettings(input: unknown): PixelAvatarSettings
     outfit: pick(ACCENT_COLORS, humanIn.outfit, DEFAULT_HUMAN.outfit),
   };
 
-  return { v: 1, dog, human };
+  const species = pick(AVATAR_SPECIES, root.species, 'dog');
+  // species=cat 必有 cat 配置(缺省补默认);dog 时仅在显式提供过 cat 才保留(别膨胀存量记录)
+  let cat: CatConfig | undefined;
+  if (species === 'cat' || (root.cat && typeof root.cat === 'object')) {
+    const catIn = asRecord(root.cat);
+    cat = {
+      breed: pick(CAT_BREEDS, catIn.breed, DEFAULT_CAT.breed),
+      coat: pick(DOG_COATS, catIn.coat, DEFAULT_CAT.coat),
+      accessory: pick(DOG_ACCESSORIES, catIn.accessory, DEFAULT_CAT.accessory),
+      accessoryColor: pick(ACCENT_COLORS, catIn.accessoryColor, DEFAULT_CAT.accessoryColor),
+      personality: pick(DOG_PERSONALITIES, catIn.personality, DEFAULT_CAT.personality),
+    };
+  }
+
+  return cat ? { v: 1, species, dog, human, cat } : { v: 1, species, dog, human };
 }

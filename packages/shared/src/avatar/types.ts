@@ -65,10 +65,33 @@ export type HumanConfig = {
   outfit: AccentColor;
 };
 
+/** agent 形象物种;cat 仅支持德文卷毛猫(Devon Rex) */
+export const AVATAR_SPECIES = ['dog', 'cat'] as const;
+export type AvatarSpecies = (typeof AVATAR_SPECIES)[number];
+
+export const CAT_BREEDS = ['devonrex'] as const;
+export type CatBreed = (typeof CAT_BREEDS)[number];
+
+/**
+ * 德文卷毛猫配置:品种唯一,体型/大耳/细尾固定为 Devon Rex 形态,
+ * 可定制维度与狗同规范(毛色/配饰/性格——性格同样驱动表情与动画)。
+ */
+export type CatConfig = {
+  breed: CatBreed;
+  coat: DogCoat;
+  accessory: DogAccessory;
+  accessoryColor: AccentColor;
+  personality: DogPersonality;
+};
+
 export type PixelAvatarSettings = {
   v: 1;
+  /** 缺省 dog(向后兼容存量记录) */
+  species?: AvatarSpecies;
   dog: DogConfig;
   human: HumanConfig;
+  /** species=cat 时必有;dog 时可缺省 */
+  cat?: CatConfig | null;
 };
 
 export const DEFAULT_DOG: DogConfig = {
@@ -87,4 +110,12 @@ export const DEFAULT_HUMAN: HumanConfig = {
   hair: 'short',
   hairColor: 'ink',
   outfit: 'indigo',
+};
+
+export const DEFAULT_CAT: CatConfig = {
+  breed: 'devonrex',
+  coat: 'mist',
+  accessory: 'none',
+  accessoryColor: 'brick',
+  personality: 'sweet',
 };

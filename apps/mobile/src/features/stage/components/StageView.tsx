@@ -7,7 +7,12 @@ import { ActorSlot } from './ActorSlot';
 import { AgentSpeechBubble } from './AgentSpeechBubble';
 import { SpeechBubble } from './SpeechBubble';
 
-export type ResolvedCharacter = { character: CompiledCharacter; motion: CharacterMotion };
+export type ResolvedCharacter = {
+  character: CompiledCharacter;
+  motion: CharacterMotion;
+  /** 点按飘字:狗「汪!」猫「喵!」;缺省按 actor.kind 兜底 */
+  bark?: string;
+};
 
 type Props = {
   actors: StageActor[];
@@ -114,6 +119,7 @@ export function StageView({
               actor={actor}
               character={resolved.character}
               motion={resolved.motion}
+              bark={resolved.bark}
               size={SPRITE_SIZE}
               speaking={current?.actorId === actor.id}
               attention={attentionForActor(actor.id)}
