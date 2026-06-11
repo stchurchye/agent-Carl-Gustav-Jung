@@ -23,6 +23,7 @@ import {
   getStudioSearchHistory,
 } from '../lib/studioSearchHistory';
 import { openWriting } from '../lib/openWriting';
+import { WRITING_ENABLED } from '../lib/featureFlags';
 import {
   buildStudioSearchIndex,
   filterStudioSearchItems,
@@ -70,11 +71,16 @@ export function StudioSearchScreen({ navigation }: Props) {
       ]);
       setGroups(groupsRes.data);
       const { writingTabs } = loadStudioSearchIndexInputs();
+      // 写作模式隐藏时,搜索不出文稿入口与文稿条目(避免搜索成为后门)
       setMetaIndex(
-        buildStudioSearchIndex(groupsRes.data, sessions, writingTabs, {
-          writeTextTitle: zh.studio.writeText,
-          writeTextPreview: zh.studio.writeTextPreview,
-        }),
+        buildStudioSearchIndex(
+          groupsRes.data,
+          sessions,
+          WRITING_ENABLED ? writingTabs : [],
+          WRITING_ENABLED
+            ? { writeTextTitle: zh.studio.writeText, writeTextPreview: zh.studio.writeTextPreview }
+            : undefined,
+        ),
       );
     } catch (e) {
       appAlert(zh.studio.loadFailed, apiErrorText(e).message);
