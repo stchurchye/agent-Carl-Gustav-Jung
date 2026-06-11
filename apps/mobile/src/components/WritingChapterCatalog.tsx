@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   typeItemActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   typeIndicator: {
     position: 'absolute',
@@ -166,12 +166,12 @@ const styles = StyleSheet.create({
   },
   addTypeText: {
     fontSize: typography.small,
-    color: '#576B95',
+    color: colors.link,
     textAlign: 'center',
   },
   rightPane: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   chapterList: {
     paddingBottom: 16,
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   chapterIndexWrap: {
     width: 40,

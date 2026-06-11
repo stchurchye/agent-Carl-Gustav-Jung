@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WeChatChatHeader } from '../../components/WeChatChatHeader';
-import { api, type AgentMemoryItem } from '../../lib/api';
+import { api, type AgentMemoryItem, type MemoryScope } from '../../lib/api';
 import { apiErrorText } from '../../lib/apiError';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
@@ -50,18 +50,44 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
   const [filter, setFilter] = useState<StatusFilter>('pending');
   const [items, setItems] = useState<AgentMemoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // U5:群池评审入口 —— scope=me(个人池,默认)|group(群共享池,后端校验群成员)。
+  const [scope, setScope] = useState<MemoryScope>({ scope: 'me' });
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
+  // W2 防闪:同一(filter,scope)的聚焦重拉静默刷新(不清列表不显 spinner);
+  // 切筛选/切池才清旧数据 + spinner(不同数据集,旧内容不该残留)。
+  const lastQueryKeyRef = useRef('');
+  // review-w1 CONFIRMED:快速连点 me→群→me 时在途响应乱序返回会把别的池渲染进当前池
+  // (且 decide 会把群池 id 发去个人端点)——以请求序号丢弃过期响应。
+  const reqIdRef = useRef(0);
+
+  useEffect(() => {
+    void api
+      .listGroups()
+      .then((r) => setGroups(r.data.map((g) => ({ id: g.id, name: g.name }))))
+      .catch(() => {});
+  }, []);
+
+  const scopeArg = scope.scope === 'group' ? scope : undefined;
 
   const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.listAgentMemory(filter);
-      setItems(res.data.items);
-    } catch {
+    const reqId = ++reqIdRef.current;
+    const key = `${filter}:${scope.scope === 'group' ? scope.groupId : 'me'}`;
+    if (lastQueryKeyRef.current !== key) {
       setItems([]);
-    } finally {
-      setLoading(false);
+      setLoading(true);
     }
-  }, [filter]);
+    try {
+      // scopeArg 直传:api 层把 undefined 与 {scope:'me'} 归一化为同一请求(scopeQuery/scopeBody)
+      const res = await api.listAgentMemory(filter, scopeArg);
+      if (reqId !== reqIdRef.current) return; // 过期响应:已切池/筛选,丢弃
+      setItems(res.data.items);
+      lastQueryKeyRef.current = key;
+    } catch {
+      if (reqId === reqIdRef.current) setItems([]);
+    } finally {
+      if (reqId === reqIdRef.current) setLoading(false);
+    }
+  }, [filter, scope, scopeArg]);
 
   useFocusEffect(
     useCallback(() => {
@@ -69,10 +95,16 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
     }, [load]),
   );
 
+  // 终审 BUG①:动作 .then(reload) 捕获的是按下那次渲染的旧闭包(旧 filter/scope),
+  // 在途时切池会以旧 scope 重拉并被当成"最新"接受 → 池/列表错位。恒经 ref 调最新 load。
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const reload = useCallback(() => loadRef.current(), []);
+
   const decide = (id: number, decision: 'approve' | 'reject') => {
     void api
-      .decideAgentMemory(id, decision)
-      .then(load)
+      .decideAgentMemory(id, decision, scopeArg)
+      .then(reload)
       .catch((e) => Alert.alert('失败', apiErrorText(e).message));
   };
 
@@ -80,31 +112,32 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
   // 是 rejected(revalidate 回传 status==='rejected'),再补 decide(approve)。仅评审轴失效
   // (validUntil=null)则只 decide。否则"恢复"会静默半失败(改了状态但记忆仍因失效不可召回)。
   const restore = (item: AgentMemoryItem) => {
+    const decideApprove = () => api.decideAgentMemory(item.id, 'approve', scopeArg);
     const run = async () => {
       if (item.validUntil != null) {
-        const res = await api.revalidateAgentMemory(item.id);
-        if (res.data.status === 'rejected') await api.decideAgentMemory(item.id, 'approve');
+        const res = await api.revalidateAgentMemory(item.id, scopeArg);
+        if (res.data.status === 'rejected') await decideApprove();
       } else {
-        await api.decideAgentMemory(item.id, 'approve');
+        await decideApprove();
       }
     };
     void run()
-      .then(load)
+      .then(reload)
       .catch((e) => Alert.alert('失败', apiErrorText(e).message));
   };
 
   const promote = (id: number) => {
     void api
       .promoteAgentMemory(id)
-      .then(load)
+      .then(reload)
       .catch((e) => Alert.alert('失败', apiErrorText(e).message));
   };
 
   // K8:标伪/标争议/撤销(可逆;伪 ≠ 删,仍可被 agent 检索但带警示)
   const markTruth = (id: number, truthStatus: 'unverified' | 'disputed' | 'refuted') => {
     void api
-      .markTruthAgentMemory(id, truthStatus)
-      .then(load)
+      .markTruthAgentMemory(id, truthStatus, { scope: scopeArg })
+      .then(reload)
       .catch((e) => Alert.alert('失败', apiErrorText(e).message));
   };
 
@@ -133,6 +166,33 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
           </Pressable>
         ))}
       </View>
+      {/* U5:个人池/群池切换(有群才显示;群池条目任何群成员可审,后端校验成员资格) */}
+      {groups.length > 0 ? (
+        <View style={styles.filters}>
+          <Pressable
+            style={[styles.chip, scope.scope === 'me' && styles.chipActive]}
+            onPress={() => setScope({ scope: 'me' })}
+          >
+            <Text style={[styles.chipText, scope.scope === 'me' && styles.chipTextActive]}>
+              我的
+            </Text>
+          </Pressable>
+          {groups.map((g) => {
+            const active = scope.scope === 'group' && scope.groupId === g.id;
+            return (
+              <Pressable
+                key={g.id}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => setScope({ scope: 'group', groupId: g.id })}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                  {g.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -254,7 +314,8 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
                 </View>
               ) : (
                 <View style={styles.actions}>
-                  {/* finding 不升格(研究结论留情景层);可标真伪 */}
+                  {/* finding 不升格(研究结论留情景层);可标真伪。
+                      群池条目也不升格(原生核心是 per-user,升格仅个人池)。 */}
                   {it.kind === 'finding' ? (
                     <Pressable
                       style={[styles.btn, styles.truthBtn]}
@@ -262,13 +323,15 @@ export function BrainEpisodicMemoryScreen(_props: Props) {
                     >
                       <Text style={styles.btnText}>标记真伪</Text>
                     </Pressable>
-                  ) : (
+                  ) : scope.scope === 'me' ? (
                     <Pressable
                       style={[styles.btn, styles.promoteBtn]}
                       onPress={() => promote(it.id)}
                     >
                       <Text style={styles.btnText}>升格到核心</Text>
                     </Pressable>
+                  ) : (
+                    <Text style={styles.groupNoPromoteHint}>群组记忆不升格(仅个人)</Text>
                   )}
                   {/* 标记错误(approved → rejected;行不删,可在「拒绝」筛选里恢复) */}
                   <Pressable
@@ -325,10 +388,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   insightBadge: { color: '#fff', backgroundColor: colors.primary },
-  findingBadge: { color: '#fff', backgroundColor: '#3a7ca5' },
-  disputedBadge: { color: '#fff', backgroundColor: '#e0a800' },
-  refutedBadge: { color: '#fff', backgroundColor: '#d9534f' },
-  invalidBadge: { color: '#fff', backgroundColor: '#888' },
+  findingBadge: { color: '#fff', backgroundColor: colors.info },
+  disputedBadge: { color: '#fff', backgroundColor: colors.warning },
+  refutedBadge: { color: '#fff', backgroundColor: colors.danger },
+  invalidBadge: { color: '#fff', backgroundColor: colors.textMuted },
   truthNote: { fontSize: typography.caption, color: '#b9770e', marginTop: 4 },
   sourceLink: { fontSize: typography.caption, color: colors.primary, marginTop: 4 },
   counterLink: { color: '#d9534f' },
@@ -340,5 +403,6 @@ const styles = StyleSheet.create({
   promoteBtn: { backgroundColor: colors.primary },
   truthBtn: { backgroundColor: '#e0a800' },
   promoted: { fontSize: typography.caption, color: colors.textMuted, marginTop: 10 },
+  groupNoPromoteHint: { fontSize: typography.small, color: colors.textTertiary, marginTop: 10 },
   btnText: { fontSize: typography.caption, color: '#fff' },
 });

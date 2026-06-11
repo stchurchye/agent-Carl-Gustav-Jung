@@ -181,7 +181,7 @@ export function GroupStack() {
       <Stack.Screen
         name="RevisionHistory"
         component={RevisionHistoryScreen}
-        options={{ title: '历史版本' }}
+        options={{ title: zh.writing.history }}
       />
     </Stack.Navigator>
   );

@@ -1,17 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { wechat } from '../theme/wechat';
+import { avatarPalette } from '../theme/avatarPalette';
 
-const AVATAR_PALETTE = [
-  { bg: '#7cb342', fg: '#ffffff' },
-  { bg: '#5c6bc0', fg: '#ffffff' },
-  { bg: '#26a69a', fg: '#ffffff' },
-  { bg: '#ef5350', fg: '#ffffff' },
-  { bg: '#ab47bc', fg: '#ffffff' },
-  { bg: '#ffa726', fg: '#ffffff' },
-  { bg: '#42a5f5', fg: '#ffffff' },
-  { bg: '#8d6e63', fg: '#ffffff' },
-];
+const AVATAR_PALETTE = avatarPalette.map((bg) => ({ bg, fg: '#ffffff' }));
 
 function paletteIndex(seed: string): number {
   let hash = 0;

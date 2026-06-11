@@ -109,7 +109,8 @@ export function GroupTopicsScreen({ navigation, route }: Props) {
   return (
     <View style={wechatChatStyles.page}>
       <WeChatChatHeader title={groupName} showBack right={headerRight} />
-      {loading ? (
+      {/* W2 防闪:已有话题时聚焦重拉静默刷新,只有首载(无数据)才占屏 spinner */}
+      {loading && rows.length === 0 ? (
         <ActivityIndicator style={styles.loader} color={colors.primary} />
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>

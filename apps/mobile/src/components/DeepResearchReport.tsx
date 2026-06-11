@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { colors } from '../theme/colors';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 
 // Graceful fallback if react-native-markdown-display is not installed.
@@ -8,7 +9,7 @@ try {
   Markdown = require('react-native-markdown-display').default;
 } catch {
   Markdown = ({ children }: { children: string }) => (
-    <Text style={{ fontSize: 13, color: '#333' }}>{children}</Text>
+    <Text style={{ fontSize: 13, color: colors.text }}>{children}</Text>
   );
 }
 
@@ -56,17 +57,17 @@ export default function DeepResearchReport({ question, report, citations, stepsU
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#f3f4f6', borderRadius: 8, marginVertical: 6, overflow: 'hidden' },
+  container: { backgroundColor: colors.fill, borderRadius: 8, marginVertical: 6, overflow: 'hidden' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     padding: 12,
   },
-  title: { flex: 1, fontSize: 14, fontWeight: '600', color: '#1f2937', marginRight: 8 },
-  meta: { fontSize: 12, color: '#6b7280', paddingTop: 2 },
-  body: { backgroundColor: '#fff', maxHeight: 420, padding: 12 },
-  citationsBox: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#e5e7eb' },
-  citationsTitle: { fontSize: 12, fontWeight: '600', color: '#6b7280', marginBottom: 4 },
-  citation: { fontSize: 12, color: '#374151', marginVertical: 2 },
+  title: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.text, marginRight: 8 },
+  meta: { fontSize: 12, color: colors.textMuted, paddingTop: 2 },
+  body: { backgroundColor: colors.surface, maxHeight: 420, padding: 12 },
+  citationsBox: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
+  citationsTitle: { fontSize: 12, fontWeight: '600', color: colors.textMuted, marginBottom: 4 },
+  citation: { fontSize: 12, color: colors.textMuted, marginVertical: 2 },
 });

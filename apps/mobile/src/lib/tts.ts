@@ -11,7 +11,6 @@ import {
 import { getDashScopeApiKey } from './dashscopeKey';
 import { isQwenPlaying, playQwenSpeech, stopQwenPlayback } from './qwenTtsPlayer';
 
-const DIALECT_KEY = 'xzz_tts_dialect';
 /** 旧版共用音色键，迁移后删除 */
 const LEGACY_VOICE_ID_KEY = 'xzz_tts_voice_id';
 
@@ -20,7 +19,8 @@ const voiceStorageKey = (d: TtsDialect) => `xzz_tts_voice_${d}`;
 let legacyVoiceMigrated = false;
 
 export type ChineseVoice = Voice;
-export type TtsDialect = 'mandarin' | 'cantonese';
+export { getStoredDialect, setStoredDialect, type TtsDialect } from './ttsDialect';
+import { getStoredDialect, type TtsDialect } from './ttsDialect';
 
 /** Qwen3-TTS（阿里云百炼） */
 export const TTS_ENGINE_QWEN = 'Qwen3-TTS';
@@ -116,14 +116,6 @@ export async function listVoicesForDialect(dialect: TtsDialect): Promise<TtsVoic
 export async function listChineseVoices(): Promise<ChineseVoice[]> {
   const all = await Speech.getAvailableVoicesAsync();
   return sortVoices(all.filter(isMandarinVoice));
-}
-
-export async function getStoredDialect(): Promise<TtsDialect> {
-  return 'mandarin';
-}
-
-export async function setStoredDialect(_dialect: TtsDialect): Promise<void> {
-  await SecureStore.setItemAsync(DIALECT_KEY, 'mandarin');
 }
 
 /** 普通话 / 粤语各自记住音色，互不覆盖 */

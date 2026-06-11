@@ -1,22 +1,22 @@
 /**
- * 流浪猫大脑子系统的令牌源 —— 已统一到微信亮色。
- * 原暗色 EVA 观测台主题已退役删除;键名沿用以保下游调用点稳定。
- * 仅颜色值,`as const` 保字面量类型(下游 union 不退化为 string)。
+ * 流浪猫大脑子系统的令牌源 —— U7 对齐 Claude 暖调(原微信亮色,更早是暗色 EVA)。
+ * 键名沿用以保下游调用点稳定;accent 与全局 colors.primary 同为赤陶,
+ * 消除「工作室绿 / 大脑橙」双 accent 分裂。仅颜色值,`as const` 保字面量类型。
  */
 export const brainTokens = {
   bg: '#FFFFFF', // 主背景
-  bgElevated: '#F7F7F7', // 抬升面
+  bgElevated: '#FAF9F5', // 抬升面(象牙)
   bgCard: '#FFFFFF', // 卡片(靠 border 分隔)
-  tabBarBg: '#F7F7F7',
-  accent: '#E07B00', // 品牌橙(调深适配白底)
-  accentBright: '#E07B00', // 亮橙在白底不可读 → 收深
-  accentDim: '#FFE8CC', // 语义反转:深→浅(调用点均背景用途)
-  info: '#576B95', // 微信链接蓝
-  error: '#FA5151', // 微信红
-  text: '#191919', // 主文字
-  textMuted: '#888888', // 次文字
-  textDim: '#B2B2B2', // 弱文字
-  border: '#E5E5E5',
-  borderSubtle: 'rgba(229, 229, 229, 0.6)',
+  tabBarBg: '#FAF9F5',
+  accent: '#C15F3C', // 赤陶 accent(白底可读的大字/填充)
+  accentBright: '#C15F3C', // 历史别名:同 accent
+  accentDim: '#F7E0D3', // 语义反转:深→浅(调用点均背景用途)
+  info: '#576B95', // 链接蓝(浅底可读)
+  error: '#C0392B', // 错误(可读深红,与全局 danger 一致)
+  text: '#1F1E1D', // 暖炭主文字
+  textMuted: '#6E6B64', // 次文字
+  textDim: '#A8A69E', // 弱文字
+  border: '#EAE8DF',
+  borderSubtle: 'rgba(234, 232, 223, 0.6)',
   mono: 'Menlo',
 } as const;

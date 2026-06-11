@@ -255,7 +255,8 @@ export function WritingChaptersScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {loading ? (
+      {/* W2 防闪:已有文档时聚焦重拉静默刷新(setDoc 仅错误时清),只有首载才占屏 spinner */}
+      {loading && !doc ? (
         <ActivityIndicator style={styles.loader} color={colors.primary} />
       ) : (
         <WritingChapterCatalog

@@ -69,6 +69,13 @@ export function useChatListViewport({
   const anchorToBottom = useCallback((animated: boolean) => {
     programmaticScrollRef.current = true;
     listRef.current?.scrollToEnd({ animated });
+    // 动态行高(agent 卡异步长高)下 scrollToEnd 会按旧测量落短,
+    // 下一帧按新测量再锚一次收敛(16ms 窗口,不干扰用户拖动判定)。
+    requestAnimationFrame(() => {
+      if (!stickToBottomRef.current) return;
+      programmaticScrollRef.current = true;
+      listRef.current?.scrollToEnd({ animated: false });
+    });
   }, []);
 
   const revealList = useCallback(() => {

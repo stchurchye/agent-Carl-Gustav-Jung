@@ -29,6 +29,12 @@ it('status/action text colors stay readable on their light backgrounds (AA 4.5:1
     ['info', colors.info, colors.infoBg],
     ['warning', colors.warning, colors.warningBg],
     ['danger', colors.danger, colors.errorBg],
+    // U7 Claude 暖调:正文/次级文字落象牙底、自己气泡内文字、error 作正文
+    //(error 曾是装饰珊瑚橙却被多屏当正文用,~2.4:1 —— 换可读赤陶红并锁住)。
+    ['text-on-page', colors.text, colors.background],
+    ['muted-on-page', colors.textMuted, colors.background],
+    ['text-on-self-bubble', colors.text, colors.userBubble],
+    ['error-as-text', colors.error, white],
   ];
   for (const [name, fg, bg] of pairs) {
     expect({ name, ratio: Math.round(contrast(fg, bg) * 100) / 100 }).toEqual({

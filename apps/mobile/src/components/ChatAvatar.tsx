@@ -1,16 +1,8 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { wechatChat } from '../theme/wechatChat';
+import { avatarPalette } from '../theme/avatarPalette';
 
-const PALETTE = [
-  '#7cb342',
-  '#5c6bc0',
-  '#26a69a',
-  '#ef5350',
-  '#ab47bc',
-  '#ffa726',
-  '#42a5f5',
-  '#8d6e63',
-] as const;
+const PALETTE = avatarPalette;
 
 function paletteIndex(seed: string): number {
   let hash = 0;

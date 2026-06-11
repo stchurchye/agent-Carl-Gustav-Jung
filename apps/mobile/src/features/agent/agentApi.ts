@@ -85,7 +85,8 @@ export async function longPollAgentRun(
   const url = `${API_BASE_URL}/api/agent/runs/${runId}/long-poll?after=${after}`;
   const resp = await fetch(url, { headers, signal });
   if (!resp.ok) {
-    throw new Error(`long-poll failed: ${resp.status}`);
+    // 带结构化 status:runStore 据此判 404/403 永久错误,不再依赖 message 正则
+    throw Object.assign(new Error(`long-poll failed: ${resp.status}`), { status: resp.status });
   }
 
   function parseLine(line: string): LongPollBatch | null {

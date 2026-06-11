@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: 16,
     marginVertical: 12,
-    backgroundColor: '#EDEDED',
+    backgroundColor: colors.fill,
     borderRadius: 8,
     padding: 3,
   },

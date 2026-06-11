@@ -419,7 +419,7 @@ export function WritingScreen({ navigation, route }: Props) {
         await copyChapterText(payload);
         appAlert('好了', zh.writing.shareCopyDone);
       } catch {
-        appAlert('提示', '复制没成功，请稍后再试');
+        appAlert('提示', zh.chat.copyFailed);
       }
     })();
   };

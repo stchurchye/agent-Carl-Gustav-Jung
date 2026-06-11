@@ -5,6 +5,7 @@ import { WritingChaptersScreen } from '../screens/WritingChaptersScreen';
 import { WritingScreen } from '../screens/WritingScreen';
 import type { WritingStackParamList } from './types';
 import { colors } from '../theme/colors';
+import { zh } from '../locales/zh-CN';
 
 const Stack = createNativeStackNavigator<WritingStackParamList>();
 
@@ -36,7 +37,7 @@ export function WritingStack() {
       <Stack.Screen
         name="RevisionHistory"
         component={RevisionHistoryScreen}
-        options={{ title: '历史版本' }}
+        options={{ title: zh.writing.history }}
       />
     </Stack.Navigator>
   );

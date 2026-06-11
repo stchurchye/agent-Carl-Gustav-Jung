@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors } from '../../theme/colors';
 import { listAgentRuns } from '../../features/agent/agentApi';
 import type { AgentRun, AgentRunStatus } from '../../features/agent/types';
 import type { BrainStackParamList } from '../../navigation/types';
@@ -47,9 +48,9 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
 };
 
 function statusColor(s: AgentRunStatus): string {
-  if (s === 'completed') return '#0a6';
-  if (s === 'failed' || s === 'budget_exhausted') return '#c33';
-  if (s === 'cancelled') return '#999';
+  if (s === 'completed') return colors.success;
+  if (s === 'failed' || s === 'budget_exhausted') return colors.danger;
+  if (s === 'cancelled') return colors.textTertiary;
   return brainTokens.accent;
 }
 

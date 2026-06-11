@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Linking, StyleSheet } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useNavigation } from '@react-navigation/native';
 import { navigateBrainTab } from '../../lib/navigateBrain';
@@ -13,9 +13,11 @@ import {
   retryAgentRun,
   steerAgentRun,
 } from './agentApi';
+import { isTerminalRunStatus } from './types';
 import type { AgentNoticeSeverity, AgentRunStatus, RunArtifact } from './types';
 import { AgentTodoList } from './AgentTodoList';
 import { AgentStepList } from './AgentStepList';
+import { AgentRunActivityLine } from './AgentRunActivityLine';
 import { AgentSteerInput } from './AgentSteerInput';
 import { agentLlmDisplayName } from '@xzz/shared';
 
@@ -34,13 +36,6 @@ const NOTICE_GLYPH: Record<AgentNoticeSeverity, string> = {
   warn: '!',
   error: '!!',
 };
-
-const TERMINAL: AgentRunStatus[] = [
-  'completed',
-  'failed',
-  'cancelled',
-  'budget_exhausted',
-];
 
 const STATUS_LABEL: Record<AgentRunStatus, string> = {
   draft: '准备中',
@@ -186,6 +181,7 @@ function ArtifactBlock({
 export function AgentRunCard({
   runId,
   onRetry,
+  expanded,
 }: {
   runId: string;
   /**
@@ -193,27 +189,34 @@ export function AgentRunCard({
    * 通常是刷新会话消息列表，让新 placeholder 上挂另一个 AgentRunCard。
    */
   onRetry?: (newRunId: string) => void | Promise<void>;
+  /** 详情屏:步骤全量平铺(聊天卡默认截断,见 AgentStepList)。 */
+  expanded?: boolean;
 }) {
-  const { run, steps, notices, connected } = useAgentRunSubscription(runId);
+  const { run, steps, notices, connected, missing } = useAgentRunSubscription(runId);
 
   if (!run) {
     return (
-      <View style={{ padding: 10, borderRadius: 8, backgroundColor: colors.fill, marginVertical: 6 }}>
-        <Text>加载 agent run…</Text>
+      <View style={{ padding: 12, borderRadius: 12, backgroundColor: colors.fill, marginVertical: 6 }}>
+        <Text style={{ color: colors.textMuted }}>
+          {missing ? '该任务已不存在(可能被清理)' : '加载 agent run…'}
+        </Text>
       </View>
     );
   }
 
-  const terminal = TERMINAL.includes(run.status);
+  const terminal = isTerminalRunStatus(run.status);
   const awaitingApproval = run.status === 'awaiting_approval';
 
   return (
     <View
       style={{
-        padding: 10,
-        borderRadius: 8,
+        padding: 12,
+        borderRadius: 12,
         marginVertical: 6,
-        backgroundColor: terminal ? colors.fill : colors.selectedBg,
+        borderWidth: StyleSheet.hairlineWidth,
+        // Claude 卡片观感:终态白卡细边收敛;运行中赤陶浅底示活
+        borderColor: terminal ? colors.border : colors.primaryBorder,
+        backgroundColor: terminal ? colors.surface : colors.selectedBg,
       }}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -227,6 +230,9 @@ export function AgentRunCard({
           </TouchableOpacity>
         ) : null}
       </View>
+
+      {/* W1d:运行中的「正在做什么 · 已用时」动态行 */}
+      <AgentRunActivityLine run={run} steps={steps} />
 
       {/* M7 T9：排队 / 已合并追问 后缀 */}
       {run.status === 'queued' ? (
@@ -335,6 +341,7 @@ export function AgentRunCard({
           steps={steps}
           run={run}
           resumeRun={resumeAgentRun}
+          expanded={expanded}
         />
       </View>
 
