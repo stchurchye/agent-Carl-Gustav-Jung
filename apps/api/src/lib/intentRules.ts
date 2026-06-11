@@ -55,7 +55,7 @@ function chatKind(channel: IntentChannel): IntentKind {
 }
 
 function chatLabel(channel: IntentChannel): string {
-  return channel === 'group' ? '请 AI 回复' : '和小助手聊聊';
+  return channel === 'group' ? '请 AI 回复' : '和 Bow wow 聊聊';
 }
 
 /** OpenClaw 式斜杠指令 */
@@ -84,14 +84,14 @@ export function matchSlashCommand(ctx: RuleMatchContext): RuleMatch | null {
       id: 'slash_logs',
       forceChips: true,
       candidates: [
-        nav('llm_logs', '流浪猫通讯记录', { confidence: 0.92, group: 'primary' }),
+        nav('llm_logs', '狗狗通讯记录', { confidence: 0.92, group: 'primary' }),
         nav('client_logs', '客户端日志', { confidence: 0.85, group: 'other' }),
       ],
     },
     llm: {
       id: 'slash_llm',
       forceChips: true,
-      candidates: [nav('llm_logs', '流浪猫通讯记录', { confidence: 0.95 })],
+      candidates: [nav('llm_logs', '狗狗通讯记录', { confidence: 0.95 })],
     },
     导出: {
       id: 'slash_export',
@@ -113,7 +113,7 @@ export function matchSlashCommand(ctx: RuleMatchContext): RuleMatch | null {
     密钥: {
       id: 'slash_keys',
       forceChips: true,
-      candidates: [nav('api_keys', '流浪猫通讯方式', { confidence: 0.95 })],
+      candidates: [nav('api_keys', '狗狗的联络方式', { confidence: 0.95 })],
     },
     设置: {
       id: 'slash_settings',
@@ -530,7 +530,7 @@ function collectRuleMatches(ctx: RuleMatchContext): RuleMatch[] {
     applyRule(
       'api_keys',
       /API密钥|API 密钥|DeepSeek|ZenMux|百炼|密钥设置|模型密钥/.test(t),
-      () => [nav('api_keys', '流浪猫通讯方式', { confidence: 0.9, group: 'primary' })],
+      () => [nav('api_keys', '狗狗的联络方式', { confidence: 0.9, group: 'primary' })],
       { forceChips: true },
     ),
   );
@@ -591,7 +591,7 @@ function collectRuleMatches(ctx: RuleMatchContext): RuleMatch[] {
     applyRule(
       'llm_logs',
       /LLM日志|LLM 日志|请求日志|模型调用|模型日志/.test(t),
-      () => [nav('llm_logs', '流浪猫通讯记录', { confidence: 0.9, group: 'primary' })],
+      () => [nav('llm_logs', '狗狗通讯记录', { confidence: 0.9, group: 'primary' })],
       { forceChips: true },
     ),
   );

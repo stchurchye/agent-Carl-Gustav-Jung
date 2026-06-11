@@ -2,7 +2,7 @@ import type { ReplyDialect } from './persona.js';
 
 /** 写作小助手首条欢迎语 */
 export function assistantWelcomeLine(_dialect?: ReplyDialect | null): string {
-  return '你好，我是写作小助手。在下面说说想怎么改，我先帮你确认意思，对了再改到文章里。';
+  return '汪！我是 Bow wow。在下面说说想怎么改，我先帮你确认意思，对了再改到文章里。';
 }
 
 export function assistantRejectConfirmLine(_dialect?: ReplyDialect | null): string {

@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import { getPool } from '../../db/client.js';
 import { runMigrations } from '../../db/migrate.js';
 import { agentHookBus } from '../../lib/agent/hooks.js';
+import { holdSubscription } from '../../testUtils/holdSubscription.js';
 import { ensureUser, ensureGroup } from '../../lib/agent/__tests__/_groupFixture.js';
 import { agentRouter } from '../agent.js';
 import { signAccessToken } from '../../lib/auth.js';
@@ -64,13 +65,16 @@ describeDb('long-poll subscribes to M7 status-only events (TB15)', () => {
   async function startLongPollAndEmit(emit: () => void) {
     const app = makeApp();
     const token = await tokenFor(owner);
+    const subscribed = holdSubscription();
     const fetchPromise = app.fetch(
       new Request(
         `http://x/api/agent/runs/${runId}/long-poll?after=-1&_holdMs=3000`,
         { headers: { Authorization: `Bearer ${token}` } },
       ),
     );
-    setTimeout(emit, 50);
+    // 确定性等 handler 订阅(= 已进 hold)再 emit,不再赌 50ms 够用
+    await subscribed;
+    emit();
     const res = await fetchPromise;
     return await res.text();
   }

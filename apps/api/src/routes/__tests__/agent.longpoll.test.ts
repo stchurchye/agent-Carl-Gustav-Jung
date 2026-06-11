@@ -22,6 +22,8 @@ import { getPool } from '../../db/client.js';
 import { runMigrations } from '../../db/migrate.js';
 import * as store from '../../lib/agent/store.js';
 import { recordStep } from '../../lib/agent/stepRecorder.js';
+import { agentHookBus } from '../../lib/agent/hooks.js';
+import { holdSubscription } from '../../testUtils/holdSubscription.js';
 import { agentRouter } from '../agent.js';
 import { signAccessToken } from '../../lib/auth.js';
 import { DEFAULT_BUDGET } from '../../lib/agent/types.js';
@@ -126,22 +128,22 @@ describeDb('GET /api/agent/runs/:id/long-poll', { timeout: 40000 }, () => {
     const { owner, run } = await makeRun('lp-hold');
     const token = await tokenFor(owner);
     const app = makeApp();
-    const t0 = Date.now();
+    const subscribed = holdSubscription();
     const promise = app.fetch(
       new Request(`http://test/api/agent/runs/${run.id}/long-poll?after=-1&_holdMs=3000`, {
         headers: { authorization: `Bearer ${token}` },
       }),
     );
-    // Give handler 100ms to enter hold and subscribe
-    await new Promise((r) => setTimeout(r, 100));
-    // recordStep emits step.recorded → long-poll wakes immediately (well before 3s hold)
+    // 等 handler 真正订阅(= 已进 hold,immediate 路径已排除),再 emit
+    await subscribed;
+    // recordStep emits step.recorded → long-poll wakes immediately
     await recordStep({ runId: run.id, kind: 'plan', output: { goal: 'mid' } });
     const resp = await promise;
-    const elapsed = Date.now() - t0;
     expect(resp.status).toBe(200);
-    // Should have resolved in << 3000ms (the hold timeout)
-    expect(elapsed).toBeLessThan(1500);
     const lines = (await readNdjson(resp)) as Array<{ type: string; [k: string]: any }>;
+    // "immediately" 的确定性判别:idle 行存在 ⇔ holdMs 计时器走满;
+    // 事件唤醒与 idle 互斥(settle 单次),无 idle + 有 batch ⇒ 事件路径即时返回
+    expect(lines.find((l) => l.type === 'idle')).toBeUndefined();
     const batch = lines.find((l) => l.type === 'batch');
     expect(batch).toBeDefined();
     expect(batch!.steps.length).toBe(1);
@@ -152,24 +154,22 @@ describeDb('GET /api/agent/runs/:id/long-poll', { timeout: 40000 }, () => {
     const { owner, run } = await makeRun('lp-terminal-wakeup');
     const token = await tokenFor(owner);
     const app = makeApp();
-    const t0 = Date.now();
+    const subscribed = holdSubscription();
     const promise = app.fetch(
       new Request(`http://test/api/agent/runs/${run.id}/long-poll?after=-1&_holdMs=3000`, {
         headers: { authorization: `Bearer ${token}` },
       }),
     );
-    // Give handler 100ms to enter hold and subscribe
-    await new Promise((r) => setTimeout(r, 100));
-    // Emit run.completed event via agentHookBus directly
-    const { agentHookBus } = await import('../../lib/agent/hooks.js');
+    // 等 handler 真正订阅(= 已进 hold),再 emit run.completed
+    await subscribed;
     // Also update the DB so emitBatchAndClose picks up terminal status
     await store.updateAgentRun(run.id, { status: 'completed' });
     agentHookBus.emitEvent({ type: 'run.completed', run: { ...run, status: 'completed' } });
     const resp = await promise;
-    const elapsed = Date.now() - t0;
     expect(resp.status).toBe(200);
-    expect(elapsed).toBeLessThan(1500);
     const lines = (await readNdjson(resp)) as Array<{ type: string; [k: string]: any }>;
+    // 同上:无 idle 行 ⇒ 事件唤醒而非计时器走满
+    expect(lines.find((l) => l.type === 'idle')).toBeUndefined();
     const batch = lines.find((l) => l.type === 'batch');
     expect(batch).toBeDefined();
     expect(batch!.run.status).toBe('completed');

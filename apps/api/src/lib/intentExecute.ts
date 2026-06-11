@@ -59,12 +59,14 @@ export type ExecuteIntentInput = {
   agentOptions?: AgentOptions;
 };
 
+type ToolExecuteResult = Extract<IntentExecuteResult, { type: 'tool' }>;
+
 async function persistPrivateToolReply(
   userId: string,
   sessionId: string,
   userText: string,
   confirmation: string,
-): Promise<IntentExecuteResult> {
+): Promise<ToolExecuteResult> {
   const userMsg = (await pg.addChatMessage(userId, sessionId, 'user', userText))!;
   const assistantMsg = (await pg.addChatMessage(
     userId,
@@ -86,7 +88,7 @@ async function persistGroupToolReply(
   topicId: string,
   userText: string,
   confirmation: string,
-): Promise<IntentExecuteResult> {
+): Promise<ToolExecuteResult> {
   const userMsg = await social.addGroupMessage(userId, groupId, topicId, {
     kind: 'human',
     content: userText,

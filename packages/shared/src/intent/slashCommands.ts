@@ -8,7 +8,7 @@ export const SLASH_COMMAND_HINTS: ReadonlyArray<{
   { command: '/日志', summary: 'LLM 或客户端日志' },
   { command: '/导出', summary: '导出聊天记录' },
   { command: '/压缩', summary: '压缩当前对话上下文' },
-  { command: '/密钥', summary: '流浪猫通讯方式' },
+  { command: '/密钥', summary: '狗狗的联络方式' },
 ];
 
 export function formatSlashCommandsHint(

@@ -505,7 +505,7 @@ export function blocksFromWritingIntent(
     blocks.push({
       id: blockId('whist', idx++),
       kind,
-      label: msg.role === 'assistant' ? `小助手 #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
+      label: msg.role === 'assistant' ? `Bow wow #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
       content: msg.content,
       tokens: estimateTokens(msg.content),
       selectable,
@@ -522,7 +522,7 @@ export function blocksFromWritingIntent(
     blocks.push({
       id: blockId('womit', idx++),
       kind,
-      label: turn.role === 'assistant' ? '小助手（已裁切）' : '用户（已裁切）',
+      label: turn.role === 'assistant' ? 'Bow wow（已裁切）' : '用户（已裁切）',
       content: turn.content,
       tokens: estimateTokens(turn.content),
       selectable: true,

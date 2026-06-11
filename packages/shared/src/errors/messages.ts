@@ -18,12 +18,12 @@ export const errorMessages: Record<ErrorCode, ErrorMessageEntry> = {
     retryable: true,
   },
   AI_BUSY: {
-    message: '小助手这会儿有点忙，请喝口水，一分钟后再试',
+    message: 'Bow wow 这会儿有点忙，请喝口水，一分钟后再试',
     hint: '请稍等一会儿再试',
     retryable: true,
   },
   AI_REFUSED: {
-    message: '这段话小助手不太好下笔，我们换种说法试试，不着急',
+    message: '这段话 Bow wow 不太好下笔，我们换种说法试试，不着急',
     hint: '您可以改一改说法再试',
     retryable: true,
   },
@@ -54,21 +54,21 @@ export const errorMessages: Record<ErrorCode, ErrorMessageEntry> = {
   },
   REVISION_NOT_FOUND: {
     message: '这份改稿建议找不到了',
-    hint: '可能服务刚重启过，请回到写作页让小助手再改一版',
+    hint: '可能服务刚重启过，请回到写作页让 Bow wow 再改一版',
     retryable: false,
   },
   REVISION_EXPIRED: {
     message: '这份建议已经处理过了',
-    hint: '若要再改，请在小助手里重新说一次',
+    hint: '若要再改，请再跟 Bow wow 说一次',
     retryable: false,
   },
   VALIDATION: {
     message: '请再检查一下输入',
-    hint: '有不清楚的地方可以问小助手',
+    hint: '有不清楚的地方可以问 Bow wow',
     retryable: true,
   },
   API_KEY_MISSING: {
-    message: '还没设置小助手的密钥',
+    message: '还没设置对话密钥',
     hint: '请到「我的」里填入 DeepSeek 密钥，或让家人帮您设置',
     retryable: false,
   },
