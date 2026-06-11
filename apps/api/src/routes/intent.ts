@@ -91,12 +91,17 @@ intentRouter.post('/execute', async (c) => {
   const kind = body.kind;
   if (!text || !kind) return jsonError(c, ErrorCodes.VALIDATION, 400);
 
-  // chat / writing 流程一直要 ZenMux key；缺就 400。
+  // chat / writing 流程一直要 ZenMux key;缺就 400。
+  // persona_rename 是纯写库操作(不调任何 LLM),没配 key 也要能给狗改名。
   let apiKey: string;
-  try {
-    apiKey = getZenMuxKey(c);
-  } catch (e) {
-    return handleZenMuxError(c, e);
+  if (kind === 'persona_rename') {
+    apiKey = '';
+  } else {
+    try {
+      apiKey = getZenMuxKey(c);
+    } catch (e) {
+      return handleZenMuxError(c, e);
+    }
   }
 
   // 老的 deepseekApiKey 字段：legacy 路径（memory / context）仍然继续读这个，
