@@ -5,7 +5,7 @@ import { jsonError } from '../lib/errors.js';
 import {
   hashPassword,
   signAccessToken,
-  verifyPassword,
+  verifyPasswordOrDummy,
 } from '../lib/auth.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
@@ -82,7 +82,9 @@ authRouter.post('/login', authRateLimit, async (c) => {
   }
 
   const row = await pg.findUserByUsername(username);
-  if (!row || !(await verifyPassword(password, row.passwordHash))) {
+  // 恒时:用户不存在也跑一次 bcrypt,防响应时间枚举用户名(review P2)
+  const passwordOk = await verifyPasswordOrDummy(password, row?.passwordHash);
+  if (!row || !passwordOk) {
     return jsonError(c, ErrorCodes.AUTH_UNAUTHORIZED, 401);
   }
 

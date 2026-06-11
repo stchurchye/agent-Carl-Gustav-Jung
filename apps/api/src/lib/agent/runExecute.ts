@@ -163,6 +163,19 @@ async function backfillCheckpointBestEffort(
   }
 }
 
+/**
+ * abort 信号已置位时,区分 steer vs user cancel 抛 AgentCancelled:
+ * steerRun 已写 status='replanning' → 'steer';否则 'user'。
+ * 任何 await 之后再抛普通错误前都应过一遍它,否则外层 catch 会把
+ * steer 设好的 replanning 覆盖成 failed(review round-2:勿再散落复制此块)。
+ */
+async function throwIfAborted(runId: string, signal: AbortSignal): Promise<void> {
+  if (!signal.aborted) return;
+  const cur = await store.getAgentRun(runId);
+  if (cur?.status === 'replanning') throw new AgentCancelled('steer');
+  throw new AgentCancelled('user');
+}
+
 export async function executeRun(runId: string): Promise<void> {
   const fetched = await store.getAgentRun(runId);
   if (!fetched) throw new Error(`run not found: ${runId}`);
@@ -226,6 +239,16 @@ export async function executeRun(runId: string): Promise<void> {
       // 仅 SELECT 2 列，<1ms（R12）。inputText 永不改写（ADR-M7-13），追问只进 merged_inputs。
       const mergedCounts = await store.getMergedInputCounts(runId);
       if (mergedCounts && mergedCounts.total > mergedCounts.consumed) {
+        // 并发 steer 可能已把 status 写成 replanning(steer 竞态,review P1):
+        // 此时只标记追问已消化(重规划的 planner 读 run.mergedInputs 全量,不丢),
+        // 不再重复写 status、也不发假的 running→replanning 事件污染审计。
+        const cur = await store.getAgentRun(runId);
+        if (cur?.status === 'replanning') {
+          await store.updateAgentRun(runId, {
+            mergedInputsConsumedCount: mergedCounts.total,
+          });
+          return;
+        }
         const fromStatus = run.status;
         await recordStep({
           runId,
@@ -251,12 +274,7 @@ export async function executeRun(runId: string): Promise<void> {
       }
       // === End M7 P1 ===
 
-      if (abortController.signal.aborted) {
-        // 区分 steer vs user cancel：steerRun 已经写了 status='replanning'
-        const cur = await store.getAgentRun(runId);
-        if (cur?.status === 'replanning') throw new AgentCancelled('steer');
-        throw new AgentCancelled('user');
-      }
+      await throwIfAborted(runId, abortController.signal);
 
       const elapsedSeconds = Math.floor(
         (Date.now() - startedAt.getTime()) / 1000,
@@ -465,11 +483,7 @@ export async function executeRun(runId: string): Promise<void> {
           effectiveTimeout,
         );
       } catch (err) {
-        if (abortController.signal.aborted) {
-          const cur = await store.getAgentRun(runId);
-          if (cur?.status === 'replanning') throw new AgentCancelled('steer');
-          throw new AgentCancelled('user');
-        }
+        await throwIfAborted(runId, abortController.signal);
         try {
           output = await withTimeout(
             tool.handler(planStep.input as never, ctx),
@@ -484,6 +498,9 @@ export async function executeRun(runId: string): Promise<void> {
             input: planStep.input,
             error: String(err2),
           });
+          // recordStep await 期间 steer/cancel 可能已落地:此时再抛 err2 会被外层
+          // catch 当普通错误 softComplete('failed'),把 steer 设好的 replanning 覆盖掉。
+          await throwIfAborted(runId, abortController.signal);
           throw err2;
         }
       }
@@ -722,13 +739,15 @@ export async function executeRun(runId: string): Promise<void> {
             });
             shouldContinue = !reflection.goalMet;
             reflectionReason = reflection.reason;
-          } catch {
+          } catch (reflectErr) {
             // 取消 → 重抛 AgentCancelled，别让外层误标 failed；其它错 → fail-open 收尾。
-            if (abortController.signal.aborted) {
-              const cur = await store.getAgentRun(runId);
-              if (cur?.status === 'replanning') throw new AgentCancelled('steer');
-              throw new AgentCancelled('user');
-            }
+            await throwIfAborted(runId, abortController.signal);
+            // fail-open 保留,但不能无声:LLM 挂了时收尾决策悄悄退化成「直接 completed」,
+            // 排查时一条线索都没有(review P2 :727)。
+            console.warn(
+              `[executeRun] reflection LLM 调用失败(fail-open 收尾,不挡完成) run=${runId}`,
+              reflectErr,
+            );
             shouldContinue = false;
           }
         }

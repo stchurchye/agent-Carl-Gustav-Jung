@@ -130,7 +130,7 @@ export function SettingsDocumentsScreen({ navigation, route }: Props) {
                         // 未注册在该 navigator 中；提示用户从文章标签页打开。
                         appAlert('提示', zh.me.openFromWritingTab(d.title));
                       } else {
-                        void openWriting(navigation, { documentId: d.id });
+                        void openWriting(navigation, { documentId: d.id, allowDisabled: true }); // 文档化保留入口
                       }
                     }}
                   />

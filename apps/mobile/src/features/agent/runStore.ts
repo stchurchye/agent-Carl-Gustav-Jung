@@ -16,6 +16,8 @@ import type { AgentNotice, AgentRun, AgentStep } from './types';
 
 const CLIENT_TIMEOUT_MS = 35000; // server max 30s + 5s 余量
 const ERROR_BACKOFF_MS = 1000;
+// 网络持续故障时固定 1s 退避 = 1Hz 打接口耗电;连续瞬时错误指数退避,封顶 30s。
+const ERROR_BACKOFF_MAX_MS = 30000;
 
 
 export type RunSnapshot = {
@@ -81,7 +83,15 @@ function getEntry(runId: string): Entry {
 
 function emit(e: Entry, patch: Partial<RunSnapshot>) {
   e.snap = { ...e.snap, ...patch };
-  for (const l of e.listeners) l();
+  for (const l of e.listeners) {
+    try {
+      l();
+    } catch (err) {
+      // 单个订阅方(setState 等)抛错不能阻断其余 listener,否则后续订阅方
+      // 永久静默、轮询层看似活着 UI 却不更新(review P2)。
+      console.warn('[runStore] listener threw during emit (isolated)', err);
+    }
+  }
 }
 
 function mergeSteps(e: Entry, incoming: AgentStep[]): AgentStep[] {
@@ -119,12 +129,14 @@ async function runLoop(runId: string, e: Entry) {
     }
   }
 
+  let errorStreak = 0;
   while (!e.cancelled && !isTerminal(e.snap.run)) {
     const ctl = new AbortController();
     e.activeCtl = ctl;
     const timeoutId = setTimeout(() => ctl.abort(), CLIENT_TIMEOUT_MS);
     try {
       const batch = await longPollAgentRun(runId, e.lastIdx, ctl.signal);
+      errorStreak = 0;
       if (e.cancelled) break;
       const patch: Partial<RunSnapshot> = {};
       if (batch.run) {
@@ -145,7 +157,9 @@ async function runLoop(runId: string, e: Entry) {
         emit(e, { missing: true });
         break;
       }
-      await new Promise((r) => setTimeout(r, ERROR_BACKOFF_MS));
+      const backoffMs = Math.min(ERROR_BACKOFF_MS * 2 ** errorStreak, ERROR_BACKOFF_MAX_MS);
+      errorStreak += 1;
+      await new Promise((r) => setTimeout(r, backoffMs));
     } finally {
       clearTimeout(timeoutId);
       e.activeCtl = null;
@@ -199,6 +213,16 @@ export function subscribeRun(runId: string, listener: () => void): () => void {
     if (e.refCount <= 0) {
       e.refCount = 0;
       pauseEntry(e);
+      // missing(404/403)条目没有缓存价值:留着只会泄漏 listeners/旧快照,
+      // 且重订阅永远 serve 旧 missing 态。末位退订即清,重订阅可重新 bootstrap
+      // (run 被恢复/重建时能自愈)。(review P2)
+      if (e.snap.missing) {
+        entries.delete(runId);
+        if (entries.size === 0 && appStateSub) {
+          appStateSub.remove();
+          appStateSub = null;
+        }
+      }
     }
   };
 }

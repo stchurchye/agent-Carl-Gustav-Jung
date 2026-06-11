@@ -33,10 +33,29 @@ export type LlmRequestLogInput = {
   contextRatio?: number;
 };
 
+/**
+ * 单条消息内容入库上限(字符)。日志是自查/调试用途,不需要全文;
+ * 全文落库会把用户敏感输入(密码/医疗信息/整篇文档)无界复制进日志表。
+ */
+export const LLM_LOG_CONTENT_CAP = 4000;
+const TRUNCATED_MARK = '\n…（日志截断，原文 ';
+
+function capContent(text: string): string {
+  if (text.length <= LLM_LOG_CONTENT_CAP) return text;
+  return `${text.slice(0, LLM_LOG_CONTENT_CAP)}${TRUNCATED_MARK}${text.length} 字符）`;
+}
+
 function buildDetail(input: LlmRequestLogInput): LlmRequestLogDetail {
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   const channelLabel = LLM_REQUEST_CHANNEL_LABELS[input.channel];
+  // 截断后再构建 preview/turns/rawJson,确保全文不以任何形态落库
+  const cappedMessages = input.messages.map((m) =>
+    m.content.length > LLM_LOG_CONTENT_CAP ? { ...m, content: capContent(m.content) } : m,
+  );
+  const cappedResponse =
+    input.responseText !== undefined ? capContent(input.responseText) : undefined;
+  input = { ...input, messages: cappedMessages, responseText: cappedResponse };
   const listPreview = buildLlmRequestListPreview(input.messages, input.responseText);
   const metaLine = buildLlmRequestMetaLine({
     model: input.model,

@@ -50,4 +50,12 @@ describeDb('db migrations smoke', () => {
     );
     expect(rows.length).toBe(1);
   });
+
+  it('agent_runs retry 去重索引存在 (027, review P2)', async () => {
+    const { rows } = await getPool().query(
+      `SELECT indexname FROM pg_indexes
+       WHERE tablename = 'agent_runs' AND indexname = 'idx_agent_runs_retry_dedup'`,
+    );
+    expect(rows.length).toBe(1);
+  });
 });

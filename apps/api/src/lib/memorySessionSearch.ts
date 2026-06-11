@@ -13,7 +13,9 @@ export async function searchSessionMessages(params: {
   const q = params.query.trim();
   if (q.length < 2) return [];
 
-  const limit = Math.min(params.limit ?? 15, 30);
+  // 钳到 [1,30]:负数/NaN 直达 SQL LIMIT 会让 PostgreSQL 报错 500(review PLAUSIBLE→真)
+  const requested = Number(params.limit);
+  const limit = Number.isFinite(requested) ? Math.min(Math.max(Math.floor(requested), 1), 30) : 15;
   const hits: MemorySessionSearchHit[] = [];
 
   if (!params.groupId) {

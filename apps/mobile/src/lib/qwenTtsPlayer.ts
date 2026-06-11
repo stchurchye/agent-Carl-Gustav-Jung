@@ -19,6 +19,12 @@ let currentSound: Sound | null = null;
 let aborted = false;
 let playing = false;
 
+/** 测试注入缝:jest 环境不支持动态 import(),单测用它替换 expo-av */
+export function __setAvModuleForTests(m: ExpoAv | null) {
+  avModule = m;
+  avLoadError = null;
+}
+
 async function getAv(): Promise<ExpoAv> {
   if (avModule) return avModule;
   if (avLoadError) throw avLoadError;
@@ -99,6 +105,12 @@ async function playLocalUri(uri: string, onStartOnce: () => void): Promise<void>
       }
     })
       .then(({ sound }) => {
+        if (settled) {
+          // 播放已经因 status error/超时收场:迟到的 Sound 没人接手,
+          // 不立即 unload 就成孤儿(反复失败累积泄漏,review P2)
+          void sound.unloadAsync().catch(() => {});
+          return;
+        }
         currentSound = sound;
       })
       .catch((e) => finish(() => reject(e instanceof Error ? e : new Error(String(e)))));
@@ -112,14 +124,17 @@ export function isQwenPlaying(): boolean {
 export async function stopQwenPlayback(): Promise<void> {
   aborted = true;
   playing = false;
-  if (currentSound) {
+  // 先同步取得所有权再 await:并发 stop(屏幕卸载 cleanup × 新播放前置 stop)
+  // 不会对同一个 Sound 双重 stop/unload(review P2)
+  const sound = currentSound;
+  currentSound = null;
+  if (sound) {
     try {
-      await currentSound.stopAsync();
-      await currentSound.unloadAsync();
+      await sound.stopAsync();
+      await sound.unloadAsync();
     } catch {
       // ignore
     }
-    currentSound = null;
   }
 }
 
@@ -193,5 +208,16 @@ export async function playQwenSpeech(
     throw e;
   } finally {
     playing = false;
+    // 失败路径不会走到循环内的逐段 unload:这里兜底回收,
+    // 否则失败后的 Sound 要等下一次播放才被动清理(review P2)
+    const leftover = currentSound;
+    currentSound = null;
+    if (leftover) {
+      try {
+        await leftover.unloadAsync();
+      } catch {
+        // ignore
+      }
+    }
   }
 }

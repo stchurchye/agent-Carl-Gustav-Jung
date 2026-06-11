@@ -13,7 +13,9 @@ export const GROUP_CHANNEL_RULES = `群聊场景补充：
 - 不要假装发送过群消息；只输出一条可直接展示的回复正文。`;
 
 function line(label: string, value: string | undefined): string | null {
-  const v = value?.trim();
+  // 字段值是用户可改的:内部换行/制表折叠成空格,否则可注入 "## 系统指令" 伪段落
+  // 篡改 system prompt 结构(review P2)。
+  const v = value?.replace(/\s+/g, ' ').trim();
   if (!v) return null;
   return `- ${label}：${v}`;
 }

@@ -252,20 +252,25 @@ export type WritingIntentResult = {
   ready: boolean;
 };
 
-function parseIntentJson(raw: string): {
+export function parseIntentJson(raw: string): {
   displayText: string;
   action: string;
   instruction: string;
   ready: boolean;
 } {
-  const line = raw
-    .split('\n')
+  const lines = raw.split('\n');
+  const line = lines
     .map((l) => l.trim())
     .find((l) => l.startsWith('{') && l.endsWith('}'));
   if (!line) {
     return { displayText: raw.trim(), action: '润色', instruction: raw.trim(), ready: false };
   }
-  const displayText = raw.replace(line, '').trim();
+  // 按「整行等于 JSON 行」过滤,而不是 raw.replace(line,''):后者只删第一个匹配,
+  // JSON 行重复出现时残余会原样展示给用户(review P2)。
+  const displayText = lines
+    .filter((l) => l.trim() !== line)
+    .join('\n')
+    .trim();
   try {
     const j = JSON.parse(line) as {
       action?: string;
