@@ -13,6 +13,7 @@ import {
   type ReplyDialect,
 } from '@xzz/shared';
 import { recordLlmRequest } from './llmRequestLog.js';
+import { resolveModelProfile } from './llm/factory.js';
 
 export type ChatMessageInput = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -56,6 +57,10 @@ export async function chatCompletionRaw(
 ): Promise<string> {
   const logCtx = options?.log;
   const model = DEEPSEEK_MODEL_PRO;
+  // deepseek-v4-pro / reasoner 是 reasoning model，reasoning_tokens 计入 max_tokens；
+  // 默认必须给足，否则长文会 finish_reason=length 截断（实测 2048 写 ~1800 字即被截）。
+  // 复用 factory 的 per-model 预算表作单一来源（v4-pro→4096 / reasoner→8192）。
+  const defaultMaxTokens = resolveModelProfile('deepseek', model).defaultMaxTokens;
   const started = Date.now();
   try {
     const res = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
@@ -68,7 +73,7 @@ export async function chatCompletionRaw(
         model,
         messages,
         stream: false,
-        max_tokens: options?.maxTokens ?? 2048,
+        max_tokens: options?.maxTokens ?? defaultMaxTokens,
         temperature: options?.temperature ?? 0.7,
       }),
     });
