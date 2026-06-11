@@ -1,6 +1,7 @@
 import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { displayChapterTitle } from '@xzz/shared';
 import { api } from './api';
+import { appAlert } from './appAlert';
 import { filterVisibleDocuments } from './documentVisibility';
 import { findChapterIdForBlock } from './writingChapterPreview';
 import { getCachedDocument, getCachedTabs, rememberDocument } from './writingCache';
@@ -68,8 +69,14 @@ export async function openWriting(navigation: Nav, opts?: OpenWritingOptions) {
       toast: opts?.toast,
     });
   } catch {
+    // 连 documentId 都没拿到就不进屏:WritingChapters 对空 id 直接 return,
+    // doc 永远 null,后续所有操作都会失败 —— 不如就地报错。
+    if (!documentId) {
+      appAlert('打开文档失败', '网络不太顺,稍后再试一下');
+      return;
+    }
     navigation.navigate('WritingChapters', {
-      documentId: documentId ?? '',
+      documentId,
       documentTitle: '',
       toast: opts?.toast,
     });
