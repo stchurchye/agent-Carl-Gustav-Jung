@@ -148,8 +148,10 @@ export function ChatScreen({ route, navigation }: Props) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [thinkingLine, setThinkingLine] = useState<string>(zh.chat.thinking);
-  const [thinkingLongLine, setThinkingLongLine] = useState<string>(zh.chat.thinkingLong);
+  const [thinkingLine, setThinkingLine] = useState<string>(zh.chat.thinking(ASSISTANT_FALLBACK_NAME));
+  const [thinkingLongLine, setThinkingLongLine] = useState<string>(
+    zh.chat.thinkingLong(ASSISTANT_FALLBACK_NAME),
+  );
   const [toolsOpen, setToolsOpen] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
@@ -202,7 +204,10 @@ export function ChatScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     void api.getPersona().then((r) => {
-      setAssistantName(personaAssistantDisplayName(r.data));
+      const name = personaAssistantDisplayName(r.data);
+      setAssistantName(name);
+      setThinkingLine(zh.chat.thinking(name));
+      setThinkingLongLine(zh.chat.thinkingLong(name));
     }).catch(() => {});
   }, []);
 
@@ -1045,7 +1050,7 @@ export function ChatScreen({ route, navigation }: Props) {
             ListEmptyComponent={
               initialLoading ? null : (
                 <Text style={[styles.empty, isTablet && styles.emptyTablet]}>
-                  {zh.chat.emptyHint}
+                  {zh.chat.emptyHint(assistantName)}
                 </Text>
               )
             }
