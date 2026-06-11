@@ -61,3 +61,23 @@ describe('AgentSteerInput 重复提交守卫', () => {
     });
   });
 });
+
+// Review round-2:steer 失败时输入框文本应恢复,不丢用户输入
+// (父组件需让 onSubmit 的 Promise 真正 reject,见 AgentRunCard catch-rethrow)
+it('onSubmit 失败 → 原文恢复回输入框', async () => {
+  const onSubmit = jest.fn(() => Promise.reject(new Error('steer 失败')));
+  const { getByText, getByPlaceholderText } = render(<AgentSteerInput onSubmit={onSubmit} />);
+  const input = getByPlaceholderText('发送指令调整 agent 行为…');
+  fireEvent.changeText(input, '往东走');
+  await act(async () => {
+    fireEvent.press(getByText('steer'));
+  });
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  expect(input.props.value).toBe('往东走'); // 旧版:已清空丢失
+
+  // 失败后还能再次提交
+  await act(async () => {
+    fireEvent.press(getByText('steer'));
+  });
+  expect(onSubmit).toHaveBeenCalledTimes(2);
+});

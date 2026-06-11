@@ -23,6 +23,9 @@ export function AgentSteerInput({ onSubmit, disabled, placeholder }: Props) {
     setText('');
     try {
       await onSubmit(trimmed);
+    } catch {
+      // 失败不丢用户输入:原文还给输入框(报错由父组件 Alert)
+      setText((cur) => cur || trimmed);
     } finally {
       pendingRef.current = false;
       setPending(false);

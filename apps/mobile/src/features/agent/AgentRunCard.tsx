@@ -350,7 +350,10 @@ export function AgentRunCard({
           disabled={awaitingApproval}
           placeholder={awaitingApproval ? '先处理授权再发送 steer' : undefined}
           onSubmit={(text) =>
-            steerAgentRun(runId, text).catch((e) => Alert.alert('steer 失败', String(e)))
+            steerAgentRun(runId, text).catch((e) => {
+              Alert.alert('steer 失败', String(e));
+              throw e; // rethrow 让 AgentSteerInput 知道失败,恢复输入框原文
+            })
           }
         />
       ) : null}
