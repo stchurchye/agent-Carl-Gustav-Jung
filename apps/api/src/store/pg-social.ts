@@ -247,15 +247,18 @@ export async function listGroupMessages(
   const params: unknown[] = [groupId, topicId];
 
   if (opts?.after) {
-    query += ` AND m.created_at > (SELECT created_at FROM group_messages WHERE id = $3)`;
+    // 同毫秒 tiebreak:created_at 由服务端 toISOString() 生成(毫秒精度),同毫秒落库的
+    // 多条消息 created_at 相等。游标用 (created_at, id) 复合比较 + 复合排序构成全序,
+    // 否则严格 > 只比 created_at 会漏掉与锚点同毫秒、id 排在后面的消息。
+    query += ` AND (m.created_at, m.id) > ((SELECT created_at FROM group_messages WHERE id = $3), $3)`;
     params.push(opts.after);
-    query += ` ORDER BY m.created_at ASC LIMIT $${params.length + 1}`;
+    query += ` ORDER BY m.created_at ASC, m.id ASC LIMIT $${params.length + 1}`;
     params.push(limit);
   } else if (opts?.since) {
-    query += ` AND m.created_at > $3::timestamptz ORDER BY m.created_at ASC LIMIT $4`;
+    query += ` AND m.created_at > $3::timestamptz ORDER BY m.created_at ASC, m.id ASC LIMIT $4`;
     params.push(opts.since, limit);
   } else {
-    query += ` ORDER BY m.created_at ASC LIMIT $3`;
+    query += ` ORDER BY m.created_at ASC, m.id ASC LIMIT $3`;
     params.push(limit);
   }
 
