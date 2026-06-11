@@ -22,16 +22,10 @@ export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
 }
 
-export async function verifyPassword(
-  password: string,
-  hash: string,
-): Promise<boolean> {
-  return bcrypt.compare(password, hash);
-}
-
 // review P2(routes/auth.ts:85):登录对不存在的用户名短路跳过 bcrypt,响应时间
 // (~1ms vs ~100ms)可枚举用户名。用户不存在时也对 dummy hash 跑一次比较恒时。
 // dummy hash 惰性生成一次,cost 与 hashPassword 一致。
+// 注:不再导出裸 verifyPassword —— 登录类校验一律走恒时版,避免绕过(review round-2)。
 let dummyHashPromise: Promise<string> | null = null;
 
 export async function verifyPasswordOrDummy(

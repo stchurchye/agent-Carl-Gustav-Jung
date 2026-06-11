@@ -246,23 +246,25 @@ export async function listGroupMessages(
     WHERE m.group_id = $1 AND m.topic_id = $2`;
   const params: unknown[] = [groupId, topicId];
 
-  // 锚点不存在(无效/已删)时,子查询 NULL 会让元组比较整体为 NULL → 静默空结果;
+  // 锚点不存在(无效/已删)时,旧版子查询 NULL 会让元组比较整体为 NULL → 静默空结果;
   // 先查锚点,查不到则忽略游标退化为从头列出(等价首次拉取,客户端按 id 去重)。
-  let afterAnchor: string | null = null;
+  // 锚点的 created_at 直接作为参数传入主查询:省一次相关子查询,也彻底关掉
+  // 「预查后、主查前锚点被删 → NULL 复活」的 TOCTOU 窗口(review round-2)。
+  let afterAnchorCreatedAt: unknown = null;
   if (opts?.after) {
     const anchor = await getPool().query(
       'SELECT created_at FROM group_messages WHERE id = $1 AND group_id = $2 AND topic_id = $3',
       [opts.after, groupId, topicId],
     );
-    if (anchor.rows[0]) afterAnchor = opts.after;
+    if (anchor.rows[0]) afterAnchorCreatedAt = anchor.rows[0].created_at;
   }
 
-  if (afterAnchor) {
+  if (afterAnchorCreatedAt != null) {
     // 同毫秒 tiebreak:created_at 由服务端 toISOString() 生成(毫秒精度),同毫秒落库的
     // 多条消息 created_at 相等。游标用 (created_at, id) 复合比较 + 复合排序构成全序,
     // 否则严格 > 只比 created_at 会漏掉与锚点同毫秒、id 排在后面的消息。
-    query += ` AND (m.created_at, m.id) > ((SELECT created_at FROM group_messages WHERE id = $3), $3)`;
-    params.push(afterAnchor);
+    query += ` AND (m.created_at, m.id) > ($3, $4)`;
+    params.push(afterAnchorCreatedAt, opts!.after);
     query += ` ORDER BY m.created_at ASC, m.id ASC LIMIT $${params.length + 1}`;
     params.push(limit);
   } else if (opts?.since) {
