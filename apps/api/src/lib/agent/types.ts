@@ -260,7 +260,10 @@ export type RunSummary = {
 
 export const DEFAULT_BUDGET: AgentBudget = {
   maxSteps: 20,
-  maxSeconds: 600,
+  // 整个 run 的累计墙钟上限(续跑/重规划共享,不重置)。单个 deep_research(high)就可烧 6min,
+  // 叠子 agent + 导出易超原 600s 被 budget_exhausted 截断 → 放宽到 1200s(20min,超时审计建议)。
+  // agent run 是异步执行(worker 跑 + 客户端 long-poll),不受 HTTP requestTimeout 约束。
+  maxSeconds: 1200,
   maxTokens: 100_000,
 };
 
