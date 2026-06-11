@@ -148,10 +148,8 @@ export function ChatScreen({ route, navigation }: Props) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [thinkingLine, setThinkingLine] = useState<string>(zh.chat.thinking(ASSISTANT_FALLBACK_NAME));
-  const [thinkingLongLine, setThinkingLongLine] = useState<string>(
-    zh.chat.thinkingLong(ASSISTANT_FALLBACK_NAME),
-  );
+  const thinkingLine = useMemo(() => zh.chat.thinking(assistantName), [assistantName]);
+  const thinkingLongLine = useMemo(() => zh.chat.thinkingLong(assistantName), [assistantName]);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
@@ -204,10 +202,7 @@ export function ChatScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     void api.getPersona().then((r) => {
-      const name = personaAssistantDisplayName(r.data);
-      setAssistantName(name);
-      setThinkingLine(zh.chat.thinking(name));
-      setThinkingLongLine(zh.chat.thinkingLong(name));
+      setAssistantName(personaAssistantDisplayName(r.data));
     }).catch(() => {});
   }, []);
 
