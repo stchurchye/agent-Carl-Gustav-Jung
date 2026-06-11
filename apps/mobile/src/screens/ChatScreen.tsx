@@ -63,6 +63,7 @@ import { AgentModelPickerSheet } from '../features/agent/AgentModelPickerSheet';
 import { zenmuxChatModelLabel } from '../lib/chatLlmModel';
 import { attachChatTimeFlags } from '../lib/chatTime';
 import {
+  dedupeById,
   getCachedMessages,
   mergeMessagesById,
   setCachedMessages,
@@ -178,7 +179,8 @@ export function ChatScreen({ route, navigation }: Props) {
     itemVisiblePercentThreshold: 15,
     minimumViewTime: 0,
   }).current;
-  const messagesUi = useMemo(() => attachChatTimeFlags(messages), [messages]);
+  // dedupeById:渲染层最后防线,任何路径残留的重复 id 在喂给 FlatList 前收敛(重复 key 是 React 硬错误)。
+  const messagesUi = useMemo(() => attachChatTimeFlags(dedupeById(messages)), [messages]);
   const {
     listRef,
     listOpacityStyle,

@@ -32,6 +32,8 @@ import { appAlert } from '../lib/appAlert';
 import { appPromptText } from '../lib/appPrompt';
 import { attachChatTimeFlags } from '../lib/chatTime';
 import {
+  appendUniqueById,
+  dedupeById,
   getCachedMessages,
   mergeMessagesById,
   setCachedMessages,
@@ -209,7 +211,8 @@ export function GroupChatScreen({ route, navigation }: Props) {
 
   const messagesUi = useMemo(
     () =>
-      attachChatTimeFlags(messages).map((m) => ({
+      // dedupeById:渲染层最后防线,任何路径残留的重复 id 在喂给 FlatList 前收敛(重复 key 是 React 硬错误)。
+      attachChatTimeFlags(dedupeById(messages)).map((m) => ({
         ...m,
         uiPending: m.id.startsWith('local-ai-'),
       })),
@@ -238,7 +241,9 @@ export function GroupChatScreen({ route, navigation }: Props) {
       if (opts?.poll && after) {
         // 新消息 append 后，列表内容撑高 → onContentSizeChange 会按「是否粘底」
         // 决定自动跟随到底（修复「新消息来了纹丝不动」），翻历史时不打扰。
-        setMessages((prev) => [...prev, ...res.data]);
+        // appendUniqueById:after 游标与已有消息重叠时服务端会回传已在列表里的条目,
+        // 直接 [...prev,...res] 会让 FlatList 出现重复 key —— 只追加 prev 里没有的 id。
+        setMessages((prev) => appendUniqueById(prev, res.data));
       } else {
         // W1b:全量刷新对旧列表做引用稳定 merge,未变消息不重渲染;
         // preserveLocal 保住发送中的乐观占位(否则空话题轮询/聚焦重拉会吞掉它们)。

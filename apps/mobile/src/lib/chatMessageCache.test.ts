@@ -1,5 +1,7 @@
 import {
   __resetChatMessageCacheForTests,
+  appendUniqueById,
+  dedupeById,
   getCachedMessages,
   mergeMessagesById,
   setCachedMessages,
@@ -80,5 +82,35 @@ describe('mergeMessagesById', () => {
       preserveLocal: true,
     });
     expect(merged.map((m) => m.id)).toEqual(['local-human-1', 'real']);
+  });
+});
+
+describe('appendUniqueById', () => {
+  it('appends only ids not already present (poll cursor overlap → no dup key)', () => {
+    const prev = [msg('a'), msg('b')];
+    const out = appendUniqueById(prev, [msg('b'), msg('c')]);
+    expect(out.map((m) => m.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns the previous array reference when incoming is empty', () => {
+    const prev = [msg('a')];
+    expect(appendUniqueById(prev, [])).toBe(prev);
+  });
+
+  it('returns the previous array reference when nothing is new', () => {
+    const prev = [msg('a'), msg('b')];
+    expect(appendUniqueById(prev, [msg('a'), msg('b')])).toBe(prev);
+  });
+});
+
+describe('dedupeById', () => {
+  it('drops duplicate ids keeping the first occurrence', () => {
+    const out = dedupeById([msg('a'), msg('b'), msg('a'), msg('c')]);
+    expect(out.map((m) => m.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns the same array reference when there are no duplicates', () => {
+    const list = [msg('a'), msg('b')];
+    expect(dedupeById(list)).toBe(list);
   });
 });

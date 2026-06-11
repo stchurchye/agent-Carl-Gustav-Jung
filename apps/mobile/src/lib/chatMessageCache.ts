@@ -59,6 +59,36 @@ export function mergeMessagesById<T extends { id: string }>(
   return allSame ? prev : merged;
 }
 
+/**
+ * 增量轮询的去重 append:服务端 `after` 游标与列表已有消息重叠时会回传已在
+ * 列表里的条目,直接 [...prev, ...incoming] 会让 FlatList 出现重复 key(React 硬错误)。
+ * 只追加 prev 里没有的 id;无新条目时返回旧数组引用(省一次重渲染)。
+ */
+export function appendUniqueById<T extends { id: string }>(prev: T[], incoming: T[]): T[] {
+  if (incoming.length === 0) return prev;
+  const have = new Set(prev.map((m) => m.id));
+  const fresh = incoming.filter((m) => !have.has(m.id));
+  return fresh.length > 0 ? [...prev, ...fresh] : prev;
+}
+
+/**
+ * 渲染层最后防线:无论上游哪条路径残留了重复 id,在喂给 FlatList 前收敛掉
+ * (重复 key 是 React 硬错误,会让行被复制/丢失)。无重复时返回原数组引用(不触发重渲染)。
+ */
+export function dedupeById<T extends { id: string }>(list: T[]): T[] {
+  const seen = new Set<string>();
+  let hasDup = false;
+  const out = list.filter((m) => {
+    if (seen.has(m.id)) {
+      hasDup = true;
+      return false;
+    }
+    seen.add(m.id);
+    return true;
+  });
+  return hasDup ? out : list;
+}
+
 export function __resetChatMessageCacheForTests(): void {
   cache.clear();
 }
