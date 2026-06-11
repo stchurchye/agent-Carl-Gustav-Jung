@@ -16,6 +16,8 @@ import type { AgentNotice, AgentRun, AgentStep } from './types';
 
 const CLIENT_TIMEOUT_MS = 35000; // server max 30s + 5s 余量
 const ERROR_BACKOFF_MS = 1000;
+// 网络持续故障时固定 1s 退避 = 1Hz 打接口耗电;连续瞬时错误指数退避,封顶 30s。
+const ERROR_BACKOFF_MAX_MS = 30000;
 
 
 export type RunSnapshot = {
@@ -119,12 +121,14 @@ async function runLoop(runId: string, e: Entry) {
     }
   }
 
+  let errorStreak = 0;
   while (!e.cancelled && !isTerminal(e.snap.run)) {
     const ctl = new AbortController();
     e.activeCtl = ctl;
     const timeoutId = setTimeout(() => ctl.abort(), CLIENT_TIMEOUT_MS);
     try {
       const batch = await longPollAgentRun(runId, e.lastIdx, ctl.signal);
+      errorStreak = 0;
       if (e.cancelled) break;
       const patch: Partial<RunSnapshot> = {};
       if (batch.run) {
@@ -145,7 +149,9 @@ async function runLoop(runId: string, e: Entry) {
         emit(e, { missing: true });
         break;
       }
-      await new Promise((r) => setTimeout(r, ERROR_BACKOFF_MS));
+      const backoffMs = Math.min(ERROR_BACKOFF_MS * 2 ** errorStreak, ERROR_BACKOFF_MAX_MS);
+      errorStreak += 1;
+      await new Promise((r) => setTimeout(r, backoffMs));
     } finally {
       clearTimeout(timeoutId);
       e.activeCtl = null;

@@ -149,3 +149,67 @@ it('pauses polling in background and resumes on foreground', async () => {
   expect(mockLongPoll).toHaveBeenCalledTimes(2); // 回前台立即恢复一轮
   a.unmount();
 });
+
+// Review 2026-06-11 [P1][mobile-agent] runStore.ts:103
+// bootstrap 瞬时失败 → loop 以 after=-1 轮询;若网络持续故障,旧版固定 1s 退避
+// 无限重试(1Hz 打接口耗电、lastIdx 永不推进)。修后:连续瞬时错误指数退避
+// (1s→2s→4s…封顶),一旦成功立即复位。
+describe('transient error exponential backoff', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('backs off exponentially on consecutive transient errors and resets after success', async () => {
+    jest.useFakeTimers();
+    mockFetchAgentRun.mockRejectedValue(new Error('network down')); // 瞬时(非404/403)
+    mockLongPoll.mockImplementation(() => Promise.reject(new Error('network down')));
+
+    const a = renderHook(() => useAgentRunPoll('r1'));
+    await flush();
+    expect(mockLongPoll).toHaveBeenCalledTimes(1); // 第 1 次失败,进入 1s 退避
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(999);
+    });
+    expect(mockLongPoll).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1);
+    });
+    expect(mockLongPoll).toHaveBeenCalledTimes(2); // 1s 后第 2 次,失败 → 2s 退避
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1999);
+    });
+    expect(mockLongPoll).toHaveBeenCalledTimes(2); // 旧版此处已 1s 重试 → 3 次(红)
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1);
+    });
+    expect(mockLongPoll).toHaveBeenCalledTimes(3); // 2s 后第 3 次,失败 → 4s 退避
+
+    // 第 3 次失败后改为成功(idle 行带 run),退避应复位回 1s
+    mockLongPoll
+      .mockImplementationOnce(() =>
+        Promise.resolve({ type: 'idle', run: makeRun('running'), steps: [], lastIdx: -1 }),
+      )
+      .mockImplementationOnce(() => Promise.reject(new Error('network down')))
+      .mockImplementation(
+        (_id: string, _after: number, signal: AbortSignal) =>
+          new Promise((resolve, reject) => {
+            signal.addEventListener('abort', () =>
+              reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })),
+            );
+            pendingPolls.push({ resolve, reject, signal });
+          }),
+      );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(4000); // 第 4 次:成功(复位);第 5 次立即发出并失败
+    });
+    expect(mockLongPoll).toHaveBeenCalledTimes(5); // 第 5 次失败后退避应为 1s 而非 8s
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1000);
+    });
+    expect(mockLongPoll).toHaveBeenCalledTimes(6); // 复位后 1s 即重试
+
+    a.unmount();
+  });
+});
