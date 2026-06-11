@@ -334,7 +334,9 @@ export function ChatScreen({ route, navigation }: Props) {
       const fresh = res.data.map((m) => ({ ...m, status: 'done' as const }));
       const merged = mergeMessagesById(getCachedMessages<ChatUiMessage>(sessionId) ?? [], fresh);
       setCachedMessages(sessionId, merged);
-      setMessages(merged);
+      // preserveLocal:别吞掉发送中的乐观占位(local-*)——后台刷新/agent 占位重拉与
+      // 在途发送并发时,直接 setMessages(merged) 会把正在发的消息从屏上抹掉(review P0)。
+      setMessages((prev) => mergeMessagesById(prev, merged, { preserveLocal: true }));
     },
     [],
   );
