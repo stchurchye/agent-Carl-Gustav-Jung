@@ -8,8 +8,7 @@ import { useLayout } from '../theme/layout';
 import { useTextStyles } from '../theme/useTextStyles';
 import { formatSlashCommandsHint } from '@xzz/shared';
 import { zh } from '../locales/zh-CN';
-
-const DEFAULT_SESSION_TITLE = '和小助手聊聊';
+import { DEFAULT_SESSION_TITLE, isDefaultSessionTitle } from '../lib/brand';
 
 type Props = {
   sessions: ChatSession[];
@@ -24,7 +23,7 @@ type Props = {
 
 function sessionLabel(session: ChatSession): string {
   const title = session.title?.trim();
-  if (title && title !== DEFAULT_SESSION_TITLE) return title;
+  if (title && !isDefaultSessionTitle(title)) return title;
   return DEFAULT_SESSION_TITLE;
 }
 

@@ -19,6 +19,7 @@ import { appAlert } from '../lib/appAlert';
 import { loadWorkbenchSessionRows, type WorkbenchSessionRow } from '../lib/privateChatPreview';
 import { loadGroupTopicPreviews, type TopicPreviewRow } from '../lib/studioTopicPreview';
 import { getCachedTabs } from '../lib/writingCache';
+import { WRITING_ENABLED } from '../lib/featureFlags';
 import { openWriting } from '../lib/openWriting';
 import { StudioChatListRow } from '../components/StudioChatListRow';
 import { StudioGroupListBlock } from '../components/StudioGroupListBlock';
@@ -153,20 +154,22 @@ export function GroupListScreen({ navigation }: Props) {
           )}
 
           <WeChatGroupedSection title={zh.chat.title}>
-          <StudioChatListRow
-            title={zh.studio.writeText}
-            preview={
-              getCachedTabs()[0]?.title
-                ? zh.studio.continueDocument(getCachedTabs()[0].title)
-                : zh.studio.writeTextPreview
-            }
-            avatarName={zh.studio.writeText}
-            avatarSeed="writing"
-            onPress={() => {
-              const recentId = getCachedTabs()[0]?.id;
-              void openWriting(navigation, recentId ? { documentId: recentId } : undefined);
-            }}
-          />
+          {WRITING_ENABLED ? (
+            <StudioChatListRow
+              title={zh.studio.writeText}
+              preview={
+                getCachedTabs()[0]?.title
+                  ? zh.studio.continueDocument(getCachedTabs()[0].title)
+                  : zh.studio.writeTextPreview
+              }
+              avatarName={zh.studio.writeText}
+              avatarSeed="writing"
+              onPress={() => {
+                const recentId = getCachedTabs()[0]?.id;
+                void openWriting(navigation, recentId ? { documentId: recentId } : undefined);
+              }}
+            />
+          ) : null}
           {workbenchSessions.map((session) => (
             <StudioChatListRow
               key={session.id}

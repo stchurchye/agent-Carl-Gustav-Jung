@@ -103,8 +103,8 @@ export function BrainHubScreen({ navigation }: Props) {
           accessibilityRole="button"
         >
           <View style={styles.cellInner}>
-            <Text style={styles.cellTitle}>Agent 任务</Text>
-            <Text style={styles.cellSub}>查看后台 agent 跑的所有任务、重试失败</Text>
+            <Text style={styles.cellTitle}>{zh.brain.sections.agentTasks}</Text>
+            <Text style={styles.cellSub}>{zh.brain.agentTasksHint}</Text>
           </View>
         </Pressable>
         <Pressable
@@ -113,8 +113,8 @@ export function BrainHubScreen({ navigation }: Props) {
           accessibilityRole="button"
         >
           <View style={styles.cellInner}>
-            <Text style={styles.cellTitle}>Agent 默认模型</Text>
-            <Text style={styles.cellSub}>设置 agent 任务默认使用的 LLM（DeepSeek / ZenMux）</Text>
+            <Text style={styles.cellTitle}>{zh.brain.sections.agentDefaultModel}</Text>
+            <Text style={styles.cellSub}>{zh.brain.agentDefaultModelHint}</Text>
           </View>
         </Pressable>
       </ScrollView>

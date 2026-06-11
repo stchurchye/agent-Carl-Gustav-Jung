@@ -1,7 +1,6 @@
 import { personaAssistantDisplayName } from '@xzz/shared';
 import { api } from './api';
-
-const DEFAULT_SESSION_TITLE = '和小助手聊聊';
+import { ASSISTANT_FALLBACK_NAME, DEFAULT_SESSION_TITLE, isDefaultSessionTitle } from './brand';
 
 function truncate(text: string, max = 80): string {
   const t = text.replace(/\s+/g, ' ').trim();
@@ -11,7 +10,7 @@ function truncate(text: string, max = 80): string {
 
 function formatSessionTitle(title: string): string {
   const t = title?.trim();
-  if (t && t !== DEFAULT_SESSION_TITLE) return t;
+  if (t && !isDefaultSessionTitle(t)) return t;
   return DEFAULT_SESSION_TITLE;
 }
 
@@ -33,7 +32,7 @@ export type WorkbenchSessionRow = {
 
 export async function loadWorkbenchSessionRows(
   emptyHint: string,
-  assistantFallback = '小助手',
+  assistantFallback = ASSISTANT_FALLBACK_NAME,
 ): Promise<WorkbenchSessionRow[]> {
   const assistantName = await resolveAssistantName(assistantFallback);
   const sessionsRes = await api.listChatSessions();

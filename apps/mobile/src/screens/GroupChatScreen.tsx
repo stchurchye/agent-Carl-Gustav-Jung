@@ -24,6 +24,7 @@ import {
 } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
 import { api } from '../lib/api';
+import { ASSISTANT_FALLBACK_NAME } from '../lib/brand';
 import { navigateBrainTab } from '../lib/navigateBrain';
 import { apiErrorText } from '../lib/apiError';
 import { isAuthErrorMessage } from '../lib/authEvents';
@@ -147,7 +148,7 @@ export function GroupChatScreen({ route, navigation }: Props) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [thinkingLine] = useState(zh.chat.thinking);
+  const [thinkingLine] = useState(zh.chat.thinking(ASSISTANT_FALLBACK_NAME));
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [chatModel, setChatModel] = useState<string>('moonshotai/kimi-k2.6');
   const {

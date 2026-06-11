@@ -31,6 +31,7 @@ import type {
 } from '@xzz/shared';
 import { API_BASE_URL } from './config';
 import { ApiRequestError, fetchJsonWithRetry } from './apiRequest';
+import { NETWORK_UNREACHABLE_PREFIX } from './brand';
 import { getDeepSeekApiKey } from './deepseekKey';
 import { getZenMuxApiKey } from './zenmuxKey';
 import { getDashScopeApiKey } from './dashscopeKey';
@@ -86,7 +87,7 @@ export async function authHeaders(): Promise<Record<string, string>> {
 }
 
 function networkErrorMessage(): string {
-  return `连不上小助手服务（${API_BASE_URL}）。请在本机终端运行：npm run dev:api`;
+  return `${NETWORK_UNREACHABLE_PREFIX}（${API_BASE_URL}）。请在本机终端运行：npm run dev:api`;
 }
 
 async function request<T>(
