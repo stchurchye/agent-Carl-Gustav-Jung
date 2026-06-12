@@ -165,7 +165,7 @@ export function GroupListScreen({ navigation }: Props) {
             <Text style={styles.empty}>{zh.studio.emptyList}</Text>
           )}
 
-          <WeChatGroupedSection title={zh.chat.title}>
+          <WeChatGroupedSection title={zh.studio.workbenchSection}>
           {WRITING_ENABLED ? (
             <StudioChatListRow
               title={zh.studio.writeText}
