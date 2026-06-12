@@ -1,0 +1,86 @@
+name: CI
+
+# PR 合并前的自动门:typecheck + 单测 + lint(check)并行跑 Postgres 后端集成测试(api-db)。
+# 两个 job 都先 build @xzz/shared —— api/mobile 吃的是 shared 编译后的 dist(package.json main/types 指向 ./dist)。
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# 同一分支新推送时取消上一次未跑完的 CI,省额度
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 快门:不连库的全部检查,几分钟出结果
+  check:
+    name: typecheck + unit + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # shared 必须先编译,api/mobile 的 tsc/jest 才能解析 @xzz/shared 的类型与产物
+      - name: Build shared
+        run: npm run build -w @xzz/shared
+
+      # 根脚本:对所有 workspace(shared/api/mobile)跑 tsc --noEmit
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test (shared)
+        run: npm run test -w @xzz/shared
+
+      - name: Test (mobile · jest)
+        run: npm run test -w @xzz/mobile
+
+      - name: Lint (api · eslint)
+        run: npm run lint -w @xzz/api
+
+  # 厚门:起 Postgres 跑 api 全量集成测试(test:pg 缺 DATABASE_URL 会 fail-fast 防假绿)
+  api-db:
+    name: api integration (postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: xzz
+          POSTGRES_PASSWORD: xzz_dev_password
+          POSTGRES_DB: xzz_app
+        ports:
+          - 5432:5432
+        # 等库就绪再开跑,否则首个测试连不上
+        options: >-
+          --health-cmd "pg_isready -U xzz -d xzz_app"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # 测试自身在 beforeAll 里调 runMigrations() 建 schema,这里只需给对连接串
+      DATABASE_URL: postgresql://xzz:xzz_dev_password@localhost:5432/xzz_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build shared
+        run: npm run build -w @xzz/shared
+
+      - name: Test (api · 含 DB)
+        run: npm run test:pg -w @xzz/api
