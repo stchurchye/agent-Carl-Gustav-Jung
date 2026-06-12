@@ -8,6 +8,7 @@ import {
 } from '@xzz/shared';
 import type { MemoryCategory, MemoryFragment } from '@xzz/shared';
 import { api, type TopicSkill, type AgentMemoryItem } from '../lib/api';
+import { loadPersona } from '../lib/personaStore';
 
 export type BrainSnapshot = {
   personaCustomized: boolean;
@@ -45,7 +46,7 @@ export function useBrainSnapshot() {
     try {
       const [personaRes, longRes, sessionRes, topicRes, reviewRes, logsRes, settingsRes, skillsRes, episodicPendingRes] =
         await Promise.all([
-          api.getPersona().catch(() => null),
+          loadPersona().catch(() => null),
           api.listMemories({ scope: 'user', includeSuppressed: true }).catch(() => ({ data: [] })),
           api.listMemories({ scope: 'session', includeSuppressed: true }).catch(() => ({ data: [] })),
           api.listMemories({ scope: 'topic', includeSuppressed: true }).catch(() => ({ data: [] })),
@@ -61,7 +62,7 @@ export function useBrainSnapshot() {
       const short = [...sessionRes.data, ...topicRes.data];
 
       setSnapshot({
-        personaCustomized: personaRes ? isPersonaCustomized(personaRes.data) : false,
+        personaCustomized: personaRes ? isPersonaCustomized(personaRes) : false,
         longMemoryCount: long.length,
         shortMemoryCount: short.length,
         reviewCount: reviewRes.data.length,

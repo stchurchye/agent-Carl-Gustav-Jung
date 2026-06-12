@@ -23,8 +23,14 @@ import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
 import { ContextUsageDetailContent } from './ContextUsageDetailModal';
 import { ContextPreviewBlockRow } from './ContextPreviewBlockRow';
-import { colors, typography } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { brainTokens } from '../theme/brainTokens';
 import { zh } from '../locales/zh-CN';
+import { presetDogForSeed } from '@xzz/shared';
+import { usePersona } from '../hooks/usePersona';
+import { PixelCharacter } from './pixel/PixelCharacter';
+import { buildDogCharacter } from '../pixel/buildDog';
+import { PERSONALITY_MOTION } from '../pixel/palette';
 
 export type ContextComposerSource = 'group' | 'chat' | 'writing';
 
@@ -68,6 +74,10 @@ export function ContextComposerModal({
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [promptExpanded, setPromptExpanded] = useState(false);
+
+  // 标题旁的小狗(会呼吸眨眼):用自己的狗,没领养按兜底预设
+  const { dog: personaDog } = usePersona();
+  const headerDog = personaDog ?? presetDogForSeed('bowwow').dog;
 
   const fetchPreview = useCallback(
     async (blockIds: string[], sel?: ContextSelection) => {
@@ -194,14 +204,22 @@ export function ContextComposerModal({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.page}>
         <View style={styles.header}>
-          <Text style={styles.title}>{zh.chat.composeContext}</Text>
+          <View style={styles.headerLeft}>
+            <PixelCharacter
+              character={buildDogCharacter(headerDog)}
+              size={40}
+              motion={PERSONALITY_MOTION[headerDog.personality]}
+              animated
+            />
+            <Text style={styles.title}>{zh.chat.composeContextTitle}</Text>
+          </View>
           <Pressable onPress={onClose} hitSlop={12}>
             <Text style={styles.closeLink}>{zh.context.close}</Text>
           </Pressable>
         </View>
 
         {loading && !preview ? (
-          <ActivityIndicator style={styles.loader} color={colors.primary} />
+          <ActivityIndicator style={styles.loader} color={brainTokens.accent} />
         ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -268,7 +286,7 @@ export function ContextComposerModal({
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: brainTokens.bg,
     paddingTop: 56,
   },
   header: {
@@ -278,19 +296,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 1,
+    paddingRight: 8,
+  },
   title: {
     fontSize: typography.title,
     fontWeight: '700',
-    color: colors.text,
+    color: brainTokens.text,
+    flexShrink: 1,
   },
   closeLink: {
     fontSize: typography.body,
-    color: colors.primary,
+    color: brainTokens.accent,
   },
   loader: { marginTop: 40 },
   error: {
     marginHorizontal: 16,
-    color: colors.error,
+    color: brainTokens.error,
     fontSize: typography.caption,
   },
   usageCard: {
@@ -301,13 +327,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 8,
     fontSize: typography.caption,
-    color: colors.error,
+    color: brainTokens.error,
   },
   autoIncludeHint: {
     marginHorizontal: 16,
     marginBottom: 8,
     fontSize: typography.caption,
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
     lineHeight: 18,
   },
   toolbar: {
@@ -321,13 +347,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: brainTokens.bgElevated,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: brainTokens.border,
   },
   toolBtnText: {
     fontSize: typography.caption,
-    color: colors.primary,
+    color: brainTokens.accent,
     fontWeight: '600',
   },
   scroll: { flex: 1 },
@@ -345,15 +371,15 @@ const styles = StyleSheet.create({
   promptTitle: {
     fontSize: typography.body,
     fontWeight: '700',
-    color: colors.text,
+    color: brainTokens.text,
   },
   chevron: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
   },
   promptBody: {
     fontSize: typography.caption,
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
     lineHeight: 20,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
@@ -361,17 +387,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
+    borderTopColor: brainTokens.border,
+    backgroundColor: brainTokens.bgElevated,
   },
   footerHint: {
     fontSize: typography.caption,
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
     marginBottom: 10,
     textAlign: 'center',
   },
   applyBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: brainTokens.accent,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',

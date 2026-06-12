@@ -147,7 +147,7 @@ export function GroupStack() {
       <Stack.Screen
         name="StudioManage"
         component={StudioManageScreen}
-        options={{ title: zh.studio.manageTitle }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="StudioSearch"

@@ -68,7 +68,7 @@ export type GroupStackParamList = {
   SettingsProfile: undefined;
   SettingsProfileAvatar: undefined;
   SettingsProfileName: undefined;
-  /** 挑狗/挑小人 + 起名(Bow wow know) */
+  /** 挑狗/挑小人 + 起名(Bow Wow Know) */
   SettingsMyDog: undefined;
   SettingsPersonality: undefined;
   SettingsPersonalityIdentity: undefined;

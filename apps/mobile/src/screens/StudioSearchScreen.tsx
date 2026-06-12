@@ -94,9 +94,16 @@ export function StudioSearchScreen({ navigation }: Props) {
   useEffect(() => {
     void refreshHistory();
     void loadMetaIndex();
-    const t = setTimeout(() => inputRef.current?.focus(), 120);
-    return () => clearTimeout(t);
   }, [loadMetaIndex, refreshHistory]);
+
+  // 等推入转场结束再聚焦弹键盘:若在转场途中 focus,键盘会被绑进「从右滑入」的动画
+  // (表现为键盘从右边飞入并闪深色)。transitionEnd 只在打开方向(非 closing)触发。
+  useEffect(() => {
+    const unsub = navigation.addListener('transitionEnd', (e) => {
+      if (!e.data?.closing) inputRef.current?.focus();
+    });
+    return unsub;
+  }, [navigation]);
 
   const trimmedQuery = query.trim();
   const showResults = trimmedQuery.length > 0;
@@ -246,6 +253,7 @@ export function StudioSearchScreen({ navigation }: Props) {
             clearButtonMode="while-editing"
             autoCorrect={false}
             autoCapitalize="none"
+            keyboardAppearance="light"
             onSubmitEditing={onSubmitQuery}
           />
         </View>

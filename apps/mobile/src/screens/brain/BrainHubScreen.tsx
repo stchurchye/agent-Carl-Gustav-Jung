@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { presetDogForSeed } from '@xzz/shared';
 import { PixelCharacter } from '../../components/pixel/PixelCharacter';
@@ -9,7 +9,7 @@ import { PERSONALITY_MOTION } from '../../pixel/palette';
 import { useAuth } from '../../components/AuthGate';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBrainSnapshot } from '../../brain/useBrainSnapshot';
-import { API_KEY_KINDS, loadApiKeyStatus } from '../../lib/apiKeyKind';
+import { navigateStudioTab } from '../../lib/navigateBrain';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
 import { brainTokens } from '../../theme/brainTokens';
@@ -19,8 +19,8 @@ type Props = NativeStackScreenProps<BrainStackParamList, 'BrainHub'>;
 const SECTION_ROUTES = {
   persona: 'BrainPersonalityEdit',
   memoryHub: 'BrainMemoryHub',
+  // 汪星联络方式 / 跑腿默认模型已收进「汪星通讯记录」二级页(见 BrainLlmLogsScreen)
   llmLogs: 'BrainLlmLogs',
-  homeKeys: 'BrainHomeKeys',
 } as const satisfies Record<string, keyof BrainStackParamList>;
 
 type SectionKey = keyof typeof SECTION_ROUTES;
@@ -30,18 +30,11 @@ export function BrainHubScreen({ navigation }: Props) {
   const { user } = useAuth();
   const heroDog = user?.pixelAvatar?.dog ?? presetDogForSeed(user?.id ?? 'bowwow').dog;
   const { snapshot, loading, error, refresh } = useBrainSnapshot();
-  const [keysConfiguredCount, setKeysConfiguredCount] = useState(0);
-
-  const loadKeySummary = useCallback(async () => {
-    const results = await Promise.all(API_KEY_KINDS.map((kind) => loadApiKeyStatus(kind)));
-    setKeysConfiguredCount(results.filter((r) => r.configured).length);
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
       void refresh();
-      void loadKeySummary();
-    }, [refresh, loadKeySummary]),
+    }, [refresh]),
   );
 
   return (
@@ -76,16 +69,13 @@ export function BrainHubScreen({ navigation }: Props) {
         {(Object.keys(SECTION_ROUTES) as (keyof typeof SECTION_ROUTES)[]).map((key) => {
           const routeName = SECTION_ROUTES[key];
           let sub = '';
-          if (key === 'homeKeys') {
-            sub = zh.brain.homeKeysSummary(keysConfiguredCount, API_KEY_KINDS.length);
+          if (key === 'persona') {
+            sub = zh.brain.personaPeek;
           } else if (snapshot) {
-            if (key === 'persona') {
-              sub = snapshot.personaCustomized ? zh.brain.customized : zh.brain.default;
-            } else if (key === 'memoryHub') {
+            if (key === 'memoryHub') {
               sub = zh.brain.memoryHubSummary(
                 snapshot.longMemoryCount,
                 snapshot.shortMemoryCount,
-                snapshot.reviewCount,
               );
             } else if (key === 'llmLogs') {
               sub = zh.brain.countCalls(snapshot.llmLogCount);
@@ -115,14 +105,15 @@ export function BrainHubScreen({ navigation }: Props) {
             <Text style={styles.cellSub}>{zh.brain.agentTasksHint}</Text>
           </View>
         </Pressable>
+        {/* 设置入口从主页左上角移来此处:跨到工作室栈打开 MeScreen(设置) */}
         <Pressable
           style={styles.cell}
-          onPress={() => navigation.navigate('BrainAgentDefaultModel')}
+          onPress={() => navigateStudioTab(navigation, 'Settings')}
           accessibilityRole="button"
         >
           <View style={styles.cellInner}>
-            <Text style={styles.cellTitle}>{zh.brain.sections.agentDefaultModel}</Text>
-            <Text style={styles.cellSub}>{zh.brain.agentDefaultModelHint}</Text>
+            <Text style={styles.cellTitle}>{zh.brain.sections.manageBowWow}</Text>
+            <Text style={styles.cellSub}>{zh.brain.manageBowWowHint}</Text>
           </View>
         </Pressable>
       </ScrollView>

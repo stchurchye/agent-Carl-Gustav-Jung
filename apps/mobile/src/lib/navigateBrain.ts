@@ -1,5 +1,5 @@
 import type { NavigationProp, ParamListBase } from '@react-navigation/native';
-import type { BrainStackParamList } from '../navigation/types';
+import type { BrainStackParamList, GroupStackParamList } from '../navigation/types';
 
 type TabNav = NavigationProp<ParamListBase> & {
   navigate: (name: string, params?: object) => void;
@@ -16,4 +16,14 @@ export function navigateBrainTab<S extends keyof BrainStackParamList>(
 ) {
   const parent = navigation.getParent() as TabNav | undefined;
   parent?.navigate('BrainTab', { screen, params });
+}
+
+/** 反向:从 my bow wow(大脑栈)跳到工作室栈的子页(如设置/MeScreen)。 */
+export function navigateStudioTab<S extends keyof GroupStackParamList>(
+  navigation: NavigationProp<ParamListBase>,
+  screen: S,
+  params?: GroupStackParamList[S],
+) {
+  const parent = navigation.getParent() as TabNav | undefined;
+  parent?.navigate('StudioTab', { screen, params });
 }

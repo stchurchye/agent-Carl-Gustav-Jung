@@ -1,5 +1,6 @@
 import { personaAssistantDisplayName } from '@xzz/shared';
 import { api } from './api';
+import { loadPersona } from './personaStore';
 import { ASSISTANT_FALLBACK_NAME, DEFAULT_SESSION_TITLE, isDefaultSessionTitle } from './brand';
 
 function truncate(text: string, max = 80): string {
@@ -16,8 +17,7 @@ function formatSessionTitle(title: string): string {
 
 async function resolveAssistantName(fallback: string): Promise<string> {
   try {
-    const res = await api.getPersona();
-    return personaAssistantDisplayName(res.data, fallback);
+    return personaAssistantDisplayName(await loadPersona(), fallback);
   } catch {
     return fallback;
   }

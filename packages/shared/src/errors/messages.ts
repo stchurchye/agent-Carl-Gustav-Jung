@@ -18,12 +18,12 @@ export const errorMessages: Record<ErrorCode, ErrorMessageEntry> = {
     retryable: true,
   },
   AI_BUSY: {
-    message: 'Bow wow 这会儿有点忙，请喝口水，一分钟后再试',
+    message: 'Bow Wow 这会儿有点忙，请喝口水，一分钟后再试',
     hint: '请稍等一会儿再试',
     retryable: true,
   },
   AI_REFUSED: {
-    message: '这段话 Bow wow 不太好下笔，我们换种说法试试，不着急',
+    message: '这段话 Bow Wow 不太好下笔，我们换种说法试试，不着急',
     hint: '您可以改一改说法再试',
     retryable: true,
   },
@@ -54,17 +54,17 @@ export const errorMessages: Record<ErrorCode, ErrorMessageEntry> = {
   },
   REVISION_NOT_FOUND: {
     message: '这份改稿建议找不到了',
-    hint: '可能服务刚重启过，请回到写作页让 Bow wow 再改一版',
+    hint: '可能服务刚重启过，请回到写作页让 Bow Wow 再改一版',
     retryable: false,
   },
   REVISION_EXPIRED: {
     message: '这份建议已经处理过了',
-    hint: '若要再改，请再跟 Bow wow 说一次',
+    hint: '若要再改，请再跟 Bow Wow 说一次',
     retryable: false,
   },
   VALIDATION: {
     message: '请再检查一下输入',
-    hint: '有不清楚的地方可以问 Bow wow',
+    hint: '有不清楚的地方可以问 Bow Wow',
     retryable: true,
   },
   API_KEY_MISSING: {

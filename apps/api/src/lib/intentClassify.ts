@@ -50,7 +50,7 @@ function chatKind(channel: IntentChannel): IntentKind {
 }
 
 function chatLabel(channel: IntentChannel): string {
-  return channel === 'group' ? '请 AI 回复' : '和 Bow wow 聊聊';
+  return channel === 'group' ? '请 AI 回复' : '和 Bow Wow 聊聊';
 }
 
 export async function classifyIntent(

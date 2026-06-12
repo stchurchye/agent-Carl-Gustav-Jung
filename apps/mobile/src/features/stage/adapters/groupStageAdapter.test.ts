@@ -44,7 +44,7 @@ describe('buildGroupStage', () => {
       { selfUserId: 'u9' },
     );
     expect(lines[0].actorId).toBe('dog:unknown');
-    expect(actors.find((a) => a.id === 'dog:unknown')?.name).toBe('Bow wow');
+    expect(actors.find((a) => a.id === 'dog:unknown')?.name).toBe('Bow Wow');
   });
 
   it('system/link_card → kind:system 不建 actor', () => {

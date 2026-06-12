@@ -1,17 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { GroupListItem } from '@xzz/shared';
-import { appIcons } from '../assets/appIcons';
+import { presetDogForSeed, type GroupListItem, type GroupMember } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
 import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
@@ -21,6 +12,7 @@ import { loadGroupTopicPreviews, type TopicPreviewRow } from '../lib/studioTopic
 import { getCachedTabs } from '../lib/writingCache';
 import { WRITING_ENABLED } from '../lib/featureFlags';
 import { openWriting } from '../lib/openWriting';
+import { BowWowSessionRow } from '../components/BowWowSessionRow';
 import { StudioChatListRow } from '../components/StudioChatListRow';
 import { StudioGroupListBlock } from '../components/StudioGroupListBlock';
 import { StudioSearchBar } from '../components/StudioSearchBar';
@@ -37,6 +29,8 @@ type Props = NativeStackScreenProps<GroupStackParamList, 'GroupList'>;
 type GroupListUi = {
   group: GroupListItem;
   topics: TopicPreviewRow[];
+  /** 组员(含各自的狗),入口展示「狗狗电话连线」用;拉取失败为空则退回字母头像 */
+  members: GroupMember[];
 };
 
 export function GroupListScreen({ navigation }: Props) {
@@ -54,6 +48,11 @@ export function GroupListScreen({ navigation }: Props) {
   );
   const [workbenchSessions, setWorkbenchSessions] = useState<WorkbenchSessionRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // 「我的 Bow Wow」分区永远是我和我的狗:行头像直接用自己的像素狗(没领养按 seed 兜底)
+  const myDog = user?.pixelAvatar?.dog ?? presetDogForSeed(user?.id ?? 'bowwow').dog;
+  // 成员只用于入口的「狗狗电话连线」(纯装饰),每组每个屏生命周期内最多拉一次,
+  // 避免每次聚焦都对所有组发 listGroupMembers(话题预览本来就会按组重拉,不再叠加 N 个请求)。
+  const membersByGroupRef = useRef<Map<string, GroupMember[]>>(new Map());
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -64,12 +63,19 @@ export function GroupListScreen({ navigation }: Props) {
       ]);
       const topicsByGroup = await Promise.all(
         groupsRes.data.map(async (group) => {
-          try {
-            const topics = await loadGroupTopicPreviews(group.id);
-            return { group, topics };
-          } catch {
-            return { group, topics: [] as TopicPreviewRow[] };
+          const topics = await loadGroupTopicPreviews(group.id).catch(
+            () => [] as TopicPreviewRow[],
+          );
+          let members = membersByGroupRef.current.get(group.id);
+          if (!members) {
+            members = await api
+              .listGroupMembers(group.id)
+              .then((r) => r.data)
+              .catch(() => [] as GroupMember[]);
+            // 只缓存非空结果,失败(空)留待下次聚焦重试
+            if (members.length) membersByGroupRef.current.set(group.id, members);
           }
+          return { group, topics, members };
         }),
       );
       setGroupRows(topicsByGroup);
@@ -115,18 +121,7 @@ export function GroupListScreen({ navigation }: Props) {
     [navigation],
   );
 
-  const headerLeft = (
-    <Pressable
-      onPress={() => navigation.navigate('Settings')}
-      hitSlop={12}
-      style={styles.headerBtn}
-      accessibilityRole="button"
-      accessibilityLabel={zh.me.settings}
-    >
-      <Image source={appIcons.settings} style={styles.settingsIcon} resizeMode="contain" />
-    </Pressable>
-  );
-
+  // 设置入口已移到 my bow wow 的「管理 Bow Wow」,主页左上角不再放设置图标
   const headerRight = (
     <Pressable
       onPress={() => navigation.navigate('StudioManage')}
@@ -141,7 +136,7 @@ export function GroupListScreen({ navigation }: Props) {
 
   return (
     <View style={wechatChatStyles.page}>
-      <WeChatChatHeader title={zh.tabs.groups} left={headerLeft} right={headerRight} />
+      <WeChatChatHeader title={zh.tabs.groups} right={headerRight} />
       <StudioSearchBar onPress={() => navigation.navigate('StudioSearch')} />
       {/* W2 防闪:已有内容时聚焦重拉静默刷新,只有首载(无数据)才占屏 spinner */}
       {loading && groupRows.length === 0 && workbenchSessions.length === 0 ? (
@@ -150,11 +145,12 @@ export function GroupListScreen({ navigation }: Props) {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {groupRows.length > 0 ? (
             <WeChatGroupedSection title={zh.studio.groupsSection}>
-              {groupRows.map(({ group, topics }, idx) => (
+              {groupRows.map(({ group, topics, members }, idx) => (
                 <StudioGroupListBlock
                   key={group.id}
                   group={group}
                   topics={topics}
+                  members={members}
                   isLast={idx === groupRows.length - 1}
                   onOpenTopics={() => openGroupTopics(group.id, group.name)}
                   onOpenTopic={(topic) => openGroupChat(group.id, group.name, topic)}
@@ -165,7 +161,7 @@ export function GroupListScreen({ navigation }: Props) {
             <Text style={styles.empty}>{zh.studio.emptyList}</Text>
           )}
 
-          <WeChatGroupedSection title={zh.chat.title}>
+          <WeChatGroupedSection title={zh.studio.workbenchSection}>
           {WRITING_ENABLED ? (
             <StudioChatListRow
               title={zh.studio.writeText}
@@ -183,22 +179,21 @@ export function GroupListScreen({ navigation }: Props) {
             />
           ) : null}
           {workbenchSessions.map((session) => (
-            <StudioChatListRow
+            <BowWowSessionRow
               key={session.id}
               title={session.title}
               preview={session.preview}
               time={session.time}
-              avatarName={session.title}
-              avatarSeed={session.id}
+              dog={myDog}
               onPress={() => openPrivateChat(session.id)}
             />
           ))}
           {workbenchSessions.length === 0 ? (
-            <StudioChatListRow
+            <BowWowSessionRow
               title={zh.chat.newSession}
               preview={zh.studio.workbenchPreviewEmpty}
-              avatarName={zh.chat.title}
-              avatarSeed="workbench-new"
+              dog={myDog}
+              isNew
               onPress={() => openPrivateChat()}
             />
           ) : null}
@@ -223,10 +218,6 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: wechat.textPrimary,
     lineHeight: 32,
-  },
-  settingsIcon: {
-    width: 28,
-    height: 28,
   },
   empty: {
     textAlign: 'center',

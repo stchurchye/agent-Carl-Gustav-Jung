@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, Linking, StyleSheet } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useNavigation } from '@react-navigation/native';
@@ -14,6 +14,7 @@ import {
   steerAgentRun,
 } from './agentApi';
 import { isTerminalRunStatus } from './types';
+import { playReplyBark } from '../../lib/soundCues';
 import type { AgentNoticeSeverity, AgentRunStatus, RunArtifact } from './types';
 import { AgentTodoList } from './AgentTodoList';
 import { AgentStepList } from './AgentStepList';
@@ -182,6 +183,7 @@ export function AgentRunCard({
   runId,
   onRetry,
   expanded,
+  barkOwnerKey,
 }: {
   runId: string;
   /**
@@ -191,8 +193,27 @@ export function AgentRunCard({
   onRetry?: (newRunId: string) => void | Promise<void>;
   /** 详情屏:步骤全量平铺(聊天卡默认截断,见 AgentStepList)。 */
   expanded?: boolean;
+  /**
+   * 群聊专用:这只狗的身份键(=邀请者 invokerUserId,与性格无关)。
+   * 设了它,run 由非终态→终态时汪一声;私聊不传(私聊回复在 ChatScreen 即时出狗叫,避免重复)。
+   */
+  barkOwnerKey?: string;
 }) {
   const { run, steps, notices, connected, missing } = useAgentRunSubscription(runId);
+
+  // run 跑完出狗叫:仅在「已知非终态 → 终态」的真实跃迁时响一次。
+  // 挂到一个本就终态的 run(滚历史/重启)时 prev 为 null → 不响;之后 prev 维持终态 → 不重复。
+  const prevStatusRef = useRef<AgentRunStatus | null>(null);
+  useEffect(() => {
+    const s = run?.status;
+    if (!s) return;
+    const wasNonTerminal =
+      prevStatusRef.current !== null && !isTerminalRunStatus(prevStatusRef.current);
+    if (barkOwnerKey && wasNonTerminal && isTerminalRunStatus(s)) {
+      playReplyBark(barkOwnerKey);
+    }
+    prevStatusRef.current = s;
+  }, [run?.status, barkOwnerKey]);
 
   if (!run) {
     return (

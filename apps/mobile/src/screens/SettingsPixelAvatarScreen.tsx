@@ -23,7 +23,6 @@ import {
   type DogConfig,
   type HumanConfig,
 } from '@xzz/shared';
-import { AppTextInput } from '../components/AppTextInput';
 import { PixelCharacter } from '../components/pixel/PixelCharacter';
 import { PixelSprite } from '../components/pixel/PixelSprite';
 import { WeChatChatHeader } from '../components/WeChatChatHeader';
@@ -47,7 +46,7 @@ function randomOf<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-/** 挑狗/自定义细节/挑小人 + 给狗和自己起名(领养流程) */
+/** 挑狗/自定义细节/挑小人(起名与称呼在「狗狗性格→身份/你」里,此处不再重复) */
 export function SettingsPixelAvatarScreen({ navigation }: Props) {
   const { user, applyAuthUser } = useAuth();
   const { isTablet } = useLayout();
@@ -62,21 +61,7 @@ export function SettingsPixelAvatarScreen({ navigation }: Props) {
   // 编辑哪个物种,搭档就是哪个:狗 tab(选一只/自定义)→ dog,小猫 tab → cat
   const [species, setSpecies] = useState<AvatarSpecies>(user?.pixelAvatar?.species ?? 'dog');
   const [tab, setTab] = useState<Tab>('pick');
-  const [dogName, setDogName] = useState('');
-  const [callMe, setCallMe] = useState('');
-  const [namesLoaded, setNamesLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    void api
-      .getPersona()
-      .then((r) => {
-        setDogName(r.data.identity?.assistantName ?? '');
-        setCallMe(r.data.user?.preferredName ?? '');
-        setNamesLoaded(true);
-      })
-      .catch(() => setNamesLoaded(true));
-  }, []);
 
   const partnerCharacter = useMemo(
     () => (species === 'cat' ? buildCatCharacter(cat) : buildDogCharacter(dog)),
@@ -91,19 +76,13 @@ export function SettingsPixelAvatarScreen({ navigation }: Props) {
     try {
       const res = await api.updatePixelAvatar({ v: 1, species, dog, human, cat });
       await applyAuthUser(res.data.user);
-      const personaPatch: Parameters<typeof api.patchPersona>[0] = {};
-      if (dogName.trim()) personaPatch.identity = { assistantName: dogName.trim() };
-      if (callMe.trim()) personaPatch.user = { preferredName: callMe.trim() };
-      if (personaPatch.identity || personaPatch.user) {
-        await api.patchPersona(personaPatch);
-      }
       navigation.goBack();
     } catch (e) {
       appAlert(zh.pixelAvatar.saveFailed, apiErrorText(e).message);
     } finally {
       setSaving(false);
     }
-  }, [dog, human, dogName, callMe, applyAuthUser, navigation]);
+  }, [species, dog, human, cat, applyAuthUser, navigation]);
 
   const dimChips = <K extends string>(
     label: string,
@@ -335,25 +314,6 @@ export function SettingsPixelAvatarScreen({ navigation }: Props) {
           </View>
         ) : null}
 
-        <View style={styles.nameBlock}>
-          <Text style={styles.nameLabel}>{zh.pixelAvatar.dogNameLabel}</Text>
-          <AppTextInput
-            value={dogName}
-            onChangeText={setDogName}
-            placeholder={zh.pixelAvatar.dogNamePh}
-            editable={namesLoaded}
-            maxLength={20}
-          />
-          <Text style={styles.nameLabel}>{zh.pixelAvatar.callMeLabel}</Text>
-          <AppTextInput
-            value={callMe}
-            onChangeText={setCallMe}
-            placeholder={zh.pixelAvatar.callMePh}
-            editable={namesLoaded}
-            maxLength={20}
-          />
-        </View>
-
         <Pressable
           style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
           onPress={() => void save()}
@@ -437,8 +397,6 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, color: '#3D3229' },
   chipTextActive: { fontWeight: '700', color: '#A1502F' },
   humanDims: { marginTop: 12 },
-  nameBlock: { marginTop: 16, gap: 6 },
-  nameLabel: { fontSize: 13, fontWeight: '700', color: '#6E6759', marginTop: 6 },
   saveBtn: {
     marginTop: 18,
     borderWidth: 2,

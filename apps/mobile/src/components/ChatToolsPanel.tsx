@@ -16,9 +16,7 @@ type Props = {
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onRenameSession?: (session: ChatSession) => void;
-  onReadReply: () => void;
   sending: boolean;
-  canReadReply: boolean;
 };
 
 function sessionLabel(session: ChatSession): string {
@@ -34,9 +32,7 @@ export function ChatToolsPanel({
   onNewSession,
   onSelectSession,
   onRenameSession,
-  onReadReply,
   sending,
-  canReadReply,
 }: Props) {
   const text = useTextStyles();
   const { captionFontSize, bodyLineHeight } = useLayout();
@@ -97,13 +93,6 @@ export function ChatToolsPanel({
           })}
         </ScrollView>
       )}
-
-      <PrimaryButton
-        title={zh.chat.readReply}
-        variant="ghost"
-        onPress={onReadReply}
-        disabled={!canReadReply}
-      />
     </View>
   );
 }

@@ -27,7 +27,7 @@ export function StudioTabIcon({ color, size = 24, focused }: IconProps) {
   );
 }
 
-/** my bow wow:狗头(垂耳+圆鼻+吐舌) */
+/** My Bow Wow:狗头(垂耳+圆鼻+吐舌) */
 export function DogTabIcon({ color, size = 24, focused }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

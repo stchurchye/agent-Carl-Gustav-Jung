@@ -29,10 +29,13 @@ describe('locale 守门:旧品牌词清零', () => {
   });
 });
 
-describe('Bow wow 关键新文案', () => {
+describe('Bow Wow 关键新文案', () => {
   it('Tab 与枢纽标题', () => {
-    expect(zh.tabs.brain).toBe('my bow wow');
-    expect(zh.brain.hubTitle).toBe('my bow wow');
+    expect(zh.tabs.brain).toBe('My Bow Wow');
+    expect(zh.brain.hubTitle).toBe('My Bow Wow');
+    // 群分区品牌词:Title Case「Bow Wow Group」(防 typo/漏改回归)
+    expect(zh.tabs.groups).toBe('Bow Wow Group');
+    expect(zh.tabs.studio).toBe('Bow Wow Group');
   });
 
   it('欢迎语带狗名且保留斜杠命令提示', () => {

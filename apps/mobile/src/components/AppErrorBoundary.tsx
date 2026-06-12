@@ -29,7 +29,7 @@ export class AppErrorBoundary extends Component<Props, State> {
           <ScrollView contentContainerStyle={styles.content}>
             <Text style={styles.title}>界面出了点问题</Text>
             <Text style={styles.hint}>
-              请摇一摇设备打开开发菜单，点 Reload；或确认 Metro（8090）和 Bow wow 服务（3922）都在运行。
+              请摇一摇设备打开开发菜单，点 Reload；或确认 Metro（8090）和 Bow Wow 服务（3922）都在运行。
             </Text>
             <Text style={styles.detail}>{this.state.error.message}</Text>
             <Pressable style={styles.btn} onPress={() => this.setState({ error: null })}>

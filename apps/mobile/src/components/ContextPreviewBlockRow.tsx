@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ContextPreviewBlock } from '@xzz/shared';
 import { formatLlmExcludeMarkers, formatTokenCount } from '@xzz/shared';
 import { colors, typography } from '../theme/colors';
+import { brainTokens } from '../theme/brainTokens';
 import { zh } from '../locales/zh-CN';
 
 type Props = {
@@ -79,9 +80,9 @@ const styles = StyleSheet.create({
   row: {
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: brainTokens.border,
     marginBottom: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: brainTokens.bgCard,
     overflow: 'hidden',
   },
   rowPending: {
@@ -98,7 +99,7 @@ const styles = StyleSheet.create({
   markSub: {
     marginTop: 2,
     fontSize: typography.caption,
-    color: colors.error,
+    color: brainTokens.error,
   },
   header: {
     flexDirection: 'row',
@@ -111,14 +112,14 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: brainTokens.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   checkboxOn: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: brainTokens.accent,
+    borderColor: brainTokens.accent,
   },
   checkboxDisabled: {
     opacity: 0.4,
@@ -139,29 +140,29 @@ const styles = StyleSheet.create({
   label: {
     fontSize: typography.body,
     fontWeight: '600',
-    color: colors.text,
+    color: brainTokens.text,
   },
   labelMuted: {
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
   },
   tokens: {
     marginTop: 2,
     fontSize: typography.caption,
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
   },
   chevron: {
     marginLeft: 8,
     fontSize: 12,
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
   },
   content: {
     paddingHorizontal: 12,
     paddingBottom: 12,
     fontSize: typography.caption,
-    color: colors.text,
+    color: brainTokens.text,
     lineHeight: 20,
   },
   contentMuted: {
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
   },
 });

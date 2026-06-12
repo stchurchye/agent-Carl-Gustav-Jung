@@ -23,8 +23,8 @@ describe('brain 提示文案守门', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('陈旧的「家用钥匙」改为「狗狗的联络方式」', () => {
+  it('陈旧的「家用钥匙」改为「汪星联络方式」', () => {
     expect(brainLogicHints.agentDefaultModel.howUse).not.toContain('家用钥匙');
-    expect(brainLogicHints.agentDefaultModel.howUse).toContain('狗狗的联络方式');
+    expect(brainLogicHints.agentDefaultModel.howUse).toContain('汪星联络方式');
   });
 });

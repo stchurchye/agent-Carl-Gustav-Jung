@@ -22,6 +22,7 @@ import { WeChatChatHeader } from '../components/WeChatChatHeader';
 import { AppTextInput } from '../components/AppTextInput';
 import { WeChatGroupedSection } from '../components/wechat/WeChatGroupedSection';
 import { api } from '../lib/api';
+import { loadPersona, setPersonaCache } from '../lib/personaStore';
 import { apiErrorText } from '../lib/apiError';
 import { appAlert } from '../lib/appAlert';
 import type { GroupStackParamList } from '../navigation/types';
@@ -41,8 +42,7 @@ export function SettingsPersonalityUserScreen({ navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.getPersona();
-      const user = res.data.user;
+      const user = (await loadPersona()).user;
       setPreferredName(user?.preferredName ?? '');
       setTimezone(user?.timezone ?? '');
       setBio(user?.bio ?? '');
@@ -64,7 +64,7 @@ export function SettingsPersonalityUserScreen({ navigation }: Props) {
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await api.patchPersona({
+      const res = await api.patchPersona({
         user: {
           preferredName: preferredName.trim() || undefined,
           timezone: timezone.trim() || undefined,
@@ -72,6 +72,7 @@ export function SettingsPersonalityUserScreen({ navigation }: Props) {
           habits: habits.trim() || undefined,
         },
       });
+      setPersonaCache(res.data); // 编辑后返回需刷新:显式回写共享缓存,免再发 GET
       navigation.goBack();
     } catch (e) {
       appAlert(zh.me.personalityFailed, apiErrorText(e).message);

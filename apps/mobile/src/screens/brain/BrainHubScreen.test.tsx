@@ -48,24 +48,29 @@ function mount() {
   return render(<BrainHubScreen navigation={navigation} route={route} />);
 }
 
-describe('BrainHubScreen my bow wow 改版', () => {
+describe('BrainHubScreen My Bow Wow 改版', () => {
   beforeEach(() => mockUseBrainSnapshot.mockReset());
 
   it('标题与卡片用狗狗文案,旧品牌词消失', () => {
     const { getAllByText, getByText, queryByText } = mount();
-    expect(getAllByText('my bow wow').length).toBeGreaterThan(0);
+    expect(getAllByText('My Bow Wow').length).toBeGreaterThan(0);
     expect(getByText('狗狗性格')).toBeTruthy();
     expect(getByText('狗狗记得的事')).toBeTruthy();
-    expect(getByText('狗狗通讯记录')).toBeTruthy();
-    expect(getByText('狗狗的联络方式')).toBeTruthy();
+    expect(getByText('汪星通讯记录')).toBeTruthy();
+    // 设置入口从主页移到 my bow wow
+    expect(getByText('管理 Bow Wow')).toBeTruthy();
     expect(queryByText('流浪猫大脑')).toBeNull();
+  });
+
+  it('联络方式与跑腿默认模型已收进「汪星通讯记录」,不再在 Hub 平铺', () => {
+    const { queryByText } = mount();
+    expect(queryByText('汪星联络方式')).toBeNull();
+    expect(queryByText('跑腿用的默认模型')).toBeNull();
   });
 
   it('Agent 卡片硬编码文案迁入 locale(跑腿任务)', () => {
     const { getByText, queryByText } = mount();
     expect(getByText('跑腿任务')).toBeTruthy();
-    expect(getByText('跑腿用的默认模型')).toBeTruthy();
     expect(queryByText('Agent 任务')).toBeNull();
-    expect(queryByText('Agent 默认模型')).toBeNull();
   });
 });
