@@ -408,7 +408,7 @@ export function formatChatSessionExportMarkdown(
 ): string {
   const lines = [`# ${session.title}`, ''];
   for (const m of messages) {
-    const who = m.role === 'assistant' ? 'Bow wow' : '我';
+    const who = m.role === 'assistant' ? 'Bow Wow' : '我';
     lines.push(`**${who}** (${m.createdAt}):`, m.content, '');
   }
   return lines.join('\n');

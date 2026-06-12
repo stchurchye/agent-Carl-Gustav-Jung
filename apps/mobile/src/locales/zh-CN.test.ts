@@ -29,10 +29,10 @@ describe('locale 守门:旧品牌词清零', () => {
   });
 });
 
-describe('Bow wow 关键新文案', () => {
+describe('Bow Wow 关键新文案', () => {
   it('Tab 与枢纽标题', () => {
-    expect(zh.tabs.brain).toBe('my bow wow');
-    expect(zh.brain.hubTitle).toBe('my bow wow');
+    expect(zh.tabs.brain).toBe('My Bow Wow');
+    expect(zh.brain.hubTitle).toBe('My Bow Wow');
   });
 
   it('欢迎语带狗名且保留斜杠命令提示', () => {

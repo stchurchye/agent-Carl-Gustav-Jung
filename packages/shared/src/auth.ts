@@ -9,7 +9,7 @@ export interface User {
   createdAt: string;
   /** 压缩后的展示头像（data URL） */
   avatarDisplayUrl?: string | null;
-  /** Bow wow 像素形象配置(狗+小人);null/缺省 = 未领养,客户端按 seed 兜底 */
+  /** Bow Wow 像素形象配置(狗+小人);null/缺省 = 未领养,客户端按 seed 兜底 */
   pixelAvatar?: PixelAvatarSettings | null;
 }
 

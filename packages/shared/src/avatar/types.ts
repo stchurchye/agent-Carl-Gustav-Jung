@@ -1,5 +1,5 @@
 /**
- * Bow wow know 像素形象配置(存 users.pixel_avatar JSONB)。
+ * Bow Wow Know 像素形象配置(存 users.pixel_avatar JSONB)。
  * 全枚举字段:服务端只存配置,渲染永远在客户端(SVG),所以序列化天然 <1KB。
  */
 

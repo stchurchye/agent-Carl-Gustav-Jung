@@ -29,7 +29,7 @@ const TTS_DIALECT = 'mandarin' as const;
 
 type Props = NativeStackScreenProps<GroupStackParamList, 'Settings'>;
 
-/** 设置页:一行一卡的像素风列表(Bow wow know 改版) */
+/** 设置页:一行一卡的像素风列表(Bow Wow Know 改版) */
 export function MeScreen({ navigation }: Props) {
   const { user, logout } = useAuth();
   const insets = useSafeAreaInsets();

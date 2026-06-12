@@ -89,7 +89,7 @@ export function AuthScreen({ onAuthenticated }: Props) {
       >
         <Text style={styles.brand}>{BRAND_NAME}</Text>
         <Text style={styles.subtitle}>
-          {mode === 'login' ? '汪！请先登录，Bow wow 在门口等你' : '注册新账号'}
+          {mode === 'login' ? '汪！请先登录，Bow Wow 在门口等你' : '注册新账号'}
         </Text>
 
         <WeChatGroupedSection>

@@ -66,7 +66,7 @@ settingsRouter.post('/deepseek/verify', async (c) => {
     log('info', 'deepseek.verify.ok', { requestId: c.get('requestId') });
     return c.json({
       ok: true,
-      data: { valid: true, message: '密钥可用，Bow wow 随时待命' },
+      data: { valid: true, message: '密钥可用，Bow Wow 随时待命' },
       requestId: c.get('requestId'),
     });
   } catch (e) {

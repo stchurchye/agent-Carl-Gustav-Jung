@@ -60,7 +60,7 @@ export function handleAiError(c: Context<{ Variables: AppVariables }>, e: unknow
     return c.json(
       {
         ok: false,
-        message: e.message || 'Bow wow 这会儿有点忙，请稍后再试',
+        message: e.message || 'Bow Wow 这会儿有点忙，请稍后再试',
         hint: '文稿还在，不会丢',
         code: ErrorCodes.AI_BUSY,
         requestId: c.get('requestId'),
