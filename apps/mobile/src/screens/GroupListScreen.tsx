@@ -1,17 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { GroupListItem } from '@xzz/shared';
-import { appIcons } from '../assets/appIcons';
 import type { GroupStackParamList } from '../navigation/types';
 import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
@@ -30,7 +21,6 @@ import { wechat } from '../theme/wechat';
 import { wechatChatStyles } from '../theme/wechatChat';
 import { WeChatGroupedSection } from '../components/wechat/WeChatGroupedSection';
 import { useAuth } from '../components/AuthGate';
-import { hideStudioTabBar } from '../navigation/useHideTabBar';
 import { zh } from '../locales/zh-CN';
 
 type Props = NativeStackScreenProps<GroupStackParamList, 'GroupList'>;
@@ -92,7 +82,6 @@ export function GroupListScreen({ navigation }: Props) {
 
   const openPrivateChat = useCallback(
     (sessionId?: string) => {
-      hideStudioTabBar(navigation);
       navigation.navigate('PrivateChat', sessionId ? { sessionId } : undefined);
     },
     [navigation],
@@ -107,7 +96,6 @@ export function GroupListScreen({ navigation }: Props) {
 
   const openGroupChat = useCallback(
     (groupId: string, groupName: string, topic: TopicPreviewRow) => {
-      hideStudioTabBar(navigation);
       navigation.navigate('GroupChat', {
         groupId,
         groupName,
@@ -118,18 +106,7 @@ export function GroupListScreen({ navigation }: Props) {
     [navigation],
   );
 
-  const headerLeft = (
-    <Pressable
-      onPress={() => navigation.navigate('Settings')}
-      hitSlop={12}
-      style={styles.headerBtn}
-      accessibilityRole="button"
-      accessibilityLabel={zh.me.settings}
-    >
-      <Image source={appIcons.settings} style={styles.settingsIcon} resizeMode="contain" />
-    </Pressable>
-  );
-
+  // 设置入口已移到 my bow wow 的「管理 Bow Wow」,主页左上角不再放设置图标
   const headerRight = (
     <Pressable
       onPress={() => navigation.navigate('StudioManage')}
@@ -144,7 +121,7 @@ export function GroupListScreen({ navigation }: Props) {
 
   return (
     <View style={wechatChatStyles.page}>
-      <WeChatChatHeader title={zh.tabs.groups} left={headerLeft} right={headerRight} />
+      <WeChatChatHeader title={zh.tabs.groups} right={headerRight} />
       <StudioSearchBar onPress={() => navigation.navigate('StudioSearch')} />
       {/* W2 防闪:已有内容时聚焦重拉静默刷新,只有首载(无数据)才占屏 spinner */}
       {loading && groupRows.length === 0 && workbenchSessions.length === 0 ? (
@@ -226,10 +203,6 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: wechat.textPrimary,
     lineHeight: 32,
-  },
-  settingsIcon: {
-    width: 28,
-    height: 28,
   },
   empty: {
     textAlign: 'center',

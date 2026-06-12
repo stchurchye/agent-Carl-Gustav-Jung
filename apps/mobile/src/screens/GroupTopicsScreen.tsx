@@ -10,7 +10,6 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { GroupStackParamList } from '../navigation/types';
-import { hideStudioTabBar } from '../navigation/useHideTabBar';
 import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
 import { appAlert } from '../lib/appAlert';
@@ -81,7 +80,6 @@ export function GroupTopicsScreen({ navigation, route }: Props) {
     setCreating(true);
     try {
       const created = await api.createTopic(groupId, name);
-      hideStudioTabBar(navigation);
       navigation.navigate('GroupChat', {
         groupId,
         groupName,
@@ -126,15 +124,14 @@ export function GroupTopicsScreen({ navigation, route }: Props) {
                 time={row.time}
                 avatarName={row.topicTitle}
                 avatarSeed={row.topicId}
-                onPress={() => {
-                  hideStudioTabBar(navigation);
+                onPress={() =>
                   navigation.navigate('GroupChat', {
                     groupId,
                     groupName,
                     topicId: row.topicId,
                     topicName: row.topicTitle,
-                  });
-                }}
+                  })
+                }
                 onLongPress={() => void renameTopic(row)}
               />
             ))}

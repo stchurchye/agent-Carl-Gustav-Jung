@@ -89,7 +89,6 @@ import {
   bubbleTextSelectionTryDismissOnTouchEnd,
 } from '../components/chat/BubbleTextSelectionContext';
 import { prepareChatMessageForSend } from '../lib/chatMessageInput';
-import { useHideTabBar } from '../navigation/useHideTabBar';
 import { ChatMessageActionMenu } from '../components/chat/ChatMessageActionMenu';
 import { useChatListViewport } from '../hooks/useChatListViewport';
 import { useMessageActionViewport } from '../hooks/useMessageActionViewport';
@@ -143,7 +142,6 @@ export function ChatScreen({ route, navigation }: Props) {
   const initialSessionId = route.params?.sessionId;
   const scrollToMessageId = route.params?.scrollToMessageId;
   const insets = useSafeAreaInsets();
-  useHideTabBar();
   const { user } = useAuth();
   const { isTablet } = useLayout();
   const textStyles = useTextStyles();

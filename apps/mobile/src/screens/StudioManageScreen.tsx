@@ -11,6 +11,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { GroupStackParamList } from '../navigation/types';
 import { AppTextInput } from '../components/AppTextInput';
+import { WeChatChatHeader } from '../components/WeChatChatHeader';
 import { WeChatGroupedSection } from '../components/wechat/WeChatGroupedSection';
 import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
@@ -63,57 +64,61 @@ export function StudioManageScreen({ navigation }: Props) {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
+    <View style={styles.root}>
+      <WeChatChatHeader title={zh.tabs.groups} showBack />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <WeChatGroupedSection title={zh.studio.createTitle}>
-          <View style={styles.field}>
-            <AppTextInput
-              placeholder={zh.studio.namePlaceholder}
-              value={name}
-              onChangeText={setName}
-              editable={!busy}
-            />
-          </View>
-          <Pressable
-            style={[styles.btn, (!name.trim() || busy) && styles.btnDisabled]}
-            onPress={() => void createGroup()}
-            disabled={!name.trim() || busy}
-          >
-            <Text style={styles.btnText}>{zh.studio.createAction}</Text>
-          </Pressable>
-        </WeChatGroupedSection>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          <WeChatGroupedSection title={zh.studio.createTitle}>
+            <View style={styles.field}>
+              <AppTextInput
+                placeholder={zh.studio.namePlaceholder}
+                value={name}
+                onChangeText={setName}
+                editable={!busy}
+              />
+            </View>
+            <Pressable
+              style={[styles.btn, (!name.trim() || busy) && styles.btnDisabled]}
+              onPress={() => void createGroup()}
+              disabled={!name.trim() || busy}
+            >
+              <Text style={styles.btnText}>{zh.studio.createAction}</Text>
+            </Pressable>
+          </WeChatGroupedSection>
 
-        <WeChatGroupedSection title={zh.studio.joinTitle}>
-          <View style={styles.field}>
-            <AppTextInput
-              placeholder={zh.studio.invitePlaceholder}
-              autoCapitalize="characters"
-              value={invite}
-              onChangeText={setInvite}
-              editable={!busy}
-            />
-          </View>
-          <Pressable
-            style={[styles.btnOutline, (!invite.trim() || busy) && styles.btnDisabled]}
-            onPress={() => void joinGroup()}
-            disabled={!invite.trim() || busy}
-          >
-            <Text style={styles.btnOutlineText}>{zh.studio.joinAction}</Text>
-          </Pressable>
-        </WeChatGroupedSection>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <WeChatGroupedSection title={zh.studio.joinTitle}>
+            <View style={styles.field}>
+              <AppTextInput
+                placeholder={zh.studio.invitePlaceholder}
+                autoCapitalize="characters"
+                value={invite}
+                onChangeText={setInvite}
+                editable={!busy}
+              />
+            </View>
+            <Pressable
+              style={[styles.btnOutline, (!invite.trim() || busy) && styles.btnDisabled]}
+              onPress={() => void joinGroup()}
+              disabled={!invite.trim() || busy}
+            >
+              <Text style={styles.btnOutlineText}>{zh.studio.joinAction}</Text>
+            </Pressable>
+          </WeChatGroupedSection>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: wechat.pageBg },
+  flex: { flex: 1 },
   scroll: { paddingTop: 12, paddingBottom: 32 },
   field: {
     paddingHorizontal: 16,

@@ -24,7 +24,6 @@ import {
   type PixelAvatarSettings,
 } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
-import { useHideTabBar } from '../navigation/useHideTabBar';
 import { playMemberDing } from '../lib/soundCues';
 import { api } from '../lib/api';
 import { ASSISTANT_FALLBACK_NAME } from '../lib/brand';
@@ -148,7 +147,6 @@ function localPendingAiMessage(groupId: string, topicId: string): GroupMessage {
 
 export function GroupChatScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
-  useHideTabBar();
   const { groupId, groupName, topicId, topicName, scrollToMessageId } = route.params;
   const [displayTopicName, setDisplayTopicName] = useState(topicName);
   const { user } = useAuth();

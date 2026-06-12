@@ -9,6 +9,7 @@ import { PERSONALITY_MOTION } from '../../pixel/palette';
 import { useAuth } from '../../components/AuthGate';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBrainSnapshot } from '../../brain/useBrainSnapshot';
+import { navigateStudioTab } from '../../lib/navigateBrain';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
 import { brainTokens } from '../../theme/brainTokens';
@@ -103,6 +104,17 @@ export function BrainHubScreen({ navigation }: Props) {
           <View style={styles.cellInner}>
             <Text style={styles.cellTitle}>{zh.brain.sections.agentTasks}</Text>
             <Text style={styles.cellSub}>{zh.brain.agentTasksHint}</Text>
+          </View>
+        </Pressable>
+        {/* 设置入口从主页左上角移来此处:跨到工作室栈打开 MeScreen(设置) */}
+        <Pressable
+          style={styles.cell}
+          onPress={() => navigateStudioTab(navigation, 'Settings')}
+          accessibilityRole="button"
+        >
+          <View style={styles.cellInner}>
+            <Text style={styles.cellTitle}>{zh.brain.sections.manageBowWow}</Text>
+            <Text style={styles.cellSub}>{zh.brain.manageBowWowHint}</Text>
           </View>
         </Pressable>
       </ScrollView>

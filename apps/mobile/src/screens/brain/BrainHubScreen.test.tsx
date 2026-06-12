@@ -57,6 +57,8 @@ describe('BrainHubScreen My Bow Wow 改版', () => {
     expect(getByText('狗狗性格')).toBeTruthy();
     expect(getByText('狗狗记得的事')).toBeTruthy();
     expect(getByText('汪星通讯记录')).toBeTruthy();
+    // 设置入口从主页移到 my bow wow
+    expect(getByText('管理 Bow Wow')).toBeTruthy();
     expect(queryByText('流浪猫大脑')).toBeNull();
   });
 

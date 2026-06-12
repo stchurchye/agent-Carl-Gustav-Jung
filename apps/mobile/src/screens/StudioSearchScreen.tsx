@@ -13,7 +13,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { GroupListItem } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
-import { hideStudioTabBar } from '../navigation/useHideTabBar';
 import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
 import { appAlert } from '../lib/appAlert';
@@ -164,7 +163,6 @@ export function StudioSearchScreen({ navigation }: Props) {
           });
           break;
         case 'privateChat':
-          hideStudioTabBar(navigation);
           navigation.navigate('PrivateChat', { sessionId: item.sessionId });
           break;
         case 'writing':
@@ -181,7 +179,6 @@ export function StudioSearchScreen({ navigation }: Props) {
   const openMessageHit = useCallback(
     async (hit: StudioMessageSearchHit) => {
       if (trimmedQuery) await recordQuery(trimmedQuery);
-      hideStudioTabBar(navigation);
       if (hit.kind === 'group') {
         navigation.navigate('GroupChat', {
           groupId: hit.groupId!,
