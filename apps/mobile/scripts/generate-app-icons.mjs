@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Bow Wow Know 应用图标生成:32×32 像素网格 → 整数倍放大 → PNG。
- * 图案:正面狗狗张大嘴「啊呜」大吃一口(用户指定),与 app 内像素狗同一调色板。
- * 零依赖(node:zlib + 手写 CRC32);改图改下面的网格后重跑:
+ * Bow Wow Know 应用图标生成:像素网格 → 整数倍放大 → PNG。
+ * 图案:用户参照图(灰度像素图)按方式2 重画,8×8 源 ×4 放大到 32×32。
+ * 零依赖(node:zlib + 手写 CRC32);改图改下面的 SRC 网格后重跑:
  *   node scripts/generate-app-icons.mjs
  */
 import { deflateSync } from 'node:zlib';
@@ -12,53 +12,37 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// 与 src/pixel/palette.ts 同源的色值
+// 灰度图标调色板(用户参照图量化:'.'=背景,L 浅灰 / M 中灰 / D 深灰)
 const COLORS = {
-  B: [0xd9, 0x97, 0x5d, 255], // malt base
-  S: [0xb5, 0x71, 0x3b, 255], // shade
-  L: [0xef, 0xd3, 0xae, 255], // light
-  I: [0x3d, 0x32, 0x29, 255], // ink
-  N: [0x2a, 0x23, 0x1c, 255], // 口腔/鼻
-  T: [0xe8, 0x83, 0x7e, 255], // 舌
-  W: [0xff, 0xff, 0xff, 255], // 牙
+  L: [0xd6, 0xd4, 0xce, 255], // 浅灰
+  M: [0xb8, 0xb6, 0xb0, 255], // 中灰
+  D: [0x8a, 0x88, 0x84, 255], // 深灰
 };
-const CREAM = [0xf4, 0xef, 0xe4, 255];
+const CREAM = [0xf5, 0xf4, 0xf1, 255]; // 近白底(对齐参照图背景)
 
-// 正面大嘴狗 32×32:立耳、弯月笑眼、下半张大嘴(牙+舌)
-const GRID = [
-  '................................',
-  '....III..................III....',
-  '...IBBBI................IBBBI...',
-  '...IBSBBI..............IBBSBI...',
-  '...IBSBBBIIIIIIIIIIIIIIBBBSBI...',
-  '..IBBBBBBBLLLLLLLLLLLLBBBBBBBI..',
-  '..IBBBBBBBBBBBBBBBBBBBBBBBBBBI..',
-  '..IBBBBBBBBBBBBBBBBBBBBBBBBBBI..',
-  '..IBBBBBBBBBBBBBBBBBBBBBBBBBBI..',
-  '..IBBBBBBBBBBBBBBBBBBBBBBBBBBI..',
-  '..IBBBBBBIIIBBBBBBBBIIIBBBBBBI..',
-  '..IBBBBBIBBBIBBBBBBIBBBIBBBBBI..',
-  '..IBBBBBBBBBBBBBBBBBBBBBBBBBBI..',
-  '..IBBBBBBBBBBBBNNBBBBBBBBBBBBI..',
-  '..IBBBBBBBBBBBBNNBBBBBBBBBBBBI..',
-  '..IBBBIIIIIIIIIIIIIIIIIIIIBBBI..',
-  '..IBBIWWNNWWNNWWNNWWNNWWNNIBBI..',
-  '..IBBINNNNNNNNNNNNNNNNNNNNIBBI..',
-  '..IBBINNNNNNNNNNNNNNNNNNNNIBBI..',
-  '..IBBINNNTTTTTTTTTTTTTTNNNIBBI..',
-  '..IBBINNTTTTTTTTTTTTTTTTNNIBBI..',
-  '..IBBINNTTTTTTTTTTTTTTTTNNIBBI..',
-  '..IBBINNTTTTTTTTTTTTTTTTNNIBBI..',
-  '..IBBINNTTTTTTTTTTTTTTTTNNIBBI..',
-  '..IBBINNTTTTTTTTTTTTTTTTNNIBBI..',
-  '..IBBBIITTTTTTTTTTTTTTTTIIBBBI..',
-  '..IBBBBIIIIIIIIIIIIIIIIIIBBBBI..',
-  '..IBBBBBBBBBBBBBBBBBBBBBBBBBBI..',
-  '...ISBBBBBBBBBBBBBBBBBBBBBBSI...',
-  '....IIIIIIIIIIIIIIIIIIIIIIII....',
-  '................................',
-  '................................',
+// 用户参照图(方式2 像素重画):8×8 源量化,×4 放大到 32×32
+const SRC = [
+  '........',
+  '...D.DD.',
+  '...MMDD.',
+  '..L.L.M.',
+  '..L.L...',
+  '..D.....',
+  '........',
+  '........',
 ];
+// 每个源格放大 4×4,沿用下方管线的 32×32 网格契约
+const GRID = SRC.flatMap((row) => {
+  const wide = [...row].map((ch) => ch.repeat(4)).join('');
+  return [wide, wide, wide, wide];
+});
+
+// SRC 字符校验:'.'=背景,其余必须在 COLORS 里,否则 renderRgba 会静默漏画该格(typo 防呆)
+for (const row of SRC) {
+  for (const ch of row) {
+    if (ch !== '.' && !COLORS[ch]) throw new Error(`SRC 含未知字符 '${ch}'(需为 '.' 或 ${Object.keys(COLORS).join('/')})`);
+  }
+}
 
 for (const row of GRID) {
   if (row.length !== 32) throw new Error(`行宽 ${row.length} ≠ 32: ${row}`);
