@@ -39,7 +39,11 @@ jest.mock('../lib/intentFlow', () => ({
   shouldShowIntentChips: () => false,
 }));
 jest.mock('../lib/appAlert', () => ({ appAlert: (...a: unknown[]) => mockAppAlert(...a) }));
-jest.mock('../lib/assistantFeedback', () => ({ announceAssistantWaiting: jest.fn() }));
+// soundCues 顶层 require 多个 .wav 资源,jest 不处理音频;mock 掉避免加载真实模块
+jest.mock('../lib/soundCues', () => ({
+  playMemberDing: jest.fn(),
+  playReplyBark: jest.fn(),
+}));
 jest.mock('../lib/chatLlmModel', () => ({
   getChatLlmModel: jest.fn().mockResolvedValue('deepseek-chat'),
   setChatLlmModel: jest.fn(),
@@ -77,7 +81,10 @@ jest.mock('../features/stage/stageCharacters', () => ({ resolveStageCharacter: (
 jest.mock('../features/stage/adapters/groupStageAdapter', () => ({
   buildGroupStage: () => ({ actors: [], lines: [] }),
 }));
-jest.mock('../components/WeChatChatHeader', () => ({ WeChatChatHeader: () => null }));
+jest.mock('../components/WeChatChatHeader', () => ({
+  // 渲染 right(含问 AI 切换按钮)以便测试触发 askAiMode
+  WeChatChatHeader: ({ right }: { right?: unknown }) => right ?? null,
+}));
 jest.mock('../components/AskAiHubSheet', () => ({ AskAiHubSheet: () => null }));
 jest.mock('../components/AskAiModelPickerSheet', () => ({ AskAiModelPickerSheet: () => null }));
 jest.mock('../components/ContextComposerModal', () => ({ ContextComposerModal: () => null }));
@@ -97,16 +104,6 @@ jest.mock('../components/ChatMessageRow', () => {
     chatBubbleTextStyle: {},
     ChatMessageRow: ({ message }: { message: { id: string; content: string } }) => (
       <Text testID={`msg-${message.id}`}>{message.content}</Text>
-    ),
-  };
-});
-jest.mock('../components/DraggableAskAiFab', () => {
-  const { Pressable, Text } = jest.requireActual('react-native');
-  return {
-    DraggableAskAiFab: ({ onTap }: { onTap: () => void }) => (
-      <Pressable testID="fab" onPress={onTap}>
-        <Text>fab</Text>
-      </Pressable>
     ),
   };
 });
@@ -162,7 +159,7 @@ it('chat_group_llm 执行失败 → 清掉本地占位,但把原文恢复回输�
   const screen = mount();
   await waitFor(() => expect(mockListGroupMessages).toHaveBeenCalled());
 
-  fireEvent.press(screen.getByTestId('fab')); // askAiMode on
+  fireEvent.press(screen.getByTestId('ask-ai-toggle')); // askAiMode on
   fireEvent.press(screen.getByTestId('type'));
   await act(async () => {
     fireEvent.press(screen.getByTestId('send'));

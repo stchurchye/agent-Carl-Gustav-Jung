@@ -1,6 +1,15 @@
 import { useLayoutEffect } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
 import { STUDIO_TAB_BAR_STYLE } from './tabBarStyle';
+
+/**
+ * 进对话前先把父 tab 栏 display:none。
+ * 在 navigate() 之前调用,使对话屏首帧布局就已满高,
+ * 彻底避免「tab 栏塌陷 → 聊天页重排」那一帧底部空白(单靠对话屏内 useHideTabBar 是挂载后才隐藏,会重排一次)。
+ */
+export function hideStudioTabBar(navigation: NavigationProp<ParamListBase>) {
+  navigation.getParent()?.setOptions({ tabBarStyle: { display: 'none' } } as object);
+}
 
 /**
  * 进入对话页时隐藏底部 tab 栏(输入框直接贴屏底),离开时恢复。

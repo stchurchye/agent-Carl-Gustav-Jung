@@ -2,7 +2,8 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } fro
 import type { ContextUsage } from '@xzz/shared';
 import { formatTokenCount, getContextBreakdownSegments } from '@xzz/shared';
 import { AppModalShell } from './AppModalShell';
-import { colors, typography } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { brainTokens } from '../theme/brainTokens';
 import { zh } from '../locales/zh-CN';
 
 type ContentProps = {
@@ -107,10 +108,10 @@ export function ContextUsageDetailModal({ visible, usage, onClose, inline }: Pro
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: brainTokens.border,
     padding: 16,
   },
   modalCard: {
@@ -125,10 +126,10 @@ const styles = StyleSheet.create({
   inlineCard: {
     width: '100%',
     maxWidth: 320,
-    backgroundColor: colors.surface,
+    backgroundColor: brainTokens.bgCard,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: brainTokens.border,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -144,16 +145,16 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: brainTokens.border,
   },
   inlineTitle: {
     fontSize: typography.body,
     fontWeight: '700',
-    color: colors.text,
+    color: brainTokens.text,
   },
   inlineClose: {
     fontSize: typography.body,
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
     paddingHorizontal: 4,
   },
   inlineBody: {
@@ -170,13 +171,13 @@ const styles = StyleSheet.create({
   percentText: {
     fontSize: typography.body,
     fontWeight: '700',
-    color: colors.text,
+    color: brainTokens.text,
     flexShrink: 0,
   },
   tokensText: {
     fontSize: typography.small,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
     flexShrink: 1,
     textAlign: 'right',
   },
@@ -185,7 +186,7 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     overflow: 'hidden',
-    backgroundColor: colors.border,
+    backgroundColor: brainTokens.bgElevated,
     marginBottom: 14,
   },
   segment: {
@@ -214,19 +215,19 @@ const styles = StyleSheet.create({
   },
   legendLabel: {
     fontSize: typography.small,
-    color: colors.text,
+    color: brainTokens.text,
     fontWeight: '500',
   },
   legendValue: {
     fontSize: typography.small,
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
     fontWeight: '600',
     flexShrink: 0,
   },
   hint: {
     marginTop: 12,
     fontSize: typography.small,
-    color: colors.textMuted,
+    color: brainTokens.textMuted,
     lineHeight: Math.round(typography.small * 1.45),
   },
 });

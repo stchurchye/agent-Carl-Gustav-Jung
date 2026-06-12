@@ -30,6 +30,7 @@ import { wechat } from '../theme/wechat';
 import { wechatChatStyles } from '../theme/wechatChat';
 import { WeChatGroupedSection } from '../components/wechat/WeChatGroupedSection';
 import { useAuth } from '../components/AuthGate';
+import { hideStudioTabBar } from '../navigation/useHideTabBar';
 import { zh } from '../locales/zh-CN';
 
 type Props = NativeStackScreenProps<GroupStackParamList, 'GroupList'>;
@@ -91,6 +92,7 @@ export function GroupListScreen({ navigation }: Props) {
 
   const openPrivateChat = useCallback(
     (sessionId?: string) => {
+      hideStudioTabBar(navigation);
       navigation.navigate('PrivateChat', sessionId ? { sessionId } : undefined);
     },
     [navigation],
@@ -105,6 +107,7 @@ export function GroupListScreen({ navigation }: Props) {
 
   const openGroupChat = useCallback(
     (groupId: string, groupName: string, topic: TopicPreviewRow) => {
+      hideStudioTabBar(navigation);
       navigation.navigate('GroupChat', {
         groupId,
         groupName,

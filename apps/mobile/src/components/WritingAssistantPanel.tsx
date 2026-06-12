@@ -23,11 +23,7 @@ import {
   getAssistantThinkingLine,
   getAssistantThinkingLongLine,
 } from '../lib/assistantCopy';
-import {
-  announceAssistantReplyParallel,
-  announceAssistantWaiting,
-  cancelAssistantFeedback,
-} from '../lib/assistantFeedback';
+import { cancelAssistantFeedback } from '../lib/assistantFeedback';
 import { apiErrorText } from '../lib/apiError';
 import { animateTypewriter } from '../lib/typewriter';
 import { isSpeaking, speakText, stopSpeaking } from '../lib/tts';
@@ -449,7 +445,6 @@ export function WritingAssistantPanel({
       setInput('');
       setMessages((prev) => [...prev, userMsg, pendingAssistant]);
       scrollToEnd();
-      void announceAssistantWaiting(thinkingLine);
       setInFlight(true);
 
       try {
@@ -465,8 +460,6 @@ export function WritingAssistantPanel({
         const serverUser = res.data.user;
         const serverAssistant = res.data.assistant;
         const fullText = serverAssistant.content;
-
-        announceAssistantReplyParallel(fullText);
 
         setMessages((prev) => {
           const rest = prev.filter((m) => m.id !== userId && m.id !== assistantId);
@@ -555,7 +548,6 @@ export function WritingAssistantPanel({
       }),
     ]);
     scrollToEnd();
-    void announceAssistantWaiting(waitingLine);
     setInFlight(true);
 
     try {
@@ -587,9 +579,6 @@ export function WritingAssistantPanel({
       scrollToEnd();
 
       for (const m of newOnes) {
-        if (m.role === 'assistant' && m.content.trim()) {
-          announceAssistantReplyParallel(m.content);
-        }
         await revealMessage(m.id, m.content);
       }
 

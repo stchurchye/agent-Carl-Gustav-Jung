@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { GroupListItem } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
+import { hideStudioTabBar } from '../navigation/useHideTabBar';
 import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
 import { appAlert } from '../lib/appAlert';
@@ -94,9 +95,16 @@ export function StudioSearchScreen({ navigation }: Props) {
   useEffect(() => {
     void refreshHistory();
     void loadMetaIndex();
-    const t = setTimeout(() => inputRef.current?.focus(), 120);
-    return () => clearTimeout(t);
   }, [loadMetaIndex, refreshHistory]);
+
+  // 等推入转场结束再聚焦弹键盘:若在转场途中 focus,键盘会被绑进「从右滑入」的动画
+  // (表现为键盘从右边飞入并闪深色)。transitionEnd 只在打开方向(非 closing)触发。
+  useEffect(() => {
+    const unsub = navigation.addListener('transitionEnd', (e) => {
+      if (!e.data?.closing) inputRef.current?.focus();
+    });
+    return unsub;
+  }, [navigation]);
 
   const trimmedQuery = query.trim();
   const showResults = trimmedQuery.length > 0;
@@ -156,6 +164,7 @@ export function StudioSearchScreen({ navigation }: Props) {
           });
           break;
         case 'privateChat':
+          hideStudioTabBar(navigation);
           navigation.navigate('PrivateChat', { sessionId: item.sessionId });
           break;
         case 'writing':
@@ -172,6 +181,7 @@ export function StudioSearchScreen({ navigation }: Props) {
   const openMessageHit = useCallback(
     async (hit: StudioMessageSearchHit) => {
       if (trimmedQuery) await recordQuery(trimmedQuery);
+      hideStudioTabBar(navigation);
       if (hit.kind === 'group') {
         navigation.navigate('GroupChat', {
           groupId: hit.groupId!,
@@ -246,6 +256,7 @@ export function StudioSearchScreen({ navigation }: Props) {
             clearButtonMode="while-editing"
             autoCorrect={false}
             autoCapitalize="none"
+            keyboardAppearance="light"
             onSubmitEditing={onSubmitQuery}
           />
         </View>

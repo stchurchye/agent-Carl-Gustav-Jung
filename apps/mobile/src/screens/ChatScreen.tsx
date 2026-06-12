@@ -55,16 +55,16 @@ import { StageHistoryOverlay } from '../features/stage/components/StageHistoryOv
 import type { StageActor, StageLine } from '../features/stage/stageTypes';
 import { apiErrorText } from '../lib/apiError';
 import { isAuthErrorMessage } from '../lib/authEvents';
+import { cancelAssistantFeedback } from '../lib/assistantFeedback';
 import {
-  announceAssistantReplyParallel,
-  announceAssistantWaiting,
-  cancelAssistantFeedback,
-} from '../lib/assistantFeedback';
-import { isSpeaking, speakChinese, speakText, stopSpeaking } from '../lib/tts';
+  getCuesEnabled,
+  loadCuesEnabled,
+  playReplyBark,
+  setCuesEnabled,
+} from '../lib/soundCues';
 import { animateTypewriter } from '../lib/typewriter';
 import {
   chatBubbleText,
-  collectAssistantRepliesFromScreen,
   getAgentRunIdFromMessage,
   type ChatUiMessage,
 } from '../lib/uiMessage';
@@ -104,7 +104,6 @@ import { getChatLlmModel, setChatLlmModel } from '../lib/chatLlmModel';
 import { AskAiHubSheet } from '../components/AskAiHubSheet';
 import { AskAiModelPickerSheet } from '../components/AskAiModelPickerSheet';
 import { ContextComposerModal } from '../components/ContextComposerModal';
-import { DraggableAskAiFab } from '../components/DraggableAskAiFab';
 import { ChatToolsPanel } from '../components/ChatToolsPanel';
 import { WritingAssistantSheet } from '../components/WritingAssistantSheet';
 import { colors, typography } from '../theme/colors';
@@ -159,7 +158,7 @@ export function ChatScreen({ route, navigation }: Props) {
   const thinkingLine = useMemo(() => zh.chat.thinking(assistantName), [assistantName]);
   const thinkingLongLine = useMemo(() => zh.chat.thinkingLong(assistantName), [assistantName]);
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
+  const [cuesOn, setCuesOn] = useState(getCuesEnabled());
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [contextUsageLoading, setContextUsageLoading] = useState(false);
   const [chatModel, setChatModel] = useState<string>('moonshotai/kimi-k2.6');
@@ -427,8 +426,12 @@ export function ChatScreen({ route, navigation }: Props) {
     return () => {
       typewriterAbortRef.current?.abort();
       void cancelAssistantFeedback();
-      void stopSpeaking();
     };
+  }, []);
+
+  // 载入持久化的提示音开关
+  useEffect(() => {
+    void loadCuesEnabled().then(setCuesOn);
   }, []);
 
   useEffect(() => {
@@ -504,7 +507,6 @@ export function ChatScreen({ route, navigation }: Props) {
           }),
         ]);
         scrollToEnd();
-        void announceAssistantWaiting(thinkingLine);
       }
       setPendingIntent(null);
       try {
@@ -531,7 +533,7 @@ export function ChatScreen({ route, navigation }: Props) {
         const ok = await applyPrivateIntentResult(res.data, {
           onChat: async (userMsg, assistantMsg) => {
             const fullText = assistantMsg.content;
-            announceAssistantReplyParallel(fullText);
+            playReplyBark(user?.id ?? 'self'); // 狗出结果:汪一声(按自己的狗身份选叫声)
             setMessages((prev) => {
               const rest = prev.filter((m) => m.id !== assistantId);
               return [
@@ -610,8 +612,6 @@ export function ChatScreen({ route, navigation }: Props) {
     },
     [
       agentModel,
-      announceAssistantReplyParallel,
-      announceAssistantWaiting,
       chatModel,
       contextSelection,
       loadMessages,
@@ -620,6 +620,7 @@ export function ChatScreen({ route, navigation }: Props) {
       revealAssistant,
       scrollToEnd,
       thinkingLine,
+      user,
     ],
   );
 
@@ -685,8 +686,6 @@ export function ChatScreen({ route, navigation }: Props) {
       }
       typewriterAbortRef.current?.abort();
       void cancelAssistantFeedback();
-      void stopSpeaking();
-      setSpeaking(false);
       const target = sessions.find((s) => s.id === sessionId);
       if (target) setSession(target);
       else {
@@ -776,38 +775,11 @@ export function ChatScreen({ route, navigation }: Props) {
     [],
   );
 
-  const readLastAssistant = () => {
-    const last = [...messages].reverse().find((m) => m.role === 'assistant' && m.status === 'done');
-    if (last) void speakChinese(chatBubbleText(last));
-  };
-
-  const toggleReadAloud = async () => {
-    if (await isSpeaking()) {
-      await stopSpeaking();
-      setSpeaking(false);
-      return;
-    }
-
-    const text = collectAssistantRepliesFromScreen(messages, visibleIndicesRef.current);
-    if (!text.trim()) {
-      appAlert(
-        '提示',
-        visibleIndicesRef.current.length > 0 ? zh.chat.readEmptyVisible : zh.chat.readEmpty,
-      );
-      return;
-    }
-
-    void cancelAssistantFeedback();
-    setSpeaking(true);
-    try {
-      await speakText(text, {
-        onDone: () => setSpeaking(false),
-        onStopped: () => setSpeaking(false),
-        onError: () => setSpeaking(false),
-      });
-    } catch {
-      setSpeaking(false);
-    }
+  // 语音开关已从「朗读回复」改为「提示音开关」:开则狗出结果时汪一声,关则静音
+  const toggleCues = () => {
+    const next = !cuesOn;
+    setCuesOn(next);
+    void setCuesEnabled(next);
   };
 
   const renderMessage = ({ item }: { item: ChatUiMessageRow }) => {
@@ -909,7 +881,6 @@ export function ChatScreen({ route, navigation }: Props) {
     );
   };
 
-  const canReadReply = messages.some((m) => m.role === 'assistant' && m.status === 'done');
 
   const composeFooter = (
     <View ref={composeRef} collapsable={false}>
@@ -1000,18 +971,22 @@ export function ChatScreen({ route, navigation }: Props) {
   const headerRight = (
     <View style={styles.headerActions}>
       <Pressable
-        style={[
-          styles.headerIconBtn,
-          speaking && styles.headerIconBtnActive,
-          !canReadReply && !speaking && styles.headerIconBtnDisabled,
-        ]}
-        onPress={() => void toggleReadAloud()}
-        disabled={!canReadReply && !speaking}
+        style={styles.headerIconBtn}
+        onPress={() => setAskAiHubOpen(true)}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel={speaking ? zh.writing.stopReading : zh.writing.readMode}
+        accessibilityLabel={zh.chat.askAiTitle}
       >
-        <ChatUiIcon source={chatIcons.readAloud} size={22} active={speaking || canReadReply} />
+        <ChatUiIcon source={chatIcons.askAiInactive} size={22} />
+      </Pressable>
+      <Pressable
+        style={[styles.headerIconBtn, cuesOn && styles.headerIconBtnActive]}
+        onPress={toggleCues}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={cuesOn ? zh.chat.soundCuesOn : zh.chat.soundCuesOff}
+      >
+        <ChatUiIcon source={chatIcons.readAloud} size={22} active={cuesOn} />
       </Pressable>
       <Pressable
         style={styles.headerIconBtn}
@@ -1093,11 +1068,6 @@ export function ChatScreen({ route, navigation }: Props) {
               <ActivityIndicator color={colors.primary} />
             </View>
           ) : null}
-          <DraggableAskAiFab
-            active={false}
-            onTap={() => setAskAiHubOpen(true)}
-            onLongPress={() => setAskAiHubOpen(true)}
-          />
         </View>
         <View
           onStartShouldSetResponderCapture={() => {
@@ -1215,7 +1185,6 @@ export function ChatScreen({ route, navigation }: Props) {
           sessions={sessions}
           currentSessionId={session?.id ?? null}
           sending={sending}
-          canReadReply={canReadReply}
           onNewSession={() => {
             void newSession();
           }}
@@ -1224,10 +1193,6 @@ export function ChatScreen({ route, navigation }: Props) {
           }}
           onRenameSession={(s) => {
             void renameSession(s);
-          }}
-          onReadReply={() => {
-            readLastAssistant();
-            setToolsOpen(false);
           }}
         />
       </WritingAssistantSheet>

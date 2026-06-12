@@ -221,6 +221,9 @@ export const zh = {
     currentModel: '当前模型：',
     /** 对话页底部「汪星通讯方式: <模型名> ▾」chip 前缀 */
     agentModelPrefix: '汪星通讯方式',
+    /** 顶部语音开关:控制「出结果汪一声 / 成员说话叮一下」提示音(原朗读已下线) */
+    soundCuesOn: '提示音:开(出结果会汪一声)',
+    soundCuesOff: '提示音:关',
     askAiPlaceholder: '已进入AI模式',
     askAiFootnoteTokens: 'token',
     askAiHubTitle: 'Bow Wow 工具箱',
@@ -734,7 +737,7 @@ export const zh = {
   context: {
     usageLabel: '上下文',
     usageLoading: '正在估算上下文…',
-    compactedHint: '较早对话已自动压缩，完整记录仍可上滑查看',
+    compactedHint: 'Bow Wow 把较早的对话压缩收好了，完整记录仍可上滑查看',
     detailTitle: '上下文',
     percentUsed: (n: number) => `${n}% 已用`,
     tokensSummary: (used: string, limit: string) => `~${used} / ${limit} Token`,

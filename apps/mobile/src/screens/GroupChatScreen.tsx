@@ -25,6 +25,7 @@ import {
 } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
 import { useHideTabBar } from '../navigation/useHideTabBar';
+import { playMemberDing } from '../lib/soundCues';
 import { api } from '../lib/api';
 import { ASSISTANT_FALLBACK_NAME } from '../lib/brand';
 import { buildGroupStage, messageBelongsToActor } from '../features/stage/adapters/groupStageAdapter';
@@ -50,7 +51,8 @@ import { getChatLlmModel, setChatLlmModel } from '../lib/chatLlmModel';
 import { AskAiHubSheet } from '../components/AskAiHubSheet';
 import { AskAiModelPickerSheet } from '../components/AskAiModelPickerSheet';
 import { ContextComposerModal } from '../components/ContextComposerModal';
-import { DraggableAskAiFab } from '../components/DraggableAskAiFab';
+import { ChatUiIcon } from '../components/ChatUiIcon';
+import { chatIcons } from '../assets/chatIcons';
 import { ChatComposeBar } from '../components/ChatComposeBar';
 import { SlashCommandsTip } from '../components/SlashCommandsTip';
 import { zh } from '../locales/zh-CN';
@@ -69,7 +71,6 @@ import {
   isIntentExecuteResult,
   mergeGroupMessages,
 } from '../lib/applyIntentExecute';
-import { announceAssistantWaiting } from '../lib/assistantFeedback';
 import { prepareChatMessageForSend } from '../lib/chatMessageInput';
 import { ChatMessageActionMenu } from '../components/chat/ChatMessageActionMenu';
 import { useChatListViewport } from '../hooks/useChatListViewport';
@@ -173,6 +174,9 @@ export function GroupChatScreen({ route, navigation }: Props) {
   const [contextSelection, setContextSelection] = useState<ContextSelection | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastIdRef = useRef<string | null>(null);
+  // 提示音去重:已叮过的真人成员消息 id;primed 用于吸收首屏基线(进话题不对历史消息叮)
+  const dingSeenRef = useRef<Set<string>>(new Set());
+  const dingPrimedRef = useRef(false);
   const listHostRef = useRef<View>(null);
   const composeRef = useRef<View>(null);
   const [messageAction, setMessageAction] = useState<MessageActionTarget<GroupMessage> | null>(
@@ -308,10 +312,37 @@ export function GroupChatScreen({ route, navigation }: Props) {
     if (settled.length > 0) setCachedMessages(cacheKey, settled);
   }, [messages, cacheKey, topicId]);
 
+  // 真人成员说话 → 叮一下(狗/agent 的回复走 AgentRunCard 的运行订阅出狗叫,见下)。
+  // 首屏(缓存 seed 或首次加载)只建基线不响;之后每个新真人消息按 id 去重,只叮一次。
+  useEffect(() => {
+    if (!dingPrimedRef.current) {
+      // 初始 messages 为空,要等首批数据(缓存 seed 或首次加载)才建基线,
+      // 否则空数组就把 primed 置真、历史一进来会被全部误叮。
+      if (messages.length === 0) return;
+      messages.forEach((m) => dingSeenRef.current.add(m.id));
+      dingPrimedRef.current = true;
+      return;
+    }
+    // 一批可能一次进来多条(离线重连/快速连发);整批最多叮一次,避免连放 N 声在共享音柄上打架
+    let sawHumanFromOthers = false;
+    for (const m of messages) {
+      if (dingSeenRef.current.has(m.id)) continue;
+      dingSeenRef.current.add(m.id);
+      if (m.id.startsWith('local-')) continue; // 自己的乐观占位
+      if (m.kind !== 'human') continue; // 只对真人消息;ai/system 等跳过
+      if (m.authorId === user?.id) continue; // 不对自己叮
+      sawHumanFromOthers = true;
+    }
+    if (sawHumanFromOthers) playMemberDing();
+  }, [messages, user?.id]);
+
   // 同实例换 topic(无 getId 的参数级导航)时 lastIdRef 残留旧话题游标,
   // 会让缓存 seed 被跳过且轮询带跨话题 after 漏消息 —— 参数变更即归零。
+  // 提示音基线也一并重置,换话题后对新话题的历史不叮。
   useEffect(() => {
     lastIdRef.current = null;
+    dingSeenRef.current.clear();
+    dingPrimedRef.current = false;
   }, [groupId, topicId]);
 
   // W1b + W1 顺手:进话题先渲染缓存;轮询只在屏幕聚焦时跑,且 app 退后台时跳过 tick。
@@ -421,9 +452,8 @@ export function GroupChatScreen({ route, navigation }: Props) {
         localPendingAiMessage(groupId, topicId),
       ]);
       scrollToEnd();
-      void announceAssistantWaiting(thinkingLine);
     },
-    [user, groupId, topicId, chatModel, scrollToEnd, thinkingLine],
+    [user, groupId, topicId, chatModel, scrollToEnd],
   );
 
   const runIntentExecute = useCallback(
@@ -644,7 +674,10 @@ export function GroupChatScreen({ route, navigation }: Props) {
     const agentRunId = (item as unknown as { agentRun?: { agentRunId?: string } })
       .agentRun?.agentRunId;
     if (agentRunId) {
-      return row(<AgentRunCard runId={agentRunId} />);
+      // 群聊:run 跑完时按邀请者(=这只狗的身份,与性格无关)出对应狗叫
+      return row(
+        <AgentRunCard runId={agentRunId} barkOwnerKey={item.invokerUserId ?? 'dog:unknown'} />,
+      );
     }
 
     if (isAi) {
@@ -710,6 +743,23 @@ export function GroupChatScreen({ route, navigation }: Props) {
         <WeChatChatHeader
           title={displayTopicName}
           showBack
+          right={
+            <Pressable
+              testID="ask-ai-toggle"
+              style={styles.headerIconBtn}
+              onPress={() => setAskAiMode((v) => !v)}
+              onLongPress={() => setAskAiHubOpen(true)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={askAiMode ? zh.chat.askAiModeOn : zh.chat.askAi}
+            >
+              <ChatUiIcon
+                source={askAiMode ? chatIcons.askAiActive : chatIcons.askAiInactive}
+                size={22}
+                active={askAiMode}
+              />
+            </Pressable>
+          }
           onTitlePress={() => void renameTopic()}
           onTitleLongPress={() => void renameTopic()}
         />
@@ -748,11 +798,6 @@ export function GroupChatScreen({ route, navigation }: Props) {
               <ActivityIndicator color={colors.primary} />
             </View>
           ) : null}
-          <DraggableAskAiFab
-            active={askAiMode}
-            onTap={() => setAskAiMode((v) => !v)}
-            onLongPress={() => setAskAiHubOpen(true)}
-          />
         </View>
 
         {contextSelection && usesExclusionMode(contextSelection) ? (
@@ -984,6 +1029,13 @@ export function GroupChatScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   pageHost: { position: 'relative' },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+  },
   systemRow: {
     alignItems: 'center',
     paddingVertical: 8,
