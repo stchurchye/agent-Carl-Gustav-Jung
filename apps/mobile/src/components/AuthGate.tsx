@@ -7,7 +7,10 @@ import {
 } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import type { User } from '@xzz/shared';
+import { personaAssistantDisplayName, presetDogForSeed } from '@xzz/shared';
 import { AuthScreen } from '../screens/AuthScreen';
+import { api } from '../lib/api';
+import { setPersonaSnapshot } from '../lib/personaSnapshot';
 import {
   clearAuthSession,
   getAccessToken,
@@ -96,6 +99,22 @@ export function AuthGate({ children }: Props) {
     });
     return () => setUnauthorizedHandler(null);
   }, [forceLogout]);
+
+  // 水合全局 persona 快照,供 AuthGate 之外的 AppAlertDialog 显示「会动的狗 + 狗名 + 对你的称呼」。
+  // 狗形象即时取自 user.pixelAvatar(无则按 seed 兜底);狗名/称呼异步拉 persona。
+  useEffect(() => {
+    if (!user) return;
+    setPersonaSnapshot({ dog: user.pixelAvatar?.dog ?? presetDogForSeed(user.id).dog });
+    void api
+      .getPersona()
+      .then((res) => {
+        setPersonaSnapshot({
+          dogName: personaAssistantDisplayName(res.data),
+          callMe: res.data.user?.preferredName ?? '',
+        });
+      })
+      .catch(() => {});
+  }, [user]);
 
   if (!ready) {
     return (
