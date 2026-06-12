@@ -24,6 +24,7 @@ import {
   type PixelAvatarSettings,
 } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
+import { useHideTabBar } from '../navigation/useHideTabBar';
 import { api } from '../lib/api';
 import { ASSISTANT_FALLBACK_NAME } from '../lib/brand';
 import { buildGroupStage, messageBelongsToActor } from '../features/stage/adapters/groupStageAdapter';
@@ -146,6 +147,7 @@ function localPendingAiMessage(groupId: string, topicId: string): GroupMessage {
 
 export function GroupChatScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
+  useHideTabBar();
   const { groupId, groupName, topicId, topicName, scrollToMessageId } = route.params;
   const [displayTopicName, setDisplayTopicName] = useState(topicName);
   const { user } = useAuth();
@@ -797,7 +799,9 @@ export function GroupChatScreen({ route, navigation }: Props) {
               onPress={() => setAgentSheetVisible(true)}
               style={styles.agentModelChip}
             >
-              <Text style={styles.agentModelChipText}>模型: {agentModel.label} ▾</Text>
+              <Text style={styles.agentModelChipText}>
+                {zh.chat.agentModelPrefix}: {agentModel.label} ▾
+              </Text>
             </Pressable>
             <ChatComposeBar
               value={input}
@@ -841,7 +845,7 @@ export function GroupChatScreen({ route, navigation }: Props) {
                 })();
               }}
               busy={sending}
-              bottomInset={8}
+              bottomInset={Math.max(insets.bottom, 8)}
               reserveContextSlot
             />
           </View>

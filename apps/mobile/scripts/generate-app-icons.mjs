@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Bow wow know 应用图标生成:32×32 像素网格 → 整数倍放大 → PNG。
+ * Bow Wow Know 应用图标生成:32×32 像素网格 → 整数倍放大 → PNG。
  * 图案:正面狗狗张大嘴「啊呜」大吃一口(用户指定),与 app 内像素狗同一调色板。
  * 零依赖(node:zlib + 手写 CRC32);改图改下面的网格后重跑:
  *   node scripts/generate-app-icons.mjs
  */
 import { deflateSync } from 'node:zlib';
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -105,8 +105,8 @@ function encodePng(width, height, rgba) {
   ]);
 }
 
-/** 网格按 scale 放大,绘制在 canvas×canvas 画布中央;bg=null 表示透明 */
-function renderPng(canvas, scale, bg) {
+/** 网格按 scale 放大,绘制在 canvas×canvas 画布中央居中;bg=null 表示透明。返回 RGBA 缓冲。 */
+function renderRgba(canvas, scale, bg) {
   const rgba = Buffer.alloc(canvas * canvas * 4);
   if (bg) {
     for (let i = 0; i < canvas * canvas; i++) rgba.set(bg, i * 4);
@@ -126,7 +126,43 @@ function renderPng(canvas, scale, bg) {
       }
     }
   }
-  return encodePng(canvas, canvas, rgba);
+  return rgba;
+}
+
+function renderPng(canvas, scale, bg) {
+  return encodePng(canvas, canvas, renderRgba(canvas, scale, bg));
+}
+
+/**
+ * 无 alpha 的 RGB PNG(color type 2):iOS AppIcon 必须不带 alpha 通道,
+ * 否则即便全不透明也会被拒/发黑。透明像素压到 CREAM 实色底。
+ */
+function encodePngRgbFlat(canvas, scale) {
+  const rgba = renderRgba(canvas, scale, CREAM);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(canvas, 0);
+  ihdr.writeUInt32BE(canvas, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // RGB(无 alpha)
+  const raw = Buffer.alloc(canvas * (1 + canvas * 3));
+  for (let y = 0; y < canvas; y++) {
+    const rowStart = y * (1 + canvas * 3);
+    raw[rowStart] = 0; // filter: none
+    for (let x = 0; x < canvas; x++) {
+      const si = (y * canvas + x) * 4;
+      const a = rgba[si + 3] / 255;
+      const di = rowStart + 1 + x * 3;
+      raw[di] = Math.round(rgba[si] * a + CREAM[0] * (1 - a));
+      raw[di + 1] = Math.round(rgba[si + 1] * a + CREAM[1] * (1 - a));
+      raw[di + 2] = Math.round(rgba[si + 2] * a + CREAM[2] * (1 - a));
+    }
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw, { level: 9 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
 }
 
 const out = (name, buf) => {
@@ -140,4 +176,16 @@ out('icon.png', renderPng(1024, 32, CREAM));
 out('adaptive-icon.png', renderPng(1024, 21, null));
 out('splash-icon.png', renderPng(512, 14, null));
 out('favicon.png', renderPng(64, 2, CREAM));
+
+// iOS prebuild 产物(ios/ 在 gitignore):若存在则直接刷新 AppIcon,免跑整套 prebuild 冲掉签名。
+const iosIcon = join(
+  ROOT,
+  'ios/agentCarlGustavJung/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png',
+);
+if (existsSync(iosIcon)) {
+  const buf = encodePngRgbFlat(1024, 32);
+  writeFileSync(iosIcon, buf);
+  console.log(`✓ ios AppIcon 1024 (无 alpha, ${buf.length} bytes)`);
+}
+
 console.log('完成。app.json 的 splash/adaptiveIcon backgroundColor 建议 #F4EFE4。');

@@ -9,6 +9,7 @@ import { brainTokens } from '../theme/brainTokens';
 import { colors } from '../theme/colors';
 import { wechat } from '../theme/wechat';
 import { DogTabIcon, StudioTabIcon } from '../components/TabBarIcon';
+import { STUDIO_TAB_BAR_STYLE } from './tabBarStyle';
 
 export type RootTabParamList = {
   StudioTab: NavigatorScreenParams<GroupStackParamList> | undefined;
@@ -57,7 +58,7 @@ export function RootTabs() {
           tabBarIcon: ({ color, focused }) => <StudioTabIcon color={color} focused={focused} />,
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: wechat.textSecondary,
-          tabBarStyle: [styles.tabBar, styles.tabBarStudio],
+          tabBarStyle: STUDIO_TAB_BAR_STYLE,
         }}
       />
       <Tab.Screen
@@ -82,10 +83,6 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 4,
     height: Platform.OS === 'ios' ? 88 : 64,
-  },
-  tabBarStudio: {
-    backgroundColor: wechat.navBg,
-    borderTopColor: wechat.separator,
   },
   tabBarBrain: {
     backgroundColor: brainTokens.tabBarBg,

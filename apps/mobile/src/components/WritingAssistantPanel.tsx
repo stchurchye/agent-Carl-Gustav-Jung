@@ -881,6 +881,7 @@ export function WritingAssistantPanel({
           active={false}
           onTap={() => setAskAiHubOpen(true)}
           onLongPress={() => setAskAiHubOpen(true)}
+          placement="lower-right"
         />
       </View>
       {suggestionRevision && onViewSuggestion ? (

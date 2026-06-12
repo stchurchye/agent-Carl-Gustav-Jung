@@ -8,6 +8,7 @@ import { brainLogicHints } from '../../brain/logicHints';
 import { BrainDataCard } from '../../components/brain/BrainDataCard';
 import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
 import { api } from '../../lib/api';
+import { API_KEY_KINDS, loadApiKeyStatus } from '../../lib/apiKeyKind';
 import { zh } from '../../locales/zh-CN';
 import type { BrainStackParamList } from '../../navigation/types';
 import { brainTokens } from '../../theme/brainTokens';
@@ -19,6 +20,7 @@ export function BrainLlmLogsScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [channelFilter, setChannelFilter] = useState<LlmRequestChannel | 'all'>('all');
+  const [keysConfiguredCount, setKeysConfiguredCount] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,10 +36,16 @@ export function BrainLlmLogsScreen({ navigation }: Props) {
     }
   }, []);
 
+  const loadKeySummary = useCallback(async () => {
+    const results = await Promise.all(API_KEY_KINDS.map((kind) => loadApiKeyStatus(kind)));
+    setKeysConfiguredCount(results.filter((r) => r.configured).length);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      void loadKeySummary();
+    }, [load, loadKeySummary]),
   );
 
   const channels = Array.from(new Set(items.map((i) => i.channel)));
@@ -55,6 +63,20 @@ export function BrainLlmLogsScreen({ navigation }: Props) {
       error={error}
       onReload={() => void load()}
     >
+      {/* 二级入口:汪星联络方式(密钥)与跑腿默认模型收纳于此 */}
+      <View style={styles.entries}>
+        <EntryRow
+          title={zh.brain.sections.homeKeys}
+          sub={zh.brain.homeKeysSummary(keysConfiguredCount, API_KEY_KINDS.length)}
+          onPress={() => navigation.navigate('BrainHomeKeys')}
+        />
+        <EntryRow
+          title={zh.brain.sections.agentDefaultModel}
+          sub={zh.brain.agentDefaultModelHint}
+          onPress={() => navigation.navigate('BrainAgentDefaultModel')}
+        />
+      </View>
+
       <View style={styles.filters}>
         <FilterChip
           label={zh.brain.states.filterAll}
@@ -105,6 +127,26 @@ export function BrainLlmLogsScreen({ navigation }: Props) {
   );
 }
 
+function EntryRow({
+  title,
+  sub,
+  onPress,
+}: {
+  title: string;
+  sub: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={styles.entryRow} onPress={onPress} accessibilityRole="button">
+      <View style={styles.entryTextCol}>
+        <Text style={styles.entryTitle}>{title}</Text>
+        {sub ? <Text style={styles.entrySub}>{sub}</Text> : null}
+      </View>
+      <Text style={styles.entryChevron}>›</Text>
+    </Pressable>
+  );
+}
+
 function FilterChip({
   label,
   active,
@@ -126,6 +168,36 @@ function FilterChip({
 }
 
 const styles = StyleSheet.create({
+  entries: {
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: brainTokens.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: brainTokens.border,
+    borderRadius: 4,
+    padding: 14,
+  },
+  entryTextCol: { flex: 1 },
+  entryTitle: {
+    color: brainTokens.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  entrySub: {
+    color: brainTokens.accent,
+    fontSize: 11,
+    marginTop: 6,
+  },
+  entryChevron: {
+    color: brainTokens.textMuted,
+    fontSize: 20,
+    marginLeft: 8,
+  },
   filters: {
     flexDirection: 'row',
     flexWrap: 'wrap',

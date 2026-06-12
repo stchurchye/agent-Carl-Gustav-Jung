@@ -89,6 +89,7 @@ import {
   bubbleTextSelectionTryDismissOnTouchEnd,
 } from '../components/chat/BubbleTextSelectionContext';
 import { prepareChatMessageForSend } from '../lib/chatMessageInput';
+import { useHideTabBar } from '../navigation/useHideTabBar';
 import { ChatMessageActionMenu } from '../components/chat/ChatMessageActionMenu';
 import { useChatListViewport } from '../hooks/useChatListViewport';
 import { useMessageActionViewport } from '../hooks/useMessageActionViewport';
@@ -143,6 +144,7 @@ export function ChatScreen({ route, navigation }: Props) {
   const initialSessionId = route.params?.sessionId;
   const scrollToMessageId = route.params?.scrollToMessageId;
   const insets = useSafeAreaInsets();
+  useHideTabBar();
   const { user } = useAuth();
   const { isTablet } = useLayout();
   const textStyles = useTextStyles();
@@ -957,7 +959,9 @@ export function ChatScreen({ route, navigation }: Props) {
           onPress={() => setAgentSheetVisible(true)}
           style={styles.agentModelChip}
         >
-          <Text style={styles.agentModelChipText}>模型: {agentModel.label} ▾</Text>
+          <Text style={styles.agentModelChipText}>
+            {zh.chat.agentModelPrefix}: {agentModel.label} ▾
+          </Text>
         </Pressable>
       <ChatComposeBar
         value={input}
@@ -987,7 +991,7 @@ export function ChatScreen({ route, navigation }: Props) {
           })();
         }}
         busy={sending}
-        bottomInset={8}
+        bottomInset={Math.max(insets.bottom, 8)}
         reserveContextSlot
       />
     </View>
