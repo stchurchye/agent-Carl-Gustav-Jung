@@ -5,15 +5,16 @@ import {
   useEffect,
   useState,
 } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import type { User } from '@xzz/shared';
-import { presetDogForSeed } from '@xzz/shared';
 import { AuthScreen } from '../screens/AuthScreen';
+import { BootSplash } from './BootSplash';
 import {
   invalidatePersona,
   loadPersona,
-  setPersonaDog,
+  setPersonaAvatar,
 } from '../lib/personaStore';
+import { invalidateBrainSnapshot } from '../brain/useBrainSnapshot';
 import {
   clearAuthSession,
   getAccessToken,
@@ -107,21 +108,19 @@ export function AuthGate({ children }: Props) {
   // 「会动的狗 + 狗名 + 对你的称呼」。狗形象即时取自 user.pixelAvatar(无则按 seed 兜底);
   // 狗名/称呼由共享缓存承载,这里 force 重拉以覆盖换用户 / 换形象的旧值。
   useEffect(() => {
+    // 换用户/登出都先清掉上个用户的 BrainHub 缓存,防止跨用户串数据。
+    invalidateBrainSnapshot();
     if (!user) {
       invalidatePersona();
-      setPersonaDog(null);
+      setPersonaAvatar(null);
       return;
     }
-    setPersonaDog(user.pixelAvatar?.dog ?? presetDogForSeed(user.id).dog);
+    setPersonaAvatar(user.pixelAvatar ?? null);
     void loadPersona({ force: true }).catch(() => {});
   }, [user]);
 
   if (!ready) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <BootSplash />;
   }
 
   if (!user) {

@@ -9,6 +9,8 @@ export type ZenmuxChatModelGroup = 'claude' | 'gpt' | 'domestic';
 export type ZenmuxChatModel = {
   id: string;
   label: string;
+  /** header chip 缩写，≤7 字符 */
+  short?: string;
   provider: ZenmuxChatProvider;
   group: ZenmuxChatModelGroup;
   /**
@@ -17,6 +19,16 @@ export type ZenmuxChatModel = {
    * 未标注但确实有此约束的模型,由 zenmuxChatFromMessages 的错误重试兜底。
    */
   fixedTemperature?: number;
+};
+
+export type ZenmuxModelCompanyId = 'anthropic' | 'openai' | 'kimi' | 'deepseek' | 'qwen';
+
+export type ZenmuxModelCompany = {
+  id: ZenmuxModelCompanyId;
+  /** 像素图标首字母 */
+  initial: string;
+  /** 像素图标背景色 */
+  color: string;
 };
 
 export type ZenmuxChatModelGroupDef = {
@@ -39,18 +51,21 @@ export const ZENMUX_CHAT_MODEL_GROUPS: ZenmuxChatModelGroupDef[] = [
       {
         id: 'anthropic/claude-sonnet-4.6',
         label: 'Sonnet 4.6',
+        short: 'Sonnet',
         provider: 'anthropic',
         group: 'claude',
       },
       {
         id: 'anthropic/claude-opus-4.6',
         label: 'Opus 4.6',
+        short: 'Opus4.6',
         provider: 'anthropic',
         group: 'claude',
       },
       {
         id: 'anthropic/claude-opus-4.7',
         label: 'Opus 4.7',
+        short: 'Opus4.7',
         provider: 'anthropic',
         group: 'claude',
       },
@@ -63,6 +78,7 @@ export const ZENMUX_CHAT_MODEL_GROUPS: ZenmuxChatModelGroupDef[] = [
       {
         id: 'openai/gpt-5.5',
         label: 'GPT-5.5',
+        short: 'GPT-5',
         provider: 'openai',
         group: 'gpt',
       },
@@ -75,6 +91,7 @@ export const ZENMUX_CHAT_MODEL_GROUPS: ZenmuxChatModelGroupDef[] = [
       {
         id: 'moonshotai/kimi-k2.6',
         label: 'Kimi K2.6',
+        short: 'Kimi',
         provider: 'openai',
         group: 'domestic',
         fixedTemperature: 1, // server 强制 temperature=1,传 0/0.7 会 400 拒
@@ -82,18 +99,21 @@ export const ZENMUX_CHAT_MODEL_GROUPS: ZenmuxChatModelGroupDef[] = [
       {
         id: 'qwen/qwen3-235b-a22b-thinking-2507',
         label: 'Qwen3 235B Thinking',
+        short: 'Qwen3',
         provider: 'openai',
         group: 'domestic',
       },
       {
         id: 'deepseek/deepseek-v4-pro',
         label: 'DeepSeek V4 Pro',
+        short: 'DS Pro',
         provider: 'openai',
         group: 'domestic',
       },
       {
         id: 'deepseek/deepseek-v4-flash',
         label: 'DeepSeek V4 Flash',
+        short: 'DS',
         provider: 'openai',
         group: 'domestic',
       },
@@ -137,6 +157,28 @@ export function zenmuxChatModelLabel(modelId: string): string {
   const m = zenmuxChatModelMeta(modelId);
   if (m.group === 'claude') return `Claude ${m.label}`;
   return m.label;
+}
+
+/** header chip 缩写，fallback 到 label 截断 */
+export function zenmuxChatModelShort(modelId: string): string {
+  const m = zenmuxChatModelMeta(modelId);
+  return m.short ?? m.label.slice(0, 6);
+}
+
+const COMPANY_LOOKUP: Record<string, ZenmuxModelCompany> = {
+  anthropic: { id: 'anthropic', initial: 'A', color: '#CF5C36' },
+  openai: { id: 'openai', initial: 'G', color: '#10A37F' },
+  moonshotai: { id: 'kimi', initial: 'K', color: '#5662F6' },
+  deepseek: { id: 'deepseek', initial: 'D', color: '#1B65E4' },
+  qwen: { id: 'qwen', initial: 'Q', color: '#FF6A14' },
+};
+
+const FALLBACK_COMPANY: ZenmuxModelCompany = { id: 'openai', initial: '?', color: '#888888' };
+
+/** 从 modelId 前缀提取公司信息（像素图标用） */
+export function zenmuxModelCompany(modelId: string): ZenmuxModelCompany {
+  const prefix = modelId.split('/')[0] ?? '';
+  return COMPANY_LOOKUP[prefix] ?? FALLBACK_COMPANY;
 }
 
 export function zenmuxBaseUrlForProvider(provider: ZenmuxChatProvider): string {

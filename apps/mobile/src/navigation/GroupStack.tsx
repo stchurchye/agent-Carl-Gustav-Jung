@@ -7,6 +7,7 @@ import { GroupTopicsScreen } from '../screens/GroupTopicsScreen';
 import { GroupChatScreen } from '../screens/GroupChatScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { MeScreen } from '../screens/MeScreen';
+import { SettingsDogSoundScreen } from '../screens/SettingsDogSoundScreen';
 import { SettingsVoiceScreen } from '../screens/SettingsVoiceScreen';
 import { SettingsTopicExportScreen } from '../screens/SettingsTopicExportScreen';
 import { SettingsProfileScreen } from '../screens/SettingsProfileScreen';
@@ -127,6 +128,11 @@ export function GroupStack() {
       <Stack.Screen
         name="SettingsClientLogs"
         component={SettingsClientLogScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SettingsDogSound"
+        component={SettingsDogSoundScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

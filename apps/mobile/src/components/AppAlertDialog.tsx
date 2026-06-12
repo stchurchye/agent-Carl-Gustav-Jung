@@ -10,6 +10,7 @@ import type { AppAlertButton } from '../lib/appAlert';
 import { usePersona } from '../hooks/usePersona';
 import { PixelCharacter } from './pixel/PixelCharacter';
 import { buildDogCharacter } from '../pixel/buildDog';
+import { buildCatCharacter } from '../pixel/buildCat';
 import { PERSONALITY_MOTION } from '../pixel/palette';
 
 type Props = {
@@ -25,9 +26,14 @@ export function AppAlertDialog({ visible, title, message, buttons, onDismiss }: 
   const rowButtons = buttons.length === 2;
 
   // 用「会动的狗 + 狗名 + 对你的称呼」给提示窗一个人性化的狗狗口吻(响应式读共享 persona 缓存)
-  const { persona, dog: snapDog } = usePersona();
-  const dog = snapDog ?? presetDogForSeed('bowwow').dog;
-  const dogChar = useMemo(() => buildDogCharacter(dog), [dog]);
+  const { persona, avatar: snapAvatar } = usePersona();
+  const { char: petChar, personality: petPersonality } = useMemo(() => {
+    if (snapAvatar?.species === 'cat' && snapAvatar.cat) {
+      return { char: buildCatCharacter(snapAvatar.cat), personality: snapAvatar.cat.personality };
+    }
+    const dog = snapAvatar?.dog ?? presetDogForSeed('bowwow').dog;
+    return { char: buildDogCharacter(dog), personality: dog.personality };
+  }, [snapAvatar]);
   const dogName = personaAssistantDisplayName(persona ?? undefined);
   const callMe = persona?.user?.preferredName ?? '';
   const spokenMessage = message && callMe ? `${callMe}，${message}` : message;
@@ -55,9 +61,9 @@ export function AppAlertDialog({ visible, title, message, buttons, onDismiss }: 
         <View style={[modalStyles.card, modalStyles.alertCard, styles.card]}>
           <View style={styles.speaker}>
             <PixelCharacter
-              character={dogChar}
+              character={petChar}
               size={52}
-              motion={PERSONALITY_MOTION[dog.personality]}
+              motion={PERSONALITY_MOTION[petPersonality]}
               animated
             />
             <Text style={[text.caption, styles.dogName]}>{dogName}</Text>

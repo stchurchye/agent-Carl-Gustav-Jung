@@ -30,6 +30,7 @@ import { presetDogForSeed } from '@xzz/shared';
 import { usePersona } from '../hooks/usePersona';
 import { PixelCharacter } from './pixel/PixelCharacter';
 import { buildDogCharacter } from '../pixel/buildDog';
+import { buildCatCharacter } from '../pixel/buildCat';
 import { PERSONALITY_MOTION } from '../pixel/palette';
 
 export type ContextComposerSource = 'group' | 'chat' | 'writing';
@@ -75,9 +76,15 @@ export function ContextComposerModal({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [promptExpanded, setPromptExpanded] = useState(false);
 
-  // 标题旁的小狗(会呼吸眨眼):用自己的狗,没领养按兜底预设
-  const { dog: personaDog } = usePersona();
-  const headerDog = personaDog ?? presetDogForSeed('bowwow').dog;
+  // 标题旁的小宠物(会呼吸眨眼):用自己的狗/猫,没领养按兜底预设
+  const { avatar: personaAvatar } = usePersona();
+  const { char: headerChar, personality: headerPersonality } = (() => {
+    if (personaAvatar?.species === 'cat' && personaAvatar.cat) {
+      return { char: buildCatCharacter(personaAvatar.cat), personality: personaAvatar.cat.personality };
+    }
+    const dog = personaAvatar?.dog ?? presetDogForSeed('bowwow').dog;
+    return { char: buildDogCharacter(dog), personality: dog.personality };
+  })();
 
   const fetchPreview = useCallback(
     async (blockIds: string[], sel?: ContextSelection) => {
@@ -206,9 +213,9 @@ export function ContextComposerModal({
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <PixelCharacter
-              character={buildDogCharacter(headerDog)}
+              character={headerChar}
               size={40}
-              motion={PERSONALITY_MOTION[headerDog.personality]}
+              motion={PERSONALITY_MOTION[headerPersonality]}
               animated
             />
             <Text style={styles.title}>{zh.chat.composeContextTitle}</Text>

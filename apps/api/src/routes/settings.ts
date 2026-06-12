@@ -85,7 +85,7 @@ settingsRouter.post('/deepseek/verify', async (c) => {
       code: 'DEEPSEEK_AUTH',
       requestId: c.get('requestId'),
       retryable: true,
-    }, 401);
+    }, 400);
   }
 });
 
@@ -138,7 +138,7 @@ settingsRouter.post('/zenmux/verify', async (c) => {
         requestId: c.get('requestId'),
         retryable: true,
       },
-      401,
+      400,
     );
   }
 });
@@ -192,7 +192,7 @@ settingsRouter.post('/dashscope/verify', async (c) => {
         requestId: c.get('requestId'),
         retryable: true,
       },
-      401,
+      400,
     );
   }
 });

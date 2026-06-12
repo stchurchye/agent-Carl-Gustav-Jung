@@ -49,7 +49,7 @@ export function handleZenMuxError(c: Context<{ Variables: AppVariables }>, e: un
           requestId: c.get('requestId'),
           retryable: true,
         },
-        401,
+        400,
       );
     }
     return c.json(

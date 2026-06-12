@@ -54,7 +54,7 @@ export function handleAiError(c: Context<{ Variables: AppVariables }>, e: unknow
           requestId: c.get('requestId'),
           retryable: true,
         },
-        401,
+        400,
       );
     }
     return c.json(

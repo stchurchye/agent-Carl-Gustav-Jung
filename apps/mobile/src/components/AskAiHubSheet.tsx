@@ -7,6 +7,8 @@ type Props = {
   onClose: () => void;
   onChangeModel: () => void;
   onComposeContext: () => void;
+  onNavigateMemory?: () => void;
+  onNavigateLogs?: () => void;
   /** 群聊：跳转本话题记忆（流浪猫大脑） */
   onTopicMemory?: () => void;
 };
@@ -16,6 +18,8 @@ export function AskAiHubSheet({
   onClose,
   onChangeModel,
   onComposeContext,
+  onNavigateMemory,
+  onNavigateLogs,
   onTopicMemory,
 }: Props) {
   return (
@@ -46,6 +50,32 @@ export function AskAiHubSheet({
             <Text style={styles.actionTitle}>{zh.chat.composeContext}</Text>
             <Text style={styles.actionHint}>{zh.chat.composeContextHint}</Text>
           </Pressable>
+
+          {onNavigateMemory ? (
+            <Pressable
+              style={styles.action}
+              onPress={() => {
+                onClose();
+                onNavigateMemory();
+              }}
+            >
+              <Text style={styles.actionTitle}>{zh.chat.toolsMemoryLabel}</Text>
+              <Text style={styles.actionHint}>{zh.chat.toolsMemoryHint}</Text>
+            </Pressable>
+          ) : null}
+
+          {onNavigateLogs ? (
+            <Pressable
+              style={styles.action}
+              onPress={() => {
+                onClose();
+                onNavigateLogs();
+              }}
+            >
+              <Text style={styles.actionTitle}>{zh.chat.toolsLogsLabel}</Text>
+              <Text style={styles.actionHint}>{zh.chat.toolsLogsHint}</Text>
+            </Pressable>
+          ) : null}
 
           {onTopicMemory ? (
             <Pressable

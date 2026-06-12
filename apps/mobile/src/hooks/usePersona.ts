@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type { DogConfig, UserPersonaSettings } from '@xzz/shared';
+import type { PixelAvatarSettings, UserPersonaSettings } from '@xzz/shared';
 import {
   getPersonaState,
   loadPersona,
@@ -12,7 +12,7 @@ import {
  */
 export function usePersona(): {
   persona: UserPersonaSettings | null;
-  dog: DogConfig | null;
+  avatar: PixelAvatarSettings | null;
   /** 强制重拉(跳过缓存),用于「编辑后返回需刷新」之类场景。 */
   refresh: () => Promise<UserPersonaSettings>;
 } {
@@ -28,7 +28,7 @@ export function usePersona(): {
 
   return {
     persona: state.persona,
-    dog: state.dog,
+    avatar: state.avatar,
     refresh: () => loadPersona({ force: true }),
   };
 }

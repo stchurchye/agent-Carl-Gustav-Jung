@@ -1,4 +1,4 @@
-import type { DogConfig, UserPersonaSettings } from '@xzz/shared';
+import type { PixelAvatarSettings, UserPersonaSettings } from '@xzz/shared';
 import { api } from './api';
 
 /**
@@ -16,11 +16,11 @@ import { api } from './api';
 type PersonaState = {
   /** 服务端 persona 缓存;null = 尚未加载。 */
   persona: UserPersonaSettings | null;
-  /** 狗形象,由 AuthGate 在 user 变化时水合(供 AuthGate 之外的 AppAlertDialog 用)。 */
-  dog: DogConfig | null;
+  /** 宠物形象(狗或猫),由 AuthGate 在 user 变化时水合(供 AuthGate 之外的 AppAlertDialog 用)。 */
+  avatar: PixelAvatarSettings | null;
 };
 
-let state: PersonaState = { persona: null, dog: null };
+let state: PersonaState = { persona: null, avatar: null };
 let inflight: Promise<UserPersonaSettings> | null = null;
 // 代数:invalidate(登出/换用户)时自增;在途请求回来若代数已变就丢弃,
 // 避免旧用户的 persona GET 迟到后把已清空的状态又写回(登出后短暂闪回旧狗名)。
@@ -82,14 +82,14 @@ export function invalidatePersona(): void {
   setState({ persona: null });
 }
 
-/** 水合狗形象(AuthGate 在 user 变化时调用)。 */
-export function setPersonaDog(dog: DogConfig | null): void {
-  setState({ dog });
+/** 水合宠物形象(AuthGate 在 user 变化时调用;支持狗/猫)。 */
+export function setPersonaAvatar(avatar: PixelAvatarSettings | null): void {
+  setState({ avatar });
 }
 
 /** 仅供测试:复位模块级单例。 */
 export function resetPersonaStore(): void {
-  state = { persona: null, dog: null };
+  state = { persona: null, avatar: null };
   inflight = null;
   listeners.clear();
 }

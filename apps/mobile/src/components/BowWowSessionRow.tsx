@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import type { DogConfig } from '@xzz/shared';
+import { presetDogForSeed, type PixelAvatarSettings } from '@xzz/shared';
 import { useMemo } from 'react';
+import { buildCatCharacter } from '../pixel/buildCat';
 import { PixelSprite } from './pixel/PixelSprite';
 import { buildDogCharacter } from '../pixel/buildDog';
 import { formatChatListTime } from '../lib/formatChatListTime';
@@ -11,7 +12,9 @@ import { brainTokens } from '../theme/brainTokens';
 type Props = {
   title: string;
   preview: string;
-  dog: DogConfig;
+  avatar: PixelAvatarSettings | null;
+  /** 未领养(avatar 为空)时的默认狗种子;传 user.id 以与 BrainHub 等其它屏的兜底狗一致。 */
+  seed?: string;
   time?: string;
   /** 新建会话行:狗角上挂个像素「+」角标 */
   isNew?: boolean;
@@ -23,8 +26,11 @@ type Props = {
  * 「我的 Bow Wow」专用会话行:这里永远只有我和我的狗,
  * 不用通用头像——直接是自己的像素狗,最近一句话装在狗的小对话泡里。
  */
-export function BowWowSessionRow({ title, preview, dog, time, isNew, onPress, onLongPress }: Props) {
-  const sprite = useMemo(() => buildDogCharacter(dog).still, [dog]);
+export function BowWowSessionRow({ title, preview, avatar, seed, time, isNew, onPress, onLongPress }: Props) {
+  const sprite = useMemo(() => {
+    if (avatar?.species === 'cat' && avatar.cat) return buildCatCharacter(avatar.cat).still;
+    return buildDogCharacter(avatar?.dog ?? presetDogForSeed(seed ?? 'bowwow').dog).still;
+  }, [avatar, seed]);
 
   return (
     <Pressable style={styles.row} onPress={onPress} onLongPress={onLongPress} accessibilityRole="button">
