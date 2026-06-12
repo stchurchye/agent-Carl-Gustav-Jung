@@ -1,14 +1,15 @@
 /** 活体验证(需真 key:DSK=sk-... 或 .env 的 DEEPSEEK_API_KEY):真 DeepSeek 跑 planner,验证双语检索指引产出中英两路查询。用法: DSK=<key> npx tsx src/scripts/probe-bilingual-planner.mts */
 import { readFileSync } from 'node:fs';
-const env = readFileSync('/Users/church/claude/agent-Carl-Gustav-Jung/.env', 'utf8');
+// 仓库根 .env(脚本在 apps/api/src/scripts/,上溯 4 层),按 import.meta.url 解析以便任意机器/CI 运行
+const env = readFileSync(new URL('../../../../.env', import.meta.url), 'utf8');
 for (const line of env.split('\n')) { const m = line.match(/^([A-Z_]+)=(.*)$/); if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim(); }
 
-const { buildLlmClient } = await import('/Users/church/claude/agent-Carl-Gustav-Jung/apps/api/src/lib/llm/factory.js');
-const { generatePlanWithLlm } = await import('/Users/church/claude/agent-Carl-Gustav-Jung/apps/api/src/lib/agent/planner.js');
-const { registerWebSearch } = await import('/Users/church/claude/agent-Carl-Gustav-Jung/apps/api/src/lib/agent/tools/webSearch.js');
-const { registerSearchPapers } = await import('/Users/church/claude/agent-Carl-Gustav-Jung/apps/api/src/lib/agent/tools/searchPapers.js');
-const { registerWikipedia } = await import('/Users/church/claude/agent-Carl-Gustav-Jung/apps/api/src/lib/agent/tools/wikipedia.js');
-const { registerFetchUrl } = await import('/Users/church/claude/agent-Carl-Gustav-Jung/apps/api/src/lib/agent/tools/fetchUrl.js');
+const { buildLlmClient } = await import('../lib/llm/factory.js');
+const { generatePlanWithLlm } = await import('../lib/agent/planner.js');
+const { registerWebSearch } = await import('../lib/agent/tools/webSearch.js');
+const { registerSearchPapers } = await import('../lib/agent/tools/searchPapers.js');
+const { registerWikipedia } = await import('../lib/agent/tools/wikipedia.js');
+const { registerFetchUrl } = await import('../lib/agent/tools/fetchUrl.js');
 
 registerWebSearch(); registerSearchPapers(); registerWikipedia(); registerFetchUrl();
 
