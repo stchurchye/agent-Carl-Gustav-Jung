@@ -1,9 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import type { GroupListItem } from '@xzz/shared';
+import type { GroupListItem, GroupMember } from '@xzz/shared';
 import type { TopicPreviewRow } from '../lib/studioTopicPreview';
 import { formatChatListTime } from '../lib/formatChatListTime';
+import { GroupDogsWire } from './GroupDogsWire';
 import { StudioAvatar } from './StudioAvatar';
-import { StudioChatListRow } from './StudioChatListRow';
 import { typography } from '../theme/colors';
 import { wechat } from '../theme/wechat';
 import { zh } from '../locales/zh-CN';
@@ -13,15 +13,59 @@ const MAX_TOPICS_SHOWN = 3;
 type Props = {
   group: GroupListItem;
   topics: TopicPreviewRow[];
+  /** 组员(含 pixelAvatar):有则入口顶部展示「狗狗电话连线」;还没加载到则退回字母头像 */
+  members?: GroupMember[];
   isLast?: boolean;
   onOpenTopics: () => void;
   onOpenTopic: (topic: TopicPreviewRow) => void;
 };
 
-/** 工作室一级列表：单话题简行，多话题展示最近最多 3 条 */
+/** 入口头部:组里的狗排排站 + 像素电话线;下面群名+时间+副行 */
+function GroupHeader({
+  group,
+  members,
+  time,
+  subLine,
+  onPress,
+  accessibilityLabel,
+}: {
+  group: GroupListItem;
+  members?: GroupMember[];
+  time?: string;
+  subLine: string;
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      style={styles.header}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      {members && members.length > 0 ? (
+        <GroupDogsWire members={members} />
+      ) : (
+        <StudioAvatar name={group.name} seed={group.id} size={40} />
+      )}
+      <View style={styles.headerTop}>
+        <Text style={styles.groupTitle} numberOfLines={1}>
+          {group.name}
+        </Text>
+        {time ? <Text style={styles.time}>{formatChatListTime(time)}</Text> : null}
+      </View>
+      <Text style={styles.subLine} numberOfLines={1}>
+        {subLine}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Bow Wow Group 一级列表:单话题直接进话题,多话题展示最近最多 3 条 */
 export function StudioGroupListBlock({
   group,
   topics,
+  members,
   isLast,
   onOpenTopics,
   onOpenTopic,
@@ -29,21 +73,19 @@ export function StudioGroupListBlock({
   if (topics.length <= 1) {
     const only = topics[0];
     return (
-      <StudioChatListRow
-        title={group.name}
-        preview={
-          only?.preview ??
-          group.lastMessage?.preview ??
-          zh.studio.noMessagesYet
-        }
-        time={only?.time ?? group.lastMessage?.createdAt}
-        avatarName={group.name}
-        avatarSeed={group.id}
-        onPress={() => {
-          if (only) onOpenTopic(only);
-          else onOpenTopics();
-        }}
-      />
+      <View style={[styles.block, isLast && styles.blockLast]}>
+        <GroupHeader
+          group={group}
+          members={members}
+          time={only?.time ?? group.lastMessage?.createdAt}
+          subLine={only?.preview ?? group.lastMessage?.preview ?? zh.studio.noMessagesYet}
+          onPress={() => {
+            if (only) onOpenTopic(only);
+            else onOpenTopics();
+          }}
+          accessibilityLabel={group.name}
+        />
+      </View>
     );
   }
 
@@ -53,27 +95,14 @@ export function StudioGroupListBlock({
 
   return (
     <View style={[styles.block, isLast && styles.blockLast]}>
-      <Pressable
-        style={styles.header}
+      <GroupHeader
+        group={group}
+        members={members}
+        time={latestTime}
+        subLine={zh.studio.topicCount(topics.length)}
         onPress={onOpenTopics}
-        accessibilityRole="button"
         accessibilityLabel={`${group.name}，${zh.studio.topicCount(topics.length)}`}
-      >
-        <StudioAvatar name={group.name} seed={group.id} size={52} />
-        <View style={styles.headerBody}>
-          <View style={styles.headerTop}>
-            <Text style={styles.groupTitle} numberOfLines={1}>
-              {group.name}
-            </Text>
-            {latestTime ? (
-              <Text style={styles.time}>{formatChatListTime(latestTime)}</Text>
-            ) : null}
-          </View>
-          <Text style={styles.topicCount} numberOfLines={1}>
-            {zh.studio.topicCount(topics.length)}
-          </Text>
-        </View>
-      </Pressable>
+      />
 
       {shown.map((topic) => (
         <Pressable
@@ -120,21 +149,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 8,
-  },
-  headerBody: {
-    flex: 1,
-    marginLeft: 12,
-    minWidth: 0,
+    paddingBottom: 10,
+    gap: 6,
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 2,
   },
   groupTitle: {
     flex: 1,
@@ -148,9 +170,10 @@ const styles = StyleSheet.create({
     color: wechat.textTertiary,
     flexShrink: 0,
   },
-  topicCount: {
+  subLine: {
     fontSize: wechat.listSubtitleSize,
     color: wechat.textSecondary,
+    lineHeight: typography.listSubtitleLineHeight,
   },
   topicRow: {
     flexDirection: 'row',
@@ -162,7 +185,7 @@ const styles = StyleSheet.create({
     borderTopColor: wechat.separator,
   },
   topicIndent: {
-    width: 16 + 52 + 12,
+    width: 28,
   },
   topicBody: {
     flex: 1,

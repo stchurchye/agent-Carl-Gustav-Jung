@@ -69,14 +69,13 @@ export function BrainHubScreen({ navigation }: Props) {
         {(Object.keys(SECTION_ROUTES) as (keyof typeof SECTION_ROUTES)[]).map((key) => {
           const routeName = SECTION_ROUTES[key];
           let sub = '';
-          if (snapshot) {
-            if (key === 'persona') {
-              sub = snapshot.personaCustomized ? zh.brain.customized : zh.brain.default;
-            } else if (key === 'memoryHub') {
+          if (key === 'persona') {
+            sub = zh.brain.personaPeek;
+          } else if (snapshot) {
+            if (key === 'memoryHub') {
               sub = zh.brain.memoryHubSummary(
                 snapshot.longMemoryCount,
                 snapshot.shortMemoryCount,
-                snapshot.reviewCount,
               );
             } else if (key === 'llmLogs') {
               sub = zh.brain.countCalls(snapshot.llmLogCount);
