@@ -7,6 +7,7 @@ import { MEMORY_USER_PROFILE_CHAR_LIMIT } from '@xzz/shared';
 import { brainLogicHints } from '../../brain/logicHints';
 import { identityPreview, soulPreview, userPreview } from '../../lib/personaUi';
 import { api } from '../../lib/api';
+import { loadPersona } from '../../lib/personaStore';
 import { BrainMemoryFragmentList } from '../../components/brain/BrainMemoryFragmentList';
 import { BrainMetricBar } from '../../components/brain/BrainMetricBar';
 import { BrainScreenShell } from '../../components/brain/BrainScreenShell';
@@ -26,11 +27,11 @@ export function BrainPersonalityEditScreen({ navigation }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const [personaRes, memoryRes] = await Promise.all([
-        api.getPersona(),
+      const [persona, memoryRes] = await Promise.all([
+        loadPersona(),
         api.listMemories({ scope: 'user', category: 'user_profile', includeSuppressed: true }),
       ]);
-      setSettings(personaRes.data);
+      setSettings(persona);
       setLearned(
         memoryRes.data.filter((f) => f.status !== 'deleted' && f.status !== 'pending'),
       );

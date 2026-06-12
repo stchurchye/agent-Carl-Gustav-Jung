@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { personaAssistantDisplayName } from '@xzz/shared';
 import { WeChatChatHeader } from '../components/WeChatChatHeader';
 import { ChatAvatar } from '../components/ChatAvatar';
 import { PixelListCell } from '../components/pixel/PixelListCell';
@@ -38,15 +37,12 @@ export function MeScreen({ navigation }: Props) {
   const [voiceSummary, setVoiceSummary] = useState<string>(zh.me.voiceDefault);
   const [visibleDocCount, setVisibleDocCount] = useState(0);
   const [hiddenDocCount, setHiddenDocCount] = useState(0);
-  const [dogName, setDogName] = useState<string>('');
-  const [preferredName, setPreferredName] = useState<string>('');
 
   const loadSummaries = useCallback(async () => {
-    const [storedVoiceId, voices, docsRes, personaRes] = await Promise.all([
+    const [storedVoiceId, voices, docsRes] = await Promise.all([
       getStoredVoiceId(TTS_DIALECT),
       listVoicesForDialect(TTS_DIALECT),
       api.listDocuments().catch(() => ({ data: [] as Awaited<ReturnType<typeof api.listDocuments>>['data'] })),
-      api.getPersona().catch(() => null),
     ]);
 
     if (storedVoiceId === null) {
@@ -59,11 +55,6 @@ export function MeScreen({ navigation }: Props) {
     const docs = docsRes.data;
     setVisibleDocCount(filterVisibleDocuments(docs).length);
     setHiddenDocCount(docs.filter((d) => isDocumentHidden(d)).length);
-
-    if (personaRes) {
-      setDogName(personaAssistantDisplayName(personaRes.data));
-      setPreferredName(personaRes.data.user?.preferredName ?? '');
-    }
   }, []);
 
   useFocusEffect(
@@ -120,16 +111,7 @@ export function MeScreen({ navigation }: Props) {
             value={user?.pixelAvatar ? zh.me.myDogAdopted : zh.me.myDogNotAdopted}
             onPress={() => navigation.navigate('SettingsMyDog')}
           />
-          <PixelListCell
-            label={zh.me.personalityAssistantName}
-            value={dogName}
-            onPress={() => navigation.navigate('SettingsPersonalityIdentity')}
-          />
-          <PixelListCell
-            label={zh.me.callMe}
-            value={preferredName || zh.me.notSet}
-            onPress={() => navigation.navigate('SettingsPersonalityUser')}
-          />
+          {/* 狗狗的名字 / 它怎么称呼你 已收归「my bow wow → 狗狗性格」,设置页不再重复 */}
           <PixelListCell
             label={zh.me.voiceTitle}
             value={voiceSummary}

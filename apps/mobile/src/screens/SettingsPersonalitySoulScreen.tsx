@@ -17,6 +17,7 @@ import { WeChatChatHeader } from '../components/WeChatChatHeader';
 import { AppTextInput } from '../components/AppTextInput';
 import { WeChatGroupedSection } from '../components/wechat/WeChatGroupedSection';
 import { api } from '../lib/api';
+import { loadPersona, setPersonaCache } from '../lib/personaStore';
 import { apiErrorText } from '../lib/apiError';
 import { appAlert } from '../lib/appAlert';
 import type { GroupStackParamList } from '../navigation/types';
@@ -35,8 +36,7 @@ export function SettingsPersonalitySoulScreen({ navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.getPersona();
-      const soul = res.data.soul;
+      const soul = (await loadPersona()).soul;
       setTone(soul?.tone ?? '');
       setBoundaries(soul?.boundaries ?? '');
       setFormatPrefs(soul?.formatPrefs ?? '');
@@ -56,13 +56,14 @@ export function SettingsPersonalitySoulScreen({ navigation }: Props) {
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await api.patchPersona({
+      const res = await api.patchPersona({
         soul: {
           tone: tone.trim() || undefined,
           boundaries: boundaries.trim() || undefined,
           formatPrefs: formatPrefs.trim() || undefined,
         },
       });
+      setPersonaCache(res.data); // 编辑后返回需刷新:显式回写共享缓存,免再发 GET
       navigation.goBack();
     } catch (e) {
       appAlert(zh.me.personalityFailed, apiErrorText(e).message);

@@ -42,6 +42,7 @@ import {
   isIntentExecuteResult,
 } from '../lib/applyIntentExecute';
 import { api } from '../lib/api';
+import { loadPersona, setPersonaCache } from '../lib/personaStore';
 import {
   ASSISTANT_FALLBACK_NAME,
   DEFAULT_SESSION_TITLE,
@@ -133,7 +134,8 @@ type ChatUiMessageRow = ChatUiMessage & { showTimestamp: boolean; timeLabel: str
 function chatSessionHeaderTitle(session: ChatSession | null): string {
   const title = session?.title?.trim();
   if (title && !isDefaultSessionTitle(title)) return title;
-  return zh.chat.title;
+  // 默认/新会话不在顶部显示「工作台」,留空更干净
+  return '';
 }
 
 type Props = NativeStackScreenProps<GroupStackParamList, 'PrivateChat'>;
@@ -239,12 +241,13 @@ export function ChatScreen({ route, navigation }: Props) {
     return built;
   }, [messagesUi, user, assistantName, initialLoading]);
 
-  // useFocusEffect 而非挂载一次:从「狗狗的名字」设置屏返回、或对话改名后切屏回来都要刷新
+  // useFocusEffect 而非挂载一次:从「狗狗的名字」设置屏返回、或对话改名后切屏回来都要刷新。
+  // 走共享缓存:命中即返回(改名后该屏 patch 会刷新缓存),避免每次切屏都重发 GET。
   useFocusEffect(
     useCallback(() => {
-      void api.getPersona().then((r) => {
-        setAssistantName(personaAssistantDisplayName(r.data));
-      }).catch(() => {});
+      void loadPersona()
+        .then((p) => setAssistantName(personaAssistantDisplayName(p)))
+        .catch(() => {});
     }, []),
   );
 
@@ -576,6 +579,8 @@ export function ChatScreen({ route, navigation }: Props) {
             await loadMessages(sessionId);
           },
           onPersonaUpdated: (settings) => {
+            // agent 对话中改写了 persona:写回共享缓存,让别屏 / 全局提示窗也拿到新值
+            setPersonaCache(settings);
             setAssistantName(personaAssistantDisplayName(settings));
           },
         });

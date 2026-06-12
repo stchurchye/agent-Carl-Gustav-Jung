@@ -47,15 +47,14 @@ function mount() {
 }
 
 describe('MeScreen 一行一个像素行', () => {
-  it('行齐全:我的名字/我的狗/狗狗的名字/它怎么称呼你/朗读声音/导出/全部文稿/客户端日志/退出', async () => {
-    const { getByText } = mount();
-    await waitFor(() => expect(getByText('旺财')).toBeTruthy());
+  it('行齐全:我的名字/我的狗/朗读声音/导出/全部文稿/客户端日志/退出(狗名与称呼已移到狗狗性格)', async () => {
+    const { getByText, queryByText } = mount();
+    await waitFor(() => expect(getByText(zh.me.myDog)).toBeTruthy());
     expect(getByText(zh.me.myName)).toBeTruthy();
-    expect(getByText(zh.me.myDog)).toBeTruthy();
     expect(getByText(zh.me.myDogNotAdopted)).toBeTruthy();
-    expect(getByText(zh.me.personalityAssistantName)).toBeTruthy();
-    expect(getByText(zh.me.callMe)).toBeTruthy();
-    expect(getByText('老王头')).toBeTruthy();
+    // 狗狗的名字 / 它怎么称呼你 已收归「狗狗性格」,设置页不再重复
+    expect(queryByText(zh.me.personalityAssistantName)).toBeNull();
+    expect(queryByText(zh.me.callMe)).toBeNull();
     expect(getByText(zh.me.voiceTitle)).toBeTruthy();
     expect(getByText(zh.me.exportTitle)).toBeTruthy();
     expect(getByText(zh.me.allDocs)).toBeTruthy();
@@ -63,12 +62,10 @@ describe('MeScreen 一行一个像素行', () => {
     expect(getByText(/退出登录/)).toBeTruthy();
   });
 
-  it('我的狗 → SettingsMyDog;狗狗的名字 → SettingsPersonalityIdentity', async () => {
+  it('我的狗 → SettingsMyDog', async () => {
     const { getByText, navigate } = mount();
     await waitFor(() => expect(getByText(zh.me.myDog)).toBeTruthy());
     fireEvent.press(getByText(zh.me.myDog));
     expect(navigate).toHaveBeenCalledWith('SettingsMyDog');
-    fireEvent.press(getByText(zh.me.personalityAssistantName));
-    expect(navigate).toHaveBeenCalledWith('SettingsPersonalityIdentity');
   });
 });

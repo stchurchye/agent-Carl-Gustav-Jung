@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { presetDogForSeed } from '@xzz/shared';
+import { personaAssistantDisplayName, presetDogForSeed } from '@xzz/shared';
 import { wechat } from '../theme/wechat';
 import { colors } from '../theme/colors';
 import { modalStyles } from '../theme/modalStyles';
 import { radius, touch } from '../theme/tokens';
 import { useTextStyles } from '../theme/useTextStyles';
 import type { AppAlertButton } from '../lib/appAlert';
-import { getPersonaSnapshot } from '../lib/personaSnapshot';
+import { usePersona } from '../hooks/usePersona';
 import { PixelCharacter } from './pixel/PixelCharacter';
 import { buildDogCharacter } from '../pixel/buildDog';
 import { PERSONALITY_MOTION } from '../pixel/palette';
@@ -24,11 +24,13 @@ export function AppAlertDialog({ visible, title, message, buttons, onDismiss }: 
   const text = useTextStyles();
   const rowButtons = buttons.length === 2;
 
-  // 用「会动的狗 + 狗名 + 对你的称呼」给提示窗一个人性化的狗狗口吻
-  const persona = getPersonaSnapshot();
-  const dog = persona.dog ?? presetDogForSeed('bowwow').dog;
+  // 用「会动的狗 + 狗名 + 对你的称呼」给提示窗一个人性化的狗狗口吻(响应式读共享 persona 缓存)
+  const { persona, dog: snapDog } = usePersona();
+  const dog = snapDog ?? presetDogForSeed('bowwow').dog;
   const dogChar = useMemo(() => buildDogCharacter(dog), [dog]);
-  const spokenMessage = message && persona.callMe ? `${persona.callMe}，${message}` : message;
+  const dogName = personaAssistantDisplayName(persona ?? undefined);
+  const callMe = persona?.user?.preferredName ?? '';
+  const spokenMessage = message && callMe ? `${callMe}，${message}` : message;
 
   const runButton = (btn: AppAlertButton) => {
     onDismiss();
@@ -58,7 +60,7 @@ export function AppAlertDialog({ visible, title, message, buttons, onDismiss }: 
               motion={PERSONALITY_MOTION[dog.personality]}
               animated
             />
-            <Text style={[text.caption, styles.dogName]}>{persona.dogName}</Text>
+            <Text style={[text.caption, styles.dogName]}>{dogName}</Text>
           </View>
           <Text style={[text.title, styles.title]}>{title}</Text>
           {spokenMessage ? (

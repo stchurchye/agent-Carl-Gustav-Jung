@@ -7,7 +7,7 @@ import type { UserPersonaSettings } from '@xzz/shared';
 import { WeChatChatHeader } from '../components/WeChatChatHeader';
 import { WeChatGroupedSection } from '../components/wechat/WeChatGroupedSection';
 import { WeChatListCell } from '../components/wechat/WeChatListCell';
-import { api } from '../lib/api';
+import { loadPersona } from '../lib/personaStore';
 import { identityPreview, soulPreview, userPreview } from '../lib/personaUi';
 import type { GroupStackParamList } from '../navigation/types';
 import { wechatChatStyles } from '../theme/wechatChat';
@@ -21,8 +21,7 @@ export function SettingsPersonalityScreen({ navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.getPersona();
-      setSettings(res.data);
+      setSettings(await loadPersona());
     } catch {
       setSettings({});
     }

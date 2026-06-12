@@ -22,8 +22,10 @@ jest.mock('../lib/api', () => ({
 }));
 
 import { useBrainSnapshot } from './useBrainSnapshot';
+import { resetPersonaStore } from '../lib/personaStore';
 
 beforeEach(() => {
+  resetPersonaStore(); // persona 现走共享缓存,逐用例复位避免跨用例命中旧缓存
   mockGetPersona.mockReset().mockResolvedValue({ data: {} });
   mockListMemories.mockReset().mockResolvedValue({ data: [] });
   mockListMemoryReview.mockReset().mockResolvedValue({ data: [] });
