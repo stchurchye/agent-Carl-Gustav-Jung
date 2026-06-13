@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react-native';
+import { render, waitFor, fireEvent } from '@testing-library/react-native';
 
 const mockFlags = { WRITING_ENABLED: true };
 jest.mock('../lib/featureFlags', () => ({
@@ -46,9 +46,10 @@ import { GroupListScreen } from './GroupListScreen';
 import { zh } from '../locales/zh-CN';
 
 function mount() {
-  const navigation = { navigate: jest.fn(), push: jest.fn(), setOptions: jest.fn() } as never;
+  const navigate = jest.fn();
+  const navigation = { navigate, push: jest.fn(), setOptions: jest.fn() } as never;
   const route = { key: 'k', name: 'GroupList', params: undefined } as never;
-  return render(<GroupListScreen navigation={navigation} route={route} />);
+  return { ...render(<GroupListScreen navigation={navigation} route={route} />), navigate };
 }
 
 describe('GroupListScreen 写作模式开关', () => {
@@ -63,5 +64,13 @@ describe('GroupListScreen 写作模式开关', () => {
     mockFlags.WRITING_ENABLED = true;
     const { getByText } = mount();
     await waitFor(() => expect(getByText(zh.studio.writeText)).toBeTruthy());
+  });
+
+  it('「今日日记」卡片 → 导航到个人日记屏', async () => {
+    mockFlags.WRITING_ENABLED = false;
+    const { getByTestId, navigate } = mount();
+    await waitFor(() => expect(getByTestId('home-diary-card')).toBeTruthy());
+    fireEvent.press(getByTestId('home-diary-card'));
+    expect(navigate).toHaveBeenCalledWith('Diary', { scope: 'self', scopeId: '' });
   });
 });
