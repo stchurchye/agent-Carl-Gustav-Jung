@@ -292,9 +292,6 @@ export function AgentRunCard({
               <Text style={{ fontSize: 12, color: NOTICE_FG[n.severity], fontWeight: '600' }}>
                 [{NOTICE_GLYPH[n.severity]}] {n.message}
               </Text>
-              <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 2 }}>
-                {n.code}
-              </Text>
             </View>
           ))}
         </View>

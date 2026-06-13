@@ -262,11 +262,14 @@ async function finalizeSpecialIntent(
 
   candidates = filterExecutable(candidates).slice(0, 6);
 
+  // persona_rename 等规则意图把 slots 挂在 candidate 上而非局部变量,这里补提升。
+  const resolvedSlots = slots ?? candidates[0]?.slots;
+
   return {
     candidates,
     suggested,
     autoExecute: pickAutoExecute(candidates, forceChips),
-    slots,
+    slots: resolvedSlots,
     hint,
   };
 }

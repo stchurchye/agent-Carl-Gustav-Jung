@@ -47,17 +47,19 @@ function mount() {
 }
 
 describe('MeScreen 一行一个像素行', () => {
-  it('行齐全:我的名字/我的狗/朗读声音/导出/全部文稿/客户端日志/退出(狗名与称呼已移到狗狗性格)', async () => {
+  it('行齐全:头像/我的名字/我的狗/狗的声音/导出/客户端日志/退出(狗名与称呼已移到狗狗性格)', async () => {
     const { getByText, queryByText } = mount();
     await waitFor(() => expect(getByText(zh.me.myDog)).toBeTruthy());
+    expect(getByText(zh.me.myAvatar)).toBeTruthy();
     expect(getByText(zh.me.myName)).toBeTruthy();
     expect(getByText(zh.me.myDogNotAdopted)).toBeTruthy();
     // 狗狗的名字 / 它怎么称呼你 已收归「狗狗性格」,设置页不再重复
     expect(queryByText(zh.me.personalityAssistantName)).toBeNull();
     expect(queryByText(zh.me.callMe)).toBeNull();
-    expect(getByText(zh.me.voiceTitle)).toBeTruthy();
+    // 朗读声音 → 收敛为「狗的声音」一行(SettingsDogSound)
+    expect(getByText(zh.me.dogSoundTitle)).toBeTruthy();
     expect(getByText(zh.me.exportTitle)).toBeTruthy();
-    expect(getByText(zh.me.allDocs)).toBeTruthy();
+    // 「全部文稿」入口已在改版中从设置页移除,不再断言
     expect(getByText(zh.me.clientLogTitle)).toBeTruthy();
     expect(getByText(/退出登录/)).toBeTruthy();
   });

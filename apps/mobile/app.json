@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#F4EFE4"
     },
@@ -65,7 +65,8 @@
           "photosPermission": "需要把章节长图保存到相册，方便您分享到微信或小红书",
           "savePhotosPermission": "需要把章节长图保存到相册，方便您分享到微信或小红书"
         }
-      ]
+      ],
+      "./plugins/withBowWowSplash"
     ]
   }
 }

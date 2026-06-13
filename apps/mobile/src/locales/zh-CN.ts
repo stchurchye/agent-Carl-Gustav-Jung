@@ -245,11 +245,18 @@ export const zh = {
     pickModel: '选择对话模型',
     pickModelHint:
       '经 ZenMux 接入（OpenAI / Anthropic 协议）；识图与语音仍固定 Gemini 2.5 Flash Lite。',
-    sideTitle: '换话题',
+    sideTitle: '看看怎么用',
     sideHint:
-      '每个话题各自独立，聊过的内容不会串到别的题里。想分开聊就点「开始新话题」，或从下面切回之前的话题。',
-    openTools: '换话题',
+      '每个话题各自独立，聊过的内容不会串到别的题里。想开新话题，回主页点「+」；或从下面切回之前的话题。',
+    openTools: '打开工具箱',
     closeTools: '收起',
+    toolsQuickTitle: '快捷入口',
+    toolsMemoryLabel: '本会话记忆',
+    toolsMemoryHint: '查看 Bow Wow 对本次话题记住的内容',
+    toolsLogsLabel: '汪星通讯记录',
+    toolsLogsHint: '查看与模型的完整往返请求日志',
+    toolsTipTitle: '使用小提示',
+    toolsTipNewSession: '想开新话题？回主页点右上角「+」就可以啦',
     emptyHint: (name: string) =>
       `${name} 已经摇着尾巴等你啦——有什么需要帮忙的尽管问！\n也可以输入斜杠命令直达，例如 /性格、/记忆、/压缩。`,
     placeholder: '想说点什么',
@@ -397,6 +404,25 @@ export const zh = {
     llmLogRawHint: '含全部 messages 与回复原文，可复制到备忘录排查。',
     llmLogCopyRaw: '复制完整 JSON',
     lastModified: '最近修改',
+    dogSoundTitle: '狗的声音',
+    dogSoundCuesLabel: '回复提示音',
+    dogSoundCuesHint: '收到 AI 回复时汪一声，群里其他成员发言时叮一下',
+    dogSoundStyleSection: '音效风格',
+    dogSoundStyleAuto: '随狗而变',
+    dogSoundStyleAutoHint: '按照狗的个性自动分配叫声',
+    dogSoundStyleItems: [
+      '低沉单吠',   // 0: 大型犬
+      '中型双吠',   // 1: 边牧 / 萨摩耶
+      '高亢三叫',   // 2: 泰迪 / 比熊
+      '拖腔颤叫',   // 3: 哈士奇
+      '急促连叫',   // 4: 吉娃娃
+      '沙哑老汪',   // 5: 老狗
+      '兴奋三连',   // 6: 柯基
+      '软糯双叫',   // 7: 贵宾
+      '庄重一吠',   // 8: 秋田 / 柴犬
+      '欢快双叫',   // 9: 中大型犬
+    ] as readonly string[],
+    dogSoundStylePreview: '▶ 试听',
     voiceTitle: '朗读声音',
     voiceEngineQwen: '朗读引擎：Qwen3-TTS（阿里云百炼）',
     voiceEngineSystem: '朗读引擎：苹果 / 安卓系统自带（不额外收费）',
@@ -425,8 +451,9 @@ export const zh = {
     exportDoneTitle: '已复制',
     exportDoneBody: (count: number) => `已复制 ${count} 条消息为 Markdown`,
     profileTitle: '个人资料',
+    myAvatar: '我的头像',
     myName: '我的名字',
-    myDog: '我的狗',
+    myDog: '我的 Bow Wow',
     myDogNotAdopted: '去挑一只',
     myDogAdopted: '已领养',
     callMe: '它怎么称呼你',
@@ -507,7 +534,7 @@ export const zh = {
     memorySearchPlaceholder: '搜索往期对话…',
   },
   pixelAvatar: {
-    title: '我的狗',
+    title: '我的 Bow Wow',
     adoptIntro: '挑一只你的狗狗吧——它会陪你聊天、帮你跑腿,还会记得你的事。',
     segmentPick: '选一只',
     segmentCustom: '自定义',
@@ -723,9 +750,26 @@ export const zh = {
     extractUnavailable: '未配置 DeepSeek Key，记忆提炼不可用',
     rememberMessage: '记住此条',
     rememberDone: '已写入记忆',
+    cannotExecute: '无法执行',
+    skipReasonFallback: '暂时无法完成这个操作，请稍后再试',
+    skipReasons: {
+      RENAME_MISSING_SLOTS: '没能从这句话里解析出名字，请换个方式，比如「你以后就叫旺财」',
+      RENAME_REQUIRES_SESSION: '请先在对话页面再尝试改名',
+      RENAME_REQUIRES_GROUP_TOPIC: '群聊改名需要在话题内进行',
+      AGENT_PRIVATE_REQUIRES_SESSION: '请先在对话页面发起 Agent',
+      AGENT_GROUP_REQUIRES_GROUP_TOPIC: '群 Agent 需要在话题内发起',
+      COMPACT_PRIVATE_ONLY: '上下文压缩只支持私聊',
+      NO_URL: '未识别到链接',
+      AGENT_UNSUPPORTED_CHANNEL: '当前场景不支持发起 Agent',
+      CLIENT_NAVIGATE: '请在应用内直接跳转',
+      UNSUPPORTED_KIND: '暂不支持这个操作',
+      MISSING_GROUP: '找不到所在群组',
+      MISSING_SESSION: '找不到当前对话',
+      FORBIDDEN: '没有权限执行这个操作',
+    } as Record<string, string>,
   },
   studio: {
-    manageTitle: '创建或加入 Bow Wow Group',
+    manageTitle: '创建',
     createTitle: '创建 Bow Wow Group',
     joinTitle: '加入 Bow Wow Group',
     namePlaceholder: 'Bow Wow Group 名称',
@@ -734,7 +778,11 @@ export const zh = {
     joinAction: '加入 Bow Wow Group',
     createFailed: '创建失败',
     joinFailed: '加入失败',
+    newTopicSection: '创建话题',
+    newTopicGroupPicker: '选择 Bow Wow Group',
+    newTopicNoGroups: '还没有 Bow Wow Group，先创建或加入一个',
     loadFailed: '加载失败',
+    retryConnect: '重新连接',
     emptyList: '还没有 Bow Wow Group，点右上角 + 创建或加入',
     noMessagesYet: '暂无消息',
     workbenchPreviewEmpty: '和 Bow Wow 聊聊吧',
@@ -785,8 +833,8 @@ export const zh = {
     usageLabel: '上下文',
     usageLoading: '正在估算上下文…',
     compactedHint: 'Bow Wow 把较早的对话压缩收好了，完整记录仍可上滑查看',
-    detailTitle: '上下文',
-    percentUsed: (n: number) => `${n}% 已用`,
+    detailTitle: '汪星通讯负荷',
+    percentUsed: (n: number) => `${n}% 已负载`,
     tokensSummary: (used: string, limit: string) => `~${used} / ${limit} Token`,
     ringAccessibility: '查看上下文用量',
     ringLongPressAccessibility: '长按打开 AI 操作菜单',

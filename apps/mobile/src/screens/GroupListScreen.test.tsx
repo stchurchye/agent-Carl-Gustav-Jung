@@ -16,6 +16,11 @@ jest.mock('@react-navigation/native', () => {
   };
 });
 
+// useBottomTabBarHeight 需 Bottom Tab Navigator 上下文,测试里裸渲染屏幕 → 桩成固定高度。
+jest.mock('@react-navigation/bottom-tabs', () => ({
+  useBottomTabBarHeight: () => 0,
+}));
+
 jest.mock('../lib/api', () => ({
   api: { listGroups: jest.fn().mockResolvedValue({ data: [] }) },
 }));

@@ -1,12 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { presetDogForSeed, type GroupListItem, type GroupMember } from '@xzz/shared';
+import type { GroupListItem, GroupMember } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
 import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
-import { appAlert } from '../lib/appAlert';
 import { loadWorkbenchSessionRows, type WorkbenchSessionRow } from '../lib/privateChatPreview';
 import { loadGroupTopicPreviews, type TopicPreviewRow } from '../lib/studioTopicPreview';
 import { getCachedTabs } from '../lib/writingCache';
@@ -35,6 +35,7 @@ type GroupListUi = {
 
 export function GroupListScreen({ navigation }: Props) {
   const { user } = useAuth();
+  const tabBarHeight = useBottomTabBarHeight();
   const adoptPromptedRef = useRef(false);
   const [groupRows, setGroupRows] = useState<GroupListUi[]>([]);
 
@@ -48,14 +49,15 @@ export function GroupListScreen({ navigation }: Props) {
   );
   const [workbenchSessions, setWorkbenchSessions] = useState<WorkbenchSessionRow[]>([]);
   const [loading, setLoading] = useState(true);
-  // 「我的 Bow Wow」分区永远是我和我的狗:行头像直接用自己的像素狗(没领养按 seed 兜底)
-  const myDog = user?.pixelAvatar?.dog ?? presetDogForSeed(user?.id ?? 'bowwow').dog;
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const myAvatar = user?.pixelAvatar ?? null;
   // 成员只用于入口的「狗狗电话连线」(纯装饰),每组每个屏生命周期内最多拉一次,
   // 避免每次聚焦都对所有组发 listGroupMembers(话题预览本来就会按组重拉,不再叠加 N 个请求)。
   const membersByGroupRef = useRef<Map<string, GroupMember[]>>(new Map());
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [groupsRes, sessions] = await Promise.all([
         api.listGroups(),
@@ -81,7 +83,7 @@ export function GroupListScreen({ navigation }: Props) {
       setGroupRows(topicsByGroup);
       setWorkbenchSessions(sessions);
     } catch (e) {
-      appAlert(zh.studio.loadFailed, apiErrorText(e).message);
+      setLoadError(apiErrorText(e).message);
       setGroupRows([]);
       setWorkbenchSessions([]);
     } finally {
@@ -128,7 +130,7 @@ export function GroupListScreen({ navigation }: Props) {
       hitSlop={12}
       style={styles.headerBtn}
       accessibilityRole="button"
-      accessibilityLabel={zh.studio.manageTitle}
+      accessibilityLabel={zh.studio.createTitle}
     >
       <Text style={styles.headerPlus}>+</Text>
     </Pressable>
@@ -141,8 +143,15 @@ export function GroupListScreen({ navigation }: Props) {
       {/* W2 防闪:已有内容时聚焦重拉静默刷新,只有首载(无数据)才占屏 spinner */}
       {loading && groupRows.length === 0 && workbenchSessions.length === 0 ? (
         <ActivityIndicator style={styles.loader} color={colors.primary} />
+      ) : !loading && loadError ? (
+        <View style={styles.errorState}>
+          <Text style={styles.errorText}>{loadError}</Text>
+          <Pressable onPress={() => void refresh()} style={styles.retryBtn}>
+            <Text style={styles.retryText}>{zh.studio.retryConnect}</Text>
+          </Pressable>
+        </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 8 }]}>
           {groupRows.length > 0 ? (
             <WeChatGroupedSection title={zh.studio.groupsSection}>
               {groupRows.map(({ group, topics, members }, idx) => (
@@ -150,7 +159,11 @@ export function GroupListScreen({ navigation }: Props) {
                   key={group.id}
                   group={group}
                   topics={topics}
-                  members={members}
+                  members={members.map((m) =>
+                    m.userId === user?.id
+                      ? { ...m, pixelAvatar: user?.pixelAvatar ?? m.pixelAvatar }
+                      : m,
+                  )}
                   isLast={idx === groupRows.length - 1}
                   onOpenTopics={() => openGroupTopics(group.id, group.name)}
                   onOpenTopic={(topic) => openGroupChat(group.id, group.name, topic)}
@@ -184,7 +197,8 @@ export function GroupListScreen({ navigation }: Props) {
               title={session.title}
               preview={session.preview}
               time={session.time}
-              dog={myDog}
+              avatar={myAvatar}
+              seed={user?.id}
               onPress={() => openPrivateChat(session.id)}
             />
           ))}
@@ -192,7 +206,8 @@ export function GroupListScreen({ navigation }: Props) {
             <BowWowSessionRow
               title={zh.chat.newSession}
               preview={zh.studio.workbenchPreviewEmpty}
-              dog={myDog}
+              avatar={myAvatar}
+              seed={user?.id}
               isNew
               onPress={() => openPrivateChat()}
             />
@@ -206,6 +221,30 @@ export function GroupListScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   loader: { marginTop: 48 },
+  errorState: {
+    flex: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 20,
+    paddingHorizontal: 32,
+  },
+  errorText: {
+    fontSize: typography.body,
+    color: colors.textMuted,
+    textAlign: 'center' as const,
+    lineHeight: Math.round(typography.body * 1.5),
+  },
+  retryBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#fff',
+    fontSize: typography.body,
+    fontWeight: '600' as const,
+  },
   scrollContent: { flexGrow: 1, paddingBottom: 8 },
   headerBtn: {
     paddingRight: 4,

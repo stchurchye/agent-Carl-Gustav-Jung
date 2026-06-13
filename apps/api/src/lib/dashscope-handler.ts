@@ -30,7 +30,7 @@ export function handleDashScopeError(c: Context<{ Variables: AppVariables }>, e:
           requestId: c.get('requestId'),
           retryable: true,
         },
-        401,
+        400,
       );
     }
     return c.json(

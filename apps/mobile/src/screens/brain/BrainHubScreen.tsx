@@ -1,10 +1,12 @@
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useCallback } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { presetDogForSeed } from '@xzz/shared';
 import { PixelCharacter } from '../../components/pixel/PixelCharacter';
 import { buildDogCharacter } from '../../pixel/buildDog';
+import { buildCatCharacter } from '../../pixel/buildCat';
 import { PERSONALITY_MOTION } from '../../pixel/palette';
 import { useAuth } from '../../components/AuthGate';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,8 +29,15 @@ type SectionKey = keyof typeof SECTION_ROUTES;
 
 export function BrainHubScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const { user } = useAuth();
-  const heroDog = user?.pixelAvatar?.dog ?? presetDogForSeed(user?.id ?? 'bowwow').dog;
+  const heroAvatar = user?.pixelAvatar;
+  const heroChar = heroAvatar?.species === 'cat' && heroAvatar.cat
+    ? buildCatCharacter(heroAvatar.cat)
+    : buildDogCharacter(heroAvatar?.dog ?? presetDogForSeed(user?.id ?? 'bowwow').dog);
+  const heroPersonality = heroAvatar?.species === 'cat' && heroAvatar.cat
+    ? heroAvatar.cat.personality
+    : (heroAvatar?.dog ?? presetDogForSeed(user?.id ?? 'bowwow').dog).personality;
   const { snapshot, loading, error, refresh } = useBrainSnapshot();
 
   useFocusEffect(
@@ -45,12 +54,12 @@ export function BrainHubScreen({ navigation }: Props) {
             <Text style={styles.heroTitle}>{zh.brain.hubTitle}</Text>
             <Text style={styles.heroSub}>{zh.brain.hubSubtitle}</Text>
           </View>
-          {/* hero = 你自己的狗(会呼吸眨眼);没领养则按 seed 兜底预设 */}
+          {/* hero = 你自己的宠物(狗或猫,会呼吸眨眼);没领养则按 seed 兜底预设 */}
           <View accessibilityLabel={zh.brain.hubTitle}>
             <PixelCharacter
-              character={buildDogCharacter(heroDog)}
+              character={heroChar}
               size={56}
-              motion={PERSONALITY_MOTION[heroDog.personality]}
+              motion={PERSONALITY_MOTION[heroPersonality]}
               animated
             />
           </View>
@@ -65,7 +74,7 @@ export function BrainHubScreen({ navigation }: Props) {
 
       <Text style={styles.intro}>{zh.brain.hubIntro}</Text>
 
-      <ScrollView contentContainerStyle={styles.grid}>
+      <ScrollView contentContainerStyle={[styles.grid, { paddingBottom: tabBarHeight + 8 }]}>
         {(Object.keys(SECTION_ROUTES) as (keyof typeof SECTION_ROUTES)[]).map((key) => {
           const routeName = SECTION_ROUTES[key];
           let sub = '';
