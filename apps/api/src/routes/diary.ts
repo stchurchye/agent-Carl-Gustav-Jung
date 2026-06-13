@@ -11,7 +11,7 @@ import {
 import { parseReplyDialect } from '../lib/deepseek.js';
 import { getZenMuxKey, handleZenMuxError } from '../lib/zenmux-handler.js';
 import { getDiaryEntry, listDiaryEntries } from '../store/pg-diary.js';
-import { generateDiaryForDay, refineDiaryForDay } from '../lib/diaryService.js';
+import { generateDiaryForDay, refineDiaryForDay, confirmDiaryForDay } from '../lib/diaryService.js';
 
 export const diaryRouter = new Hono<{ Variables: AppVariables }>();
 
@@ -130,4 +130,31 @@ async function handleRefine(
 diaryRouter.post('/self/:dayKey/refine', (c) => handleRefine(c, 'self', ''));
 diaryRouter.post('/group/:groupId/:dayKey/refine', (c) =>
   handleRefine(c, 'group', c.req.param('groupId')),
+);
+
+// ---------- 确认(认可这篇 → 蒸馏进记忆) ----------
+async function handleConfirm(
+  c: Context<{ Variables: AppVariables }>,
+  scope: DiaryScope,
+  scopeId: string,
+) {
+  const dayKey = c.req.param('dayKey');
+  if (!dayKey || !isValidDiaryDayKey(dayKey)) return jsonError(c, ErrorCodes.VALIDATION, 400);
+  let apiKey: string;
+  try {
+    apiKey = getZenMuxKey(c);
+  } catch (e) {
+    return handleZenMuxError(c, e);
+  }
+  try {
+    const entry = await confirmDiaryForDay({ userId: c.get('userId')!, scope, scopeId, dayKey, apiKey });
+    if (!entry) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+    return c.json({ ok: true, data: entry, requestId: c.get('requestId') });
+  } catch (e) {
+    return handleZenMuxError(c, e);
+  }
+}
+diaryRouter.post('/self/:dayKey/confirm', (c) => handleConfirm(c, 'self', ''));
+diaryRouter.post('/group/:groupId/:dayKey/confirm', (c) =>
+  handleConfirm(c, 'group', c.req.param('groupId')),
 );

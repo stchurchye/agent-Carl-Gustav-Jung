@@ -150,4 +150,21 @@ describeDb('diary routes', { timeout: 20000 }, () => {
     const json = (await res.json()) as { data: { summary: string } };
     expect(json.data.summary).toBe('汪!矫正后的日记。');
   });
+
+  it('POST confirm:先 generate 再 confirm → 200(MAGI 关→confirmed)', async () => {
+    const u = await ensureUser('r-cf');
+    const { accessToken } = await signAccessToken(u);
+    await req(`/api/diary/self/${DAY}/generate`, { method: 'POST', token: accessToken, key: true, body: WINDOW });
+    const res = await req(`/api/diary/self/${DAY}/confirm`, { method: 'POST', token: accessToken, key: true });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: { status: string } };
+    expect(['confirmed', 'distilled']).toContain(json.data.status);
+  });
+
+  it('POST confirm:篇不存在 → 404', async () => {
+    const u = await ensureUser('r-cf404');
+    const { accessToken } = await signAccessToken(u);
+    const res = await req(`/api/diary/self/${DAY}/confirm`, { method: 'POST', token: accessToken, key: true });
+    expect(res.status).toBe(404);
+  });
 });

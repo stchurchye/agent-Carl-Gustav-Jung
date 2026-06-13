@@ -8,8 +8,19 @@ import {
 import { getPersonaSettings } from '../store/pg-profile.js';
 import { getPrivateMessagesForDay } from '../store/pg.js';
 import { getGroupMessagesForDay, getGroupName } from '../store/pg-social.js';
-import { getDiaryEntry, upsertDiaryEntry, setDiarySummary } from '../store/pg-diary.js';
+import { getDiaryEntry, upsertDiaryEntry, setDiarySummary, setDiaryStatus } from '../store/pg-diary.js';
 import { generateDiarySummary, refineDiarySummary } from './diaryGenerate.js';
+import { buildLlmClient, DEFAULT_MODEL_FOR_PROVIDER } from './llm/factory.js';
+import { runEpisodicMemory } from './memoryEpisodicWire.js';
+import { magiSystemEnabled } from './integrations/magi.js';
+
+/**
+ * 蒸馏护栏(注入 transcript):日记蒸馏进 owner 自己的记忆时,只抽与用户本人相关的事,
+ * 群友等他人的私事不作为「关于用户」的事实,避免把别人的隐私写进我的持久记忆。
+ */
+const DIARY_DISTILL_GUARDRAIL =
+  '以下是用户的一篇日记。只抽取与「用户本人」直接相关的事(用户做了什么、经历了什么、学到或决定了什么);' +
+  '日记里提到的其他人(群友等)的私事,不要作为关于用户的事实抽取。';
 
 /** 当日消息上限:超出只取最近的若干条,避免把一整天的群聊喂爆 LLM 上下文。 */
 const MAX_DIARY_MESSAGES = 300;
@@ -117,4 +128,54 @@ export async function refineDiaryForDay(p: RefineDiaryForDayParams): Promise<Dia
     instruction,
   });
   return (await setDiarySummary(p.userId, p.scope, p.scopeId, p.dayKey, summary)) ?? existing;
+}
+
+export interface ConfirmDiaryForDayParams {
+  userId: string;
+  scope: DiaryScope;
+  scopeId: string;
+  dayKey: string;
+  apiKey: string;
+}
+
+/**
+ * 确认:用户认可这篇日记 → 标 confirmed;若 MAGI 记忆系统启用,再把日记(带隐私护栏)蒸馏进
+ * owner 自己的情景记忆(复用 runEpisodicMemory:distill→reconcile 去重→reflection,全程 fail-open)
+ * 成功后标 distilled。蒸馏失败/MAGI 未启用 → 留 confirmed(不影响确认本身)。
+ * 篇不存在 → null(404);已 distilled → 幂等返回。
+ */
+export async function confirmDiaryForDay(p: ConfirmDiaryForDayParams): Promise<DiaryEntry | null> {
+  const existing = await getDiaryEntry(p.userId, p.scope, p.scopeId, p.dayKey);
+  if (!existing) return null;
+  if (existing.status === 'distilled') return existing;
+
+  let entry =
+    (await setDiaryStatus(p.userId, p.scope, p.scopeId, p.dayKey, 'confirmed')) ?? existing;
+
+  const summary = entry.summary.trim();
+  if (summary && magiSystemEnabled()) {
+    try {
+      const llm = buildLlmClient({
+        providerId: 'zenmux',
+        modelId: DEFAULT_MODEL_FOR_PROVIDER.zenmux.modelId,
+        apiKey: p.apiKey,
+      });
+      await runEpisodicMemory({
+        ownerId: p.userId,
+        runId: `diary:${entry.id}`,
+        sessionId: null,
+        topicId: null,
+        transcript: `${DIARY_DISTILL_GUARDRAIL}\n\n${summary}`,
+        llm,
+        signal: new AbortController().signal,
+      });
+      entry =
+        (await setDiaryStatus(p.userId, p.scope, p.scopeId, p.dayKey, 'distilled', {
+          distilledAt: new Date().toISOString(),
+        })) ?? entry;
+    } catch {
+      // fail-open:蒸馏失败留在 confirmed
+    }
+  }
+  return entry;
 }

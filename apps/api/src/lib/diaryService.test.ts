@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 vi.mock('./diaryGenerate.js', () => ({ generateDiarySummary: vi.fn(), refineDiarySummary: vi.fn() }));
+vi.mock('./memoryEpisodicWire.js', () => ({ runEpisodicMemory: vi.fn() }));
+vi.mock('./integrations/magi.js', () => ({ magiSystemEnabled: vi.fn() }));
 
 import { randomUUID } from 'crypto';
 import { describeDb } from '../testUtils/dbGuard.js';
@@ -11,10 +13,14 @@ import { getDiaryEntry, setDiaryStatus, upsertDiaryEntry } from '../store/pg-dia
 import { hashPassword } from './auth.js';
 import { ensureGroup } from './agent/__tests__/_groupFixture.js';
 import { generateDiarySummary, refineDiarySummary } from './diaryGenerate.js';
-import { generateDiaryForDay, refineDiaryForDay } from './diaryService.js';
+import { runEpisodicMemory } from './memoryEpisodicWire.js';
+import { magiSystemEnabled } from './integrations/magi.js';
+import { generateDiaryForDay, refineDiaryForDay, confirmDiaryForDay } from './diaryService.js';
 
 const mockGen = generateDiarySummary as unknown as ReturnType<typeof vi.fn>;
 const mockRefine = refineDiarySummary as unknown as ReturnType<typeof vi.fn>;
+const mockEpisodic = runEpisodicMemory as unknown as ReturnType<typeof vi.fn>;
+const mockMagiEnabled = magiSystemEnabled as unknown as ReturnType<typeof vi.fn>;
 
 const DAY = '2026-06-20';
 const DAY_START = '2026-06-20T00:00:00.000Z';
@@ -53,6 +59,10 @@ describeDb('diaryService.generateDiaryForDay', { timeout: 20000 }, () => {
     mockGen.mockResolvedValue('汪!今天的小结。');
     mockRefine.mockReset();
     mockRefine.mockResolvedValue('汪!改好了的小结。');
+    mockEpisodic.mockReset();
+    mockEpisodic.mockResolvedValue(undefined);
+    mockMagiEnabled.mockReset();
+    mockMagiEnabled.mockReturnValue(true);
   });
 
   it('self:取当日私聊 → 喂 transcript → upsert draft', async () => {
@@ -165,5 +175,50 @@ describeDb('diaryService.generateDiaryForDay', { timeout: 20000 }, () => {
     expect(entry?.status).toBe('confirmed'); // 未被打回 draft
     expect(entry?.summary).toBe('原文');
     expect(mockRefine).not.toHaveBeenCalled();
+  });
+
+  it('confirm + MAGI 开:带护栏蒸馏进自己记忆,标 distilled', async () => {
+    const u = await mkUser('cf1');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: '今天主人学了 TS' });
+    const entry = await confirmDiaryForDay({ userId: u.id, scope: 'self', scopeId: '', dayKey: DAY, apiKey: 'k' });
+    expect(entry?.status).toBe('distilled');
+    expect(mockEpisodic).toHaveBeenCalledTimes(1);
+    const arg = mockEpisodic.mock.calls[0][0] as { ownerId: string; transcript: string };
+    expect(arg.ownerId).toBe(u.id); // 蒸馏进自己的记忆
+    expect(arg.transcript).toContain('今天主人学了 TS'); // 正文
+    expect(arg.transcript).toContain('用户本人'); // 隐私护栏
+  });
+
+  it('confirm + MAGI 关:只标 confirmed,不蒸馏', async () => {
+    mockMagiEnabled.mockReturnValue(false);
+    const u = await mkUser('cf2');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: '正文' });
+    const entry = await confirmDiaryForDay({ userId: u.id, scope: 'self', scopeId: '', dayKey: DAY, apiKey: 'k' });
+    expect(entry?.status).toBe('confirmed');
+    expect(mockEpisodic).not.toHaveBeenCalled();
+  });
+
+  it('confirm:篇不存在 → null', async () => {
+    const u = await mkUser('cf3');
+    const entry = await confirmDiaryForDay({ userId: u.id, scope: 'self', scopeId: '', dayKey: DAY, apiKey: 'k' });
+    expect(entry).toBeNull();
+    expect(mockEpisodic).not.toHaveBeenCalled();
+  });
+
+  it('confirm:已 distilled 幂等,不重蒸馏', async () => {
+    const u = await mkUser('cf4');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: '正文' });
+    await setDiaryStatus(u.id, 'self', '', DAY, 'distilled', { distilledAt: '2026-06-20T12:00:00.000Z' });
+    const entry = await confirmDiaryForDay({ userId: u.id, scope: 'self', scopeId: '', dayKey: DAY, apiKey: 'k' });
+    expect(entry?.status).toBe('distilled');
+    expect(mockEpisodic).not.toHaveBeenCalled();
+  });
+
+  it('confirm:空正文 → confirmed,不蒸馏', async () => {
+    const u = await mkUser('cf5');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: '   ' });
+    const entry = await confirmDiaryForDay({ userId: u.id, scope: 'self', scopeId: '', dayKey: DAY, apiKey: 'k' });
+    expect(entry?.status).toBe('confirmed');
+    expect(mockEpisodic).not.toHaveBeenCalled();
   });
 });
