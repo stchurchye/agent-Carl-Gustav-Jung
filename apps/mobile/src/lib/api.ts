@@ -839,6 +839,19 @@ export const api = {
       body: JSON.stringify({ question, ...opts }),
     }),
 
+  /** 犟嘴狗:把玩家这句说服 + 牌局状态发给狗(LLM),拿回裁决(脾气分服务端已夹紧) */
+  persuade: (input: {
+    demand: string;
+    personality?: string;
+    stubbornness: number;
+    history: { role: 'dog' | 'player'; text: string }[];
+    playerLine: string;
+  }) =>
+    request<{ reply: string; scoreDelta: number; mood: 'stubborn' | 'annoyed' | 'wavering' | 'won_over' }>(
+      '/api/game/persuade',
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+
   listLlmLogs: (limit = 50) =>
     request<LlmRequestLogListItem[]>(`/api/llm-logs?limit=${limit}`),
 
