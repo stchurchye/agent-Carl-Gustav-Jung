@@ -7,10 +7,11 @@ import { wechatChatStyles } from '../../theme/wechatChat';
 import { zh } from '../../locales/zh-CN';
 import type { GroupStackParamList } from '../../navigation/types';
 
-type GameRoute = 'GameSleuth' | 'GamePersuade';
+type GameRoute = 'GameSleuth' | 'GamePersuade' | 'GameDrama';
 
 /** 合集菜单的单一来源:加新游戏只动这张表 */
 const GAMES: { route: GameRoute; name: string; tagline: string }[] = [
+  { route: 'GameDrama', name: zh.games.drama.name, tagline: zh.games.drama.tagline },
   { route: 'GameSleuth', name: zh.games.sleuth.name, tagline: zh.games.sleuth.tagline },
   { route: 'GamePersuade', name: zh.games.persuade.name, tagline: zh.games.persuade.tagline },
 ];

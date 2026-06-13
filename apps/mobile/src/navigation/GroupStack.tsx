@@ -34,6 +34,7 @@ import { RevisionHistoryScreen } from '../screens/RevisionHistoryScreen';
 import { GameHubScreen } from '../features/games/GameHubScreen';
 import { GameSleuthScreen } from '../features/games/sleuth/GameSleuthScreen';
 import { GamePersuadeScreen } from '../features/games/persuade/GamePersuadeScreen';
+import { DramaScreen } from '../features/games/drama/DramaScreen';
 import { zh } from '../locales/zh-CN';
 import { wechat } from '../theme/wechat';
 
@@ -177,6 +178,11 @@ export function GroupStack() {
       <Stack.Screen
         name="GamePersuade"
         component={GamePersuadeScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GameDrama"
+        component={DramaScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

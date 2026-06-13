@@ -45,6 +45,14 @@ export const zh = {
       streakScore: (n: number) => `这一局共说服了 ${n} 件事`,
       restart: '重新开始',
     },
+    drama: {
+      name: '犬朝后宫',
+      tagline: '像素狗演的宫斗大戏',
+      cont: '继续',
+      restart: '从头再看',
+      saylinePlaceholder: '（说对台词 · 即将上线）',
+      deducePlaceholder: '（查案推理 · 即将上线）',
+    },
   },
   writing: {
     newDoc: '新建',
