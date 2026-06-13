@@ -32,10 +32,12 @@ export async function generateDiarySummary(p: GenerateDiaryParams): Promise<stri
 
   const system = `${chatPersonaSystem(p.persona, p.dialect)}\n\n${diaryPromptForDialect(p.scope, p.dialect)}`;
   const existing = p.existingSummary?.trim();
-  const head = p.scope === 'group' && p.scopeName ? `群名:${p.scopeName}\n\n` : '';
+  // scopeName(群名)用户可控,与 persona 字段一样折叠空白 + 截断,避免换行伪造提示结构
+  const safeName = p.scopeName?.replace(/\s+/g, ' ').trim().slice(0, 40);
+  const groupLine = p.scope === 'group' && safeName ? `群名:${safeName}\n\n` : '';
   const userContent = existing
-    ? `已有日记:\n${existing}\n\n请结合下面今天新增/补充的对话,更新这篇日记(保留仍准确的内容、去重,不丢原有要点):\n\n${head}${transcript}`
-    : `${head}今天的对话:\n\n${transcript}`;
+    ? `${groupLine}已有日记:\n${existing}\n\n请结合下面今天新增/补充的对话,更新这篇日记(保留仍准确的内容、去重,不丢原有要点):\n\n${transcript}`
+    : `${groupLine}今天的对话:\n\n${transcript}`;
 
   const raw = await zenmuxChatFromMessages(
     p.apiKey,

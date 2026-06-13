@@ -27,6 +27,22 @@ describe('generateDiarySummary', () => {
     expect(msgs[0].content).toContain('旺财'); // persona 注入
     expect(msgs[0].content).toContain('日记'); // 日记规则
     expect(msgs[1].content).toContain('今天好累'); // transcript
+    expect(msgs[1].content).not.toContain('已有日记'); // fresh 路径不应出现更新措辞
+    expect(msgs[1].content).not.toContain('更新这篇日记');
+  });
+
+  it('self 篇 existingSummary 也走「更新」分支(日常增量,不依赖 scope)', async () => {
+    await generateDiarySummary({
+      apiKey: 'k',
+      persona: undefined,
+      scope: 'self',
+      transcript: '我：又聊了会儿',
+      existingSummary: '上午写的',
+    });
+    const msgs = mockLlm.mock.calls[0][2] as Array<{ role: string; content: string }>;
+    expect(msgs[1].content).toContain('已有日记');
+    expect(msgs[1].content).toContain('更新这篇日记');
+    expect(msgs[1].content).not.toContain('群名'); // self 篇不带群名
   });
 
   it('空 transcript 不调用 LLM,返回已有摘要', async () => {

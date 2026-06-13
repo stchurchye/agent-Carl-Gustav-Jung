@@ -21,4 +21,9 @@ describe('formatDiaryTranscript', () => {
     ]);
     expect(t).toBe('我：今天好累\n\n旺财：抱抱');
   });
+
+  it('全空 / 空数组 → 空串(切片3 调用方据此跳过 LLM 的契约)', () => {
+    expect(formatDiaryTranscript([])).toBe('');
+    expect(formatDiaryTranscript([{ speaker: '我', content: '  ' }])).toBe('');
+  });
 });
