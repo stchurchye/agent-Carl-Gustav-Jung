@@ -53,8 +53,11 @@ export const zh = {
       emptyInput: '先说点什么吧',
       won: '被你说服啦!',
       wonScore: (demand: string) => `狗狗答应「${demand}」了`,
+      streak: (n: number) => `已连说服 ${n} 件事`,
+      nextRound: '下一件 →',
       lost: '它扭头走开了…',
-      restart: '再来一局',
+      streakScore: (n: number) => `这一局共说服了 ${n} 件事`,
+      restart: '重新开始',
     },
   },
   writing: {

@@ -7,6 +7,7 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('../../../lib/api', () => ({ api: { persuade: jest.fn() } }));
 // soundCues 顶层 require 多个 .wav,jest 不处理音频;mock 掉
 jest.mock('../../../lib/soundCues', () => ({ playReplyBark: jest.fn() }));
+jest.mock('../../../components/AuthGate', () => ({ useAuth: () => ({ user: { pixelAvatar: null } }) }));
 
 import { api } from '../../../lib/api';
 import { GamePersuadeScreen } from './GamePersuadeScreen';
@@ -57,14 +58,30 @@ describe('GamePersuadeScreen 犟嘴狗', () => {
     expect(typeof arg.landmine).toBe('string');
   });
 
-  it('两回合说动 → 胜利界面', async () => {
+  it('两回合说动 → 胜利 + 战绩 +1 + 进下一件回到争论', async () => {
     persuadeMock.mockResolvedValue({ ok: true, data: { reply: '好…好吧', scoreDelta: 3, mood: 'won_over' }, requestId: 'r' });
-    const { getByTestId, getByText, findByText } = mount();
+    const { getByTestId, getByText, findByText, queryByText } = mount();
     fireEvent.changeText(getByTestId('persuade-input'), '一句');
     fireEvent.press(getByText(G.send));
     await findByText('好…好吧');
     fireEvent.changeText(getByTestId('persuade-input'), '二句');
     fireEvent.press(getByText(G.send));
     await waitFor(() => expect(getByText(G.won)).toBeTruthy());
+    expect(getByText(G.streak(1))).toBeTruthy();
+    fireEvent.press(getByText(G.nextRound));
+    expect(queryByText(G.won)).toBeNull();
+    expect(getByTestId('persuade-input')).toBeTruthy();
+  });
+
+  it('5 回合没说动 → 战绩界面(说服 0 件)', async () => {
+    persuadeMock.mockResolvedValue({ ok: true, data: { reply: '不去', scoreDelta: 0, mood: 'annoyed' }, requestId: 'r' });
+    const { getByTestId, getByText } = mount();
+    for (let i = 0; i < 5; i++) {
+      fireEvent.changeText(getByTestId('persuade-input'), `第${i}句`);
+      fireEvent.press(getByText(G.send));
+      await waitFor(() => expect(getByText(G.turnsLeft(4 - i))).toBeTruthy());
+    }
+    expect(getByText(G.lost)).toBeTruthy();
+    expect(getByText(G.streakScore(0))).toBeTruthy();
   });
 });

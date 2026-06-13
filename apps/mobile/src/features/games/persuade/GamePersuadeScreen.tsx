@@ -4,6 +4,7 @@ import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DEFAULT_DOG, type DogPersonality } from '@xzz/shared';
 import { WeChatChatHeader } from '../../../components/WeChatChatHeader';
+import { useAuth } from '../../../components/AuthGate';
 import { PixelCharacter } from '../../../components/pixel/PixelCharacter';
 import { buildDogCharacter } from '../../../pixel/buildDog';
 import { PERSONALITY_MOTION } from '../../../pixel/palette';
@@ -46,17 +47,27 @@ type Props = NativeStackScreenProps<GroupStackParamList, 'GamePersuade'>;
 
 export function GamePersuadeScreen({ route }: Props) {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  // 对手就是你领养的狗(无则兜底默认狗);它的性格喂给提示词、决定长相
+  const dogConfig = user?.pixelAvatar?.dog ?? DEFAULT_DOG;
+  const personaLabel = zh.pixelAvatar.personalityNames[dogConfig.personality];
+
   const [duel, setDuel] = useState<DuelState>(() =>
-    startDuel(route.params?.seed ?? randomSeed(), DEFAULT_DOG.personality),
+    startDuel(route.params?.seed ?? randomSeed(), personaLabel),
   );
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [reaction, setReaction] = useState<Reaction | null>(null);
+  /** 本局连续说服成功的件数 = 战绩 */
+  const [streak, setStreak] = useState(0);
 
   const character = useMemo(
-    () => buildDogCharacter({ ...DEFAULT_DOG, personality: MOOD_PERSONALITY[duel.mood] }),
-    [duel.mood],
+    () => buildDogCharacter({ ...dogConfig, personality: MOOD_PERSONALITY[duel.mood] }),
+    [dogConfig, duel.mood],
   );
+
+  const seedFor = (offset: number) =>
+    route.params?.seed != null ? route.params.seed + offset : randomSeed();
   const motion = PERSONALITY_MOTION[MOOD_PERSONALITY[duel.mood]];
   const stubbornPct = Math.max(0, Math.min(1, duel.stubbornness / DUEL_START_STUBBORNNESS));
 
@@ -84,9 +95,11 @@ export function GamePersuadeScreen({ route }: Props) {
         playerLine: line,
       });
       const verdict = res.data;
-      setDuel((d) => applyTurn(d, line, verdict));
+      const next = applyTurn(duel, line, verdict);
+      setDuel(next);
       setReaction(reactionFor(verdict.scoreDelta));
       playReplyBark(duel.personality);
+      if (next.status === 'won') setStreak((s) => s + 1);
       setInput('');
     } catch {
       // 网络/密钥失败:留住输入,玩家可重试
@@ -95,11 +108,19 @@ export function GamePersuadeScreen({ route }: Props) {
     }
   };
 
+  // 说服成功 → 同一只狗的下一件事(新要求 + 新性情),战绩已 +1
+  const nextRound = () => {
+    setReaction(null);
+    setInput('');
+    setDuel(startDuel(seedFor(streak + 1), personaLabel));
+  };
+
   const restart = () => {
+    setStreak(0);
+    setReaction(null);
     setInput('');
     setBusy(false);
-    setReaction(null);
-    setDuel(startDuel(randomSeed(), DEFAULT_DOG.personality));
+    setDuel(startDuel(seedFor(0), personaLabel));
   };
 
   return (
@@ -165,11 +186,24 @@ export function GamePersuadeScreen({ route }: Props) {
       {duel.status !== 'arguing' ? (
         <View style={styles.overlay}>
           <View style={styles.overlayCard}>
-            <Text style={styles.overTitle}>{duel.status === 'won' ? G.won : G.lost}</Text>
-            {duel.status === 'won' ? <Text style={styles.overScore}>{G.wonScore(duel.demand)}</Text> : null}
-            <Pressable onPress={restart} style={styles.restartBtn}>
-              <Text style={styles.restartText}>{G.restart}</Text>
-            </Pressable>
+            {duel.status === 'won' ? (
+              <>
+                <Text style={styles.overTitle}>{G.won}</Text>
+                <Text style={styles.overScore}>{G.wonScore(duel.demand)}</Text>
+                <Text style={styles.overStreak}>{G.streak(streak)}</Text>
+                <Pressable onPress={nextRound} style={styles.restartBtn}>
+                  <Text style={styles.restartText}>{G.nextRound}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={styles.overTitle}>{G.lost}</Text>
+                <Text style={styles.overScore}>{G.streakScore(streak)}</Text>
+                <Pressable onPress={restart} style={styles.restartBtn}>
+                  <Text style={styles.restartText}>{G.restart}</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
       ) : null}
@@ -230,6 +264,7 @@ const styles = StyleSheet.create({
   },
   overTitle: { fontSize: 18, fontWeight: '800', color: INK },
   overScore: { fontSize: 15, color: INK },
+  overStreak: { fontSize: 16, fontWeight: '800', color: '#B3402F' },
   restartBtn: { marginTop: 6, paddingHorizontal: 22, paddingVertical: 10, backgroundColor: INK, borderRadius: 4 },
   restartText: { fontSize: 15, fontWeight: '700', color: '#F4EFE4' },
 });
