@@ -796,6 +796,8 @@ export const zh = {
     groupsSection: 'Bow Wow 和他们的朋友们',
     /** 首页列表「我的 Bow Wow」工作台分区标题(原「工作台」) */
     workbenchSection: '我的 Bow Wow',
+    /** 分支式卡片头部:对话总数 */
+    conversationCount: (n: number) => `${n} 个对话`,
     topicsSection: '话题',
     topicsEmpty: '还没有话题，点右上角 + 新建',
     topicNoMessagesYet: '暂无消息',

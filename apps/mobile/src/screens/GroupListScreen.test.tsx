@@ -32,6 +32,15 @@ jest.mock('../lib/studioTopicPreview', () => ({
 }));
 jest.mock('../lib/writingCache', () => ({ getCachedTabs: () => [] }));
 jest.mock('../lib/openWriting', () => ({ openWriting: jest.fn() }));
+// 工作台头部新增依赖:persona 名字 / 当前模型 / 模型选择弹层
+jest.mock('../hooks/usePersona', () => ({
+  usePersona: () => ({ persona: null, avatar: null, refresh: jest.fn() }),
+}));
+jest.mock('../lib/chatLlmModel', () => ({
+  getChatLlmModel: jest.fn().mockResolvedValue('moonshotai/kimi-k2.6'),
+  setChatLlmModel: jest.fn(),
+}));
+jest.mock('../components/AskAiModelPickerSheet', () => ({ AskAiModelPickerSheet: () => null }));
 
 import { GroupListScreen } from './GroupListScreen';
 import { zh } from '../locales/zh-CN';
