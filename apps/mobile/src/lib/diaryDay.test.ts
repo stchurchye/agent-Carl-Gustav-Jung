@@ -25,4 +25,17 @@ describe('localDayWindow', () => {
     const { dayStartIso, dayEndIso } = localDayWindow('2026-06-20');
     expect(Date.parse(dayStartIso)).toBeLessThan(Date.parse(dayEndIso));
   });
+
+  it('跨月/跨年:end 正确滚到下一天(Date 溢出归一)', () => {
+    const dec = localDayWindow('2026-12-31');
+    expect(localDayKey(new Date(dec.dayEndIso))).toBe('2027-01-01'); // 跨年
+    const jan = localDayWindow('2026-01-31');
+    expect(localDayKey(new Date(jan.dayEndIso))).toBe('2026-02-01'); // 跨月
+  });
+
+  it('畸形 / 不存在的日历日 → 抛错(不静默算错)', () => {
+    expect(() => localDayWindow('garbage')).toThrow();
+    expect(() => localDayWindow('2026-13-45')).toThrow();
+    expect(() => localDayWindow('2026-02-30')).toThrow();
+  });
 });
