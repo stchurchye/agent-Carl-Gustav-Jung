@@ -844,6 +844,9 @@ export const api = {
     demand: string;
     personality?: string;
     stubbornness: number;
+    /** 狗的隐藏性情(中文招式名),服务端据此让狗露破绽、给分 */
+    softSpot?: string;
+    landmine?: string;
     history: { role: 'dog' | 'player'; text: string }[];
     playerLine: string;
   }) =>

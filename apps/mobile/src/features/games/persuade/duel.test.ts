@@ -2,7 +2,9 @@ import {
   applyTurn,
   DUEL_START_STUBBORNNESS,
   DUEL_TURNS,
+  reactionFor,
   startDuel,
+  TACTICS,
   type DuelVerdict,
 } from './duel';
 
@@ -21,6 +23,33 @@ describe('startDuel 开局', () => {
     expect(s.history).toEqual([]);
     expect(s.demand.length).toBeGreaterThan(0);
     expect(startDuel(42, 'sassy').demand).toBe(s.demand);
+  });
+
+  it('生成隐藏性情:软肋/雷区都是合法策略且互不相同,种子可复现', () => {
+    const s = startDuel(42, 'sassy');
+    expect(TACTICS).toContain(s.disposition.softSpot);
+    expect(TACTICS).toContain(s.disposition.landmine);
+    expect(s.disposition.softSpot).not.toBe(s.disposition.landmine);
+    expect(startDuel(42, 'sassy').disposition).toEqual(s.disposition);
+    // 不同种子大概率不同性情(抽样几个种子,至少有一个软肋不同)
+    const others = [1, 7, 99, 256].map((sd) => startDuel(sd, 'x').disposition.softSpot);
+    expect(others.some((t) => t !== s.disposition.softSpot)).toBe(true);
+  });
+});
+
+describe('reactionFor 多汁反馈映射', () => {
+  it('按 scoreDelta 给出分级反馈', () => {
+    expect(reactionFor(3).kind).toBe('hit');
+    expect(reactionFor(2).kind).toBe('hit');
+    expect(reactionFor(1).kind).toBe('soften');
+    expect(reactionFor(0).kind).toBe('none');
+    expect(reactionFor(-1).kind).toBe('annoy');
+    expect(reactionFor(-2).kind).toBe('backfire');
+  });
+  it('每档都有可显示的文案', () => {
+    for (const d of [3, 2, 1, 0, -1, -2]) {
+      expect(reactionFor(d).label.length).toBeGreaterThan(0);
+    }
   });
 });
 

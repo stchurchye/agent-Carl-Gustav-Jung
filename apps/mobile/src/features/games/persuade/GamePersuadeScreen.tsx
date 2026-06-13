@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DEFAULT_DOG, type DogPersonality } from '@xzz/shared';
 import { WeChatChatHeader } from '../../../components/WeChatChatHeader';
@@ -8,6 +8,7 @@ import { PixelCharacter } from '../../../components/pixel/PixelCharacter';
 import { buildDogCharacter } from '../../../pixel/buildDog';
 import { PERSONALITY_MOTION } from '../../../pixel/palette';
 import { api } from '../../../lib/api';
+import { playReplyBark } from '../../../lib/soundCues';
 import { wechatChatStyles } from '../../../theme/wechatChat';
 import { zh } from '../../../locales/zh-CN';
 import type { GroupStackParamList } from '../../../navigation/types';
@@ -15,9 +16,12 @@ import { randomSeed } from '../shared/rng';
 import {
   applyTurn,
   DUEL_START_STUBBORNNESS,
+  reactionFor,
   startDuel,
+  TACTIC_LABEL,
   type DuelMood,
   type DuelState,
+  type Reaction,
 } from './duel';
 
 const G = zh.games.persuade;
@@ -30,6 +34,14 @@ const MOOD_PERSONALITY: Record<DuelMood, DogPersonality> = {
   won_over: 'sweet',
 };
 
+const REACTION_COLOR: Record<Reaction['kind'], string> = {
+  hit: '#3F7A4E',
+  soften: '#B8860B',
+  none: '#8A8377',
+  annoy: '#B3402F',
+  backfire: '#8B2E22',
+};
+
 type Props = NativeStackScreenProps<GroupStackParamList, 'GamePersuade'>;
 
 export function GamePersuadeScreen({ route }: Props) {
@@ -39,28 +51,42 @@ export function GamePersuadeScreen({ route }: Props) {
   );
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [reaction, setReaction] = useState<Reaction | null>(null);
 
   const character = useMemo(
     () => buildDogCharacter({ ...DEFAULT_DOG, personality: MOOD_PERSONALITY[duel.mood] }),
     [duel.mood],
   );
   const motion = PERSONALITY_MOTION[MOOD_PERSONALITY[duel.mood]];
-  const lastReply = [...duel.history].reverse().find((h) => h.role === 'dog')?.text;
-  const stubbornPct = Math.max(0, Math.round((duel.stubbornness / DUEL_START_STUBBORNNESS) * 100));
+  const stubbornPct = Math.max(0, Math.min(1, duel.stubbornness / DUEL_START_STUBBORNNESS));
+
+  // 固执条:平滑动画到当前比例(卸载/变更时停掉,避免动画帧在组件消失后还更新)
+  const barAnim = useRef(new Animated.Value(stubbornPct)).current;
+  useEffect(() => {
+    const anim = Animated.timing(barAnim, { toValue: stubbornPct, duration: 380, useNativeDriver: false });
+    anim.start();
+    return () => anim.stop();
+  }, [stubbornPct, barAnim]);
 
   const send = async () => {
     const line = input.trim();
     if (!line || busy || duel.status !== 'arguing') return;
     setBusy(true);
+    setReaction(null);
     try {
       const res = await api.persuade({
         demand: duel.demand,
         personality: duel.personality,
         stubbornness: duel.stubbornness,
+        softSpot: TACTIC_LABEL[duel.disposition.softSpot],
+        landmine: TACTIC_LABEL[duel.disposition.landmine],
         history: duel.history,
         playerLine: line,
       });
-      setDuel((d) => applyTurn(d, line, res.data));
+      const verdict = res.data;
+      setDuel((d) => applyTurn(d, line, verdict));
+      setReaction(reactionFor(verdict.scoreDelta));
+      playReplyBark(duel.personality);
       setInput('');
     } catch {
       // 网络/密钥失败:留住输入,玩家可重试
@@ -72,6 +98,7 @@ export function GamePersuadeScreen({ route }: Props) {
   const restart = () => {
     setInput('');
     setBusy(false);
+    setReaction(null);
     setDuel(startDuel(randomSeed(), DEFAULT_DOG.personality));
   };
 
@@ -85,21 +112,36 @@ export function GamePersuadeScreen({ route }: Props) {
         <View style={styles.stubbornRow}>
           <Text style={styles.stubbornLabel}>{G.stubbornLabel}</Text>
           <View style={styles.stubbornTrack}>
-            <View style={[styles.stubbornFill, { width: `${stubbornPct}%` }]} />
+            <Animated.View
+              style={[
+                styles.stubbornFill,
+                { width: barAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
+              ]}
+            />
           </View>
         </View>
 
         <View style={styles.dogWrap}>
-          <PixelCharacter character={character} size={128} motion={motion} animated speaking={busy} />
+          <PixelCharacter character={character} size={120} motion={motion} animated speaking={busy} />
         </View>
 
         {busy ? (
           <Text style={styles.thinking}>{G.thinking}</Text>
-        ) : lastReply ? (
-          <View style={styles.bubble}>
-            <Text style={styles.bubbleText}>{lastReply}</Text>
-          </View>
+        ) : reaction ? (
+          <Text style={[styles.reaction, { color: REACTION_COLOR[reaction.kind] }]}>{reaction.label}</Text>
         ) : null}
+
+        {/* 对话流:你来我往的气泡 */}
+        <View style={styles.thread}>
+          {duel.history.map((turn, i) => (
+            <View
+              key={i}
+              style={[styles.bubble, turn.role === 'player' ? styles.bubblePlayer : styles.bubbleDog]}
+            >
+              <Text style={styles.bubbleText}>{turn.text}</Text>
+            </View>
+          ))}
+        </View>
 
         {duel.status === 'arguing' ? (
           <View style={styles.inputRow}>
@@ -147,18 +189,12 @@ const styles = StyleSheet.create({
   stubbornFill: { height: '100%', backgroundColor: '#B3402F' },
   dogWrap: { alignItems: 'center', marginTop: 16 },
   thinking: { textAlign: 'center', fontSize: 14, color: '#8A8377', marginTop: 8 },
-  bubble: {
-    marginTop: 10,
-    alignSelf: 'center',
-    maxWidth: '90%',
-    backgroundColor: '#FFFDF7',
-    borderWidth: 2,
-    borderColor: INK,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  bubbleText: { fontSize: 16, color: INK },
+  reaction: { textAlign: 'center', fontSize: 15, fontWeight: '700', marginTop: 8 },
+  thread: { marginTop: 14, gap: 8 },
+  bubble: { maxWidth: '82%', borderWidth: 2, borderColor: INK, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  bubbleDog: { alignSelf: 'flex-start', backgroundColor: '#FFFDF7' },
+  bubblePlayer: { alignSelf: 'flex-end', backgroundColor: '#DCE7D8' },
+  bubbleText: { fontSize: 15, color: INK },
   inputRow: { flexDirection: 'row', gap: 8, marginTop: 18, alignItems: 'flex-end' },
   input: {
     flex: 1,
@@ -173,13 +209,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: INK,
   },
-  sendBtn: {
-    paddingHorizontal: 18,
-    height: 44,
-    justifyContent: 'center',
-    backgroundColor: INK,
-    borderRadius: 6,
-  },
+  sendBtn: { paddingHorizontal: 18, height: 44, justifyContent: 'center', backgroundColor: INK, borderRadius: 6 },
   sendBtnOff: { opacity: 0.5 },
   sendText: { fontSize: 15, fontWeight: '700', color: '#F4EFE4' },
   overlay: {
