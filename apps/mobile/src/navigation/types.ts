@@ -86,6 +86,7 @@ export type GroupStackParamList = {
   SettingsLlmLogs: undefined;
   SettingsLlmLogDetail: { id: string };
   SettingsClientLogs: undefined;
+  SettingsDogSound: undefined;
   SettingsVoice: undefined;
   SettingsTopicExport: undefined;
   SettingsDocuments: { scope: 'visible' | 'hidden'; highlightId?: string };

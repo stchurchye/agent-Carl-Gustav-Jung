@@ -11,7 +11,7 @@ import {
   loadPersona,
   resetPersonaStore,
   setPersonaCache,
-  setPersonaDog,
+  setPersonaAvatar,
   subscribePersona,
 } from './personaStore';
 
@@ -75,7 +75,7 @@ describe('personaStore', () => {
     expect(mockGetPersona).not.toHaveBeenCalled();
   });
 
-  it('订阅者在 persona / dog 变化时被通知', async () => {
+  it('订阅者在 persona / avatar 变化时被通知', async () => {
     mockGetPersona.mockResolvedValue({ data: PERSONA });
     const listener = jest.fn();
     const unsub = subscribePersona(listener);
@@ -84,7 +84,7 @@ describe('personaStore', () => {
     expect(listener).toHaveBeenCalled();
 
     listener.mockClear();
-    setPersonaDog(null);
+    setPersonaAvatar(null);
     setPersonaCache(PERSONA2);
     expect(listener).toHaveBeenCalledTimes(2);
 

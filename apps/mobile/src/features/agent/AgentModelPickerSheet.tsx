@@ -65,9 +65,9 @@ export function AgentModelPickerSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose} />
-      <View style={styles.sheet}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
         <View style={styles.handle} />
         <Text style={styles.title}>选择 Agent 模型</Text>
         <ScrollView>
@@ -106,7 +106,8 @@ export function AgentModelPickerSheet({
         <Pressable style={styles.closeBtn} onPress={onClose}>
           <Text style={styles.closeBtnText}>关闭</Text>
         </Pressable>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }
@@ -115,6 +116,7 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: colors.backdrop,
+    justifyContent: 'flex-end',
   },
   sheet: {
     backgroundColor: colors.surface,

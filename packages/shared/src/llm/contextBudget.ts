@@ -24,12 +24,13 @@ export type ContextBreakdownMeta = {
 
 /** 上下文分类展示顺序与配色（弹窗图例 / 分段条） */
 export const CONTEXT_BREAKDOWN_META: readonly ContextBreakdownMeta[] = [
-  { key: 'system', labelZh: '系统提示词', color: '#9CA3AF' },
+  { key: 'system', labelZh: '通讯系统', color: '#9CA3AF' },
   { key: 'summary', labelZh: '对话摘要', color: '#F472B6' },
-  { key: 'history', labelZh: '对话内容', color: '#60A5FA' },
+  { key: 'history', labelZh: '维持', color: '#60A5FA' },
   { key: 'document', labelZh: '文档内容', color: '#34D399' },
+  // pendingUser 仍计入 usedTokens(buildUsage),图例必须同列,否则各行之和对不上表头总数。
   { key: 'pendingUser', labelZh: '待发送', color: '#FBBF24' },
-  { key: 'outputReserve', labelZh: '输出预留', color: '#6B7280' },
+  { key: 'outputReserve', labelZh: '预留空间', color: '#6B7280' },
 ] as const;
 
 export type ContextUsage = {

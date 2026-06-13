@@ -43,6 +43,9 @@ jest.mock('../lib/appAlert', () => ({ appAlert: (...a: unknown[]) => mockAppAler
 jest.mock('../lib/soundCues', () => ({
   playMemberDing: jest.fn(),
   playReplyBark: jest.fn(),
+  getCuesEnabled: jest.fn(() => false),
+  loadCuesEnabled: jest.fn().mockResolvedValue(false),
+  setCuesEnabled: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../lib/chatLlmModel', () => ({
   getChatLlmModel: jest.fn().mockResolvedValue('deepseek-chat'),
@@ -51,6 +54,10 @@ jest.mock('../lib/chatLlmModel', () => ({
 }));
 jest.mock('../components/AuthGate', () => ({
   useAuth: () => ({ user: { id: 'u1', displayName: '我' } }),
+}));
+// 绕开共享 persona 缓存(它会 loadPersona → api.getPersona);本测试不关心狗名展示
+jest.mock('../hooks/usePersona', () => ({
+  usePersona: () => ({ persona: null, avatar: null, refresh: jest.fn() }),
 }));
 jest.mock('../features/agent/useAgentModelPicker', () => ({
   useAgentModelPicker: () => ({

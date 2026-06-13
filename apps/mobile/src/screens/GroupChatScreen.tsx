@@ -4,7 +4,6 @@ import {
   AppState,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -24,9 +23,17 @@ import {
   type PixelAvatarSettings,
 } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
-import { playMemberDing } from '../lib/soundCues';
+import {
+  getCuesEnabled,
+  loadCuesEnabled,
+  playMemberDing,
+  playReplyBark,
+  setCuesEnabled,
+} from '../lib/soundCues';
 import { api } from '../lib/api';
 import { ASSISTANT_FALLBACK_NAME } from '../lib/brand';
+import { usePersona } from '../hooks/usePersona';
+import { personaAssistantDisplayName } from '@xzz/shared';
 import { buildGroupStage, messageBelongsToActor } from '../features/stage/adapters/groupStageAdapter';
 import { resolveStageCharacter } from '../features/stage/stageCharacters';
 import { StageView } from '../features/stage/components/StageView';
@@ -50,8 +57,10 @@ import { getChatLlmModel, setChatLlmModel } from '../lib/chatLlmModel';
 import { AskAiHubSheet } from '../components/AskAiHubSheet';
 import { AskAiModelPickerSheet } from '../components/AskAiModelPickerSheet';
 import { ContextComposerModal } from '../components/ContextComposerModal';
-import { ChatUiIcon } from '../components/ChatUiIcon';
-import { chatIcons } from '../assets/chatIcons';
+import { ChatToolsPanel } from '../components/ChatToolsPanel';
+import { WritingAssistantSheet } from '../components/WritingAssistantSheet';
+import { ModelProviderChip } from '../components/ModelProviderChip';
+import { PixelIconButton } from '../components/PixelIconButton';
 import { ChatComposeBar } from '../components/ChatComposeBar';
 import { SlashCommandsTip } from '../components/SlashCommandsTip';
 import { zh } from '../locales/zh-CN';
@@ -132,7 +141,12 @@ function localInvokeHumanMessage(
   };
 }
 
-function localPendingAiMessage(groupId: string, topicId: string): GroupMessage {
+function localPendingAiMessage(
+  groupId: string,
+  topicId: string,
+  invokerUserId: string,
+  invokerAssistantName: string,
+): GroupMessage {
   return {
     id: `local-ai-${Date.now()}`,
     groupId,
@@ -142,6 +156,10 @@ function localPendingAiMessage(groupId: string, topicId: string): GroupMessage {
     content: '',
     contentMode: 'text',
     createdAt: new Date().toISOString(),
+    // 带上发起人 + 狗名:占位狗即「自己的狗」(dog:${invokerUserId}),
+    // 否则落到 dog:unknown 会兜底成一只陌生的通用预设狗,加载时凭空多冒一只狗。
+    invokerUserId,
+    invokerAssistantName,
   };
 }
 
@@ -150,12 +168,14 @@ export function GroupChatScreen({ route, navigation }: Props) {
   const { groupId, groupName, topicId, topicName, scrollToMessageId } = route.params;
   const [displayTopicName, setDisplayTopicName] = useState(topicName);
   const { user } = useAuth();
+  const { persona } = usePersona();
+  const assistantName = personaAssistantDisplayName(persona ?? undefined);
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   // 首载指示:仅在「无缓存可显」时兜底渲染 spinner(缓存命中则瞬时出内容)。
   const [initialLoading, setInitialLoading] = useState(true);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [thinkingLine] = useState(zh.chat.thinking(ASSISTANT_FALLBACK_NAME));
+  const thinkingLine = zh.chat.thinking(assistantName);
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [chatModel, setChatModel] = useState<string>('moonshotai/kimi-k2.6');
   const {
@@ -166,6 +186,8 @@ export function GroupChatScreen({ route, navigation }: Props) {
     pick: pickAgentModel,
   } = useAgentModelPicker();
   const [askAiMode, setAskAiMode] = useState(false);
+  const [cuesOn, setCuesOn] = useState(getCuesEnabled());
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [askAiHubOpen, setAskAiHubOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -175,6 +197,8 @@ export function GroupChatScreen({ route, navigation }: Props) {
   // 提示音去重:已叮过的真人成员消息 id;primed 用于吸收首屏基线(进话题不对历史消息叮)
   const dingSeenRef = useRef<Set<string>>(new Set());
   const dingPrimedRef = useRef(false);
+  const barkSeenRef = useRef<Set<string>>(new Set());
+  const barkPrimedRef = useRef(false);
   const listHostRef = useRef<View>(null);
   const composeRef = useRef<View>(null);
   const [messageAction, setMessageAction] = useState<MessageActionTarget<GroupMessage> | null>(
@@ -253,24 +277,26 @@ export function GroupChatScreen({ route, navigation }: Props) {
   const [memberPixelMap, setMemberPixelMap] = useState<
     ReadonlyMap<string, PixelAvatarSettings | null | undefined>
   >(new Map());
-  useEffect(() => {
-    // 进群拉一次成员表:别人的狗/小人配置(listGroupMembers 已下发 pixel_avatar)
-    void api
-      .listGroupMembers(groupId)
-      .then((res) => {
-        const m = new Map<string, PixelAvatarSettings | null | undefined>();
-        for (const member of res.data) m.set(member.userId, member.pixelAvatar);
-        setMemberPixelMap(m);
-      })
-      .catch(() => {});
-  }, [groupId]);
+  useFocusEffect(
+    useCallback(() => {
+      // 聚焦时拉成员表(含 pixel_avatar):确保换狗后返回群聊时 stage 立即更新
+      void api
+        .listGroupMembers(groupId)
+        .then((res) => {
+          const m = new Map<string, PixelAvatarSettings | null | undefined>();
+          for (const member of res.data) m.set(member.userId, member.pixelAvatar);
+          setMemberPixelMap(m);
+        })
+        .catch(() => {});
+    }, [groupId]),
+  );
   const resolveCharacter = useCallback(
     (actor: StageActor) => resolveStageCharacter(actor, memberPixelMap),
     [memberPixelMap],
   );
   const stage = useMemo(
-    () => buildGroupStage(messagesUi, { selfUserId: user?.id ?? '' }),
-    [messagesUi, user?.id],
+    () => buildGroupStage(messagesUi, { selfUserId: user?.id ?? '', selfAssistantName: assistantName }),
+    [messagesUi, user?.id, assistantName],
   );
 
   useEffect(() => {
@@ -310,28 +336,40 @@ export function GroupChatScreen({ route, navigation }: Props) {
     if (settled.length > 0) setCachedMessages(cacheKey, settled);
   }, [messages, cacheKey, topicId]);
 
-  // 真人成员说话 → 叮一下(狗/agent 的回复走 AgentRunCard 的运行订阅出狗叫,见下)。
-  // 首屏(缓存 seed 或首次加载)只建基线不响;之后每个新真人消息按 id 去重,只叮一次。
+  // 真人成员说话 → 叮一下;AI 回复完成 → 汪一声。
+  // 首屏(缓存 seed 或首次加载)只建基线不响;之后每个新消息按 id 去重,只响一次。
   useEffect(() => {
     if (!dingPrimedRef.current) {
-      // 初始 messages 为空,要等首批数据(缓存 seed 或首次加载)才建基线,
-      // 否则空数组就把 primed 置真、历史一进来会被全部误叮。
       if (messages.length === 0) return;
-      messages.forEach((m) => dingSeenRef.current.add(m.id));
+      messages.forEach((m) => {
+        dingSeenRef.current.add(m.id);
+        barkSeenRef.current.add(m.id);
+      });
       dingPrimedRef.current = true;
+      barkPrimedRef.current = true;
       return;
     }
-    // 一批可能一次进来多条(离线重连/快速连发);整批最多叮一次,避免连放 N 声在共享音柄上打架
     let sawHumanFromOthers = false;
+    let barkAuthorId: string | null = null;
     for (const m of messages) {
-      if (dingSeenRef.current.has(m.id)) continue;
-      dingSeenRef.current.add(m.id);
-      if (m.id.startsWith('local-')) continue; // 自己的乐观占位
-      if (m.kind !== 'human') continue; // 只对真人消息;ai/system 等跳过
-      if (m.authorId === user?.id) continue; // 不对自己叮
-      sawHumanFromOthers = true;
+      const isNew = !dingSeenRef.current.has(m.id);
+      if (isNew) {
+        dingSeenRef.current.add(m.id);
+        barkSeenRef.current.add(m.id);
+      }
+      if (!isNew) continue;
+      if (m.id.startsWith('local-')) continue;
+      if (m.kind === 'human' && m.authorId !== user?.id) sawHumanFromOthers = true;
+      if (m.kind === 'ai') {
+        // 带 agentRun 的 AI 回复由 AgentRunCard 的运行订阅在终态跃迁时出狗叫,
+        // 这里跳过,否则同一条消息会被叫两次;非 agent 的普通 AI 回复仍在此响。
+        const hasAgentRun = !!(m as unknown as { agentRun?: { agentRunId?: string } })
+          .agentRun?.agentRunId;
+        if (!hasAgentRun) barkAuthorId = m.invokerUserId ?? 'dog:unknown';
+      }
     }
     if (sawHumanFromOthers) playMemberDing();
+    if (barkAuthorId !== null) playReplyBark(barkAuthorId);
   }, [messages, user?.id]);
 
   // 同实例换 topic(无 getId 的参数级导航)时 lastIdRef 残留旧话题游标,
@@ -341,6 +379,8 @@ export function GroupChatScreen({ route, navigation }: Props) {
     lastIdRef.current = null;
     dingSeenRef.current.clear();
     dingPrimedRef.current = false;
+    barkSeenRef.current.clear();
+    barkPrimedRef.current = false;
   }, [groupId, topicId]);
 
   // W1b + W1 顺手:进话题先渲染缓存;轮询只在屏幕聚焦时跑,且 app 退后台时跳过 tick。
@@ -353,6 +393,7 @@ export function GroupChatScreen({ route, navigation }: Props) {
           lastIdRef.current = cached[cached.length - 1]?.id ?? null;
         }
       }
+      void loadCuesEnabled().then(setCuesOn);
       void loadMessages()
         .catch((e) => appAlert('消息加载失败', apiErrorText(e).message))
         .finally(() => setInitialLoading(false));
@@ -447,11 +488,11 @@ export function GroupChatScreen({ route, navigation }: Props) {
       setMessages((prev) => [
         ...prev,
         localInvokeHumanMessage(groupId, topicId, user, instruction, chatModel),
-        localPendingAiMessage(groupId, topicId),
+        localPendingAiMessage(groupId, topicId, user.id, assistantName),
       ]);
       scrollToEnd();
     },
-    [user, groupId, topicId, chatModel, scrollToEnd],
+    [user, groupId, topicId, chatModel, assistantName, scrollToEnd],
   );
 
   const runIntentExecute = useCallback(
@@ -504,7 +545,7 @@ export function GroupChatScreen({ route, navigation }: Props) {
             setMessages((prev) => stripLocalGroupMessages(prev));
             setInput((cur) => cur || text); // 服务端没执行,原文还给输入框
           }
-          appAlert('无法执行', data.reason);
+          appAlert(zh.intent.cannotExecute, zh.intent.skipReasons[data.reason] ?? zh.intent.skipReasonFallback);
           return false;
         }
         if (isIntentExecuteResult(data)) {
@@ -594,6 +635,12 @@ export function GroupChatScreen({ route, navigation }: Props) {
       setMessageActionBusy(false);
     }
   }, [messageAction, groupId, topicId]);
+
+  const toggleCues = () => {
+    const next = !cuesOn;
+    setCuesOn(next);
+    void setCuesEnabled(next);
+  };
 
   async function invokeAi() {
     const instruction = prepareChatMessageForSend(input);
@@ -741,25 +788,35 @@ export function GroupChatScreen({ route, navigation }: Props) {
         <WeChatChatHeader
           title={displayTopicName}
           showBack
-          right={
-            <Pressable
-              testID="ask-ai-toggle"
-              style={styles.headerIconBtn}
-              onPress={() => setAskAiMode((v) => !v)}
-              onLongPress={() => setAskAiHubOpen(true)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={askAiMode ? zh.chat.askAiModeOn : zh.chat.askAi}
-            >
-              <ChatUiIcon
-                source={askAiMode ? chatIcons.askAiActive : chatIcons.askAiInactive}
-                size={22}
-                active={askAiMode}
-              />
-            </Pressable>
-          }
-          onTitlePress={() => void renameTopic()}
+          onTitlePress={() => navigation.navigate('GroupTopics', { groupId, groupName })}
           onTitleLongPress={() => void renameTopic()}
+          right={
+            <View style={styles.headerActions}>
+              <ModelProviderChip
+                modelId={chatModel}
+                onPress={() => setAskAiHubOpen(true)}
+                accessibilityLabel={zh.chat.askAiTitle}
+              />
+              <PixelIconButton
+                icon="sound"
+                onPress={toggleCues}
+                active={cuesOn}
+                accessibilityLabel={cuesOn ? zh.chat.soundCuesOn : zh.chat.soundCuesOff}
+              />
+              <PixelIconButton
+                icon="ai"
+                onPress={() => setAskAiMode((v) => !v)}
+                active={askAiMode}
+                accessibilityLabel={askAiMode ? zh.chat.askAiModeOn : zh.chat.askAi}
+                testID="ask-ai-toggle"
+              />
+              <PixelIconButton
+                icon="menu"
+                onPress={() => setToolsOpen(true)}
+                accessibilityLabel={zh.chat.openTools}
+              />
+            </View>
+          }
         />
       </View>
 
@@ -838,14 +895,6 @@ export function GroupChatScreen({ route, navigation }: Props) {
             <SlashCommandsTip
               visible={messages.length === 0 && !pendingIntent && !input.trim()}
             />
-            <Pressable
-              onPress={() => setAgentSheetVisible(true)}
-              style={styles.agentModelChip}
-            >
-              <Text style={styles.agentModelChipText}>
-                {zh.chat.agentModelPrefix}: {agentModel.label} ▾
-              </Text>
-            </Pressable>
             <ChatComposeBar
               value={input}
               onChangeText={setInput}
@@ -955,6 +1004,15 @@ export function GroupChatScreen({ route, navigation }: Props) {
         </BubbleTextSelectionProvider>
       </KeyboardAvoidingView>
 
+      <WritingAssistantSheet
+        visible={toolsOpen}
+        title={zh.chat.sideTitle}
+        closeLabel={zh.chat.closeTools}
+        onClose={() => setToolsOpen(false)}
+      >
+        <ChatToolsPanel />
+      </WritingAssistantSheet>
+
       <AskAiHubSheet
         visible={askAiHubOpen}
         onClose={() => setAskAiHubOpen(false)}
@@ -1027,12 +1085,11 @@ export function GroupChatScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   pageHost: { position: 'relative' },
-  headerIconBtn: {
-    width: 36,
-    height: 36,
+  headerActions: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 6,
+    gap: 6,
+    flexShrink: 0,
   },
   systemRow: {
     alignItems: 'center',
@@ -1073,20 +1130,5 @@ const styles = StyleSheet.create({
   },
   pendingText: {
     flex: 1,
-  },
-  agentModelChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    backgroundColor: colors.selectedBg,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginBottom: 4,
-    marginLeft: 8,
-  },
-  agentModelChipText: {
-    fontSize: 12,
-    color: colors.link,
   },
 });

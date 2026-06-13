@@ -217,7 +217,7 @@ export async function executeIntent(
         : { user: { preferredName: name } };
     const confirmation =
       target === 'assistant'
-        ? `汪！记住了，我以后就叫「${name}」！`
+        ? `Bow wow！记住了，我以后就叫「${name}」！`
         : `好嘞，以后就叫你「${name}」！`;
     if (input.channel === 'private') {
       if (!input.sessionId) return { type: 'skipped', reason: 'RENAME_REQUIRES_SESSION' };

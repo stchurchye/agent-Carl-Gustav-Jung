@@ -7,6 +7,11 @@ jest.mock('@react-navigation/native', () => {
   return { useFocusEffect: (cb: () => void) => React.useEffect(cb, [cb]) };
 });
 
+// useBottomTabBarHeight 需 Bottom Tab Navigator 上下文,测试里裸渲染屏幕 → 桩成固定高度。
+jest.mock('@react-navigation/bottom-tabs', () => ({
+  useBottomTabBarHeight: () => 0,
+}));
+
 const mockUseBrainSnapshot = jest.fn();
 jest.mock('../../brain/useBrainSnapshot', () => ({
   useBrainSnapshot: () => mockUseBrainSnapshot(),

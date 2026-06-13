@@ -20,7 +20,7 @@ export function messageBelongsToActor(m: GroupMessage, actorId: string): boolean
 /** 群聊:人说话显示人,AI 说话显示发起人(invoker)的狗。system/link_card 走字幕条。 */
 export function buildGroupStage(
   messages: GroupMessage[],
-  _opts: { selfUserId: string },
+  opts: { selfUserId: string; selfAssistantName?: string },
 ): { actors: StageActor[]; lines: StageLine[] } {
   const actorsById = new Map<string, StageActor>();
   const lines: StageLine[] = [];
@@ -47,20 +47,27 @@ export function buildGroupStage(
     if (m.kind === 'ai') {
       const ownerId = m.invokerUserId ?? null;
       const dogId = ownerId ? `dog:${ownerId}` : 'dog:unknown';
+      const storedName = m.invokerAssistantName?.trim() || ASSISTANT_FALLBACK_NAME;
+      const actorName =
+        ownerId && ownerId === opts.selfUserId && opts.selfAssistantName
+          ? opts.selfAssistantName
+          : storedName;
       ensureActor({
         id: dogId,
         kind: 'dog',
-        name: m.invokerAssistantName?.trim() || ASSISTANT_FALLBACK_NAME,
+        name: actorName,
         seed: ownerId ?? 'assistant',
         ownerActorId: ownerId ? `user:${ownerId}` : undefined,
       });
       const agentRunId = (m as unknown as { agentRun?: { agentRunId?: string } }).agentRun
         ?.agentRunId;
+      // 本地 AI 占位(local-ai-*,内容为空)= 等回复中 → 'pending',让舞台出「思考中」而非空气泡。
+      const isPending = m.id.startsWith('local-ai-') && !m.content?.trim();
       lines.push({
         id: m.id,
         actorId: dogId,
         text: m.content,
-        kind: agentRunId ? 'agent' : 'chat',
+        kind: agentRunId ? 'agent' : isPending ? 'pending' : 'chat',
         agentRunId,
         createdAt: m.createdAt,
       });
@@ -82,6 +89,13 @@ export function buildGroupStage(
       kind: 'chat',
       createdAt: m.createdAt,
     });
+  }
+
+  // ensureActor 是首次写入即锁定的逻辑,所以在循环结束后统一把自己的狗名覆写成当前活体名。
+  if (opts.selfAssistantName && opts.selfUserId) {
+    const selfDogId = `dog:${opts.selfUserId}`;
+    const selfDog = actorsById.get(selfDogId);
+    if (selfDog) actorsById.set(selfDogId, { ...selfDog, name: opts.selfAssistantName });
   }
 
   return { actors: [...actorsById.values()], lines };

@@ -81,7 +81,6 @@ import {
   setCachedMessages,
 } from '../lib/chatMessageCache';
 import { ChatComposeBar } from '../components/ChatComposeBar';
-import { SlashCommandsTip } from '../components/SlashCommandsTip';
 import { ChatMessageRow, chatBubbleTextStyle } from '../components/ChatMessageRow';
 import { ChatMessageContent } from '../components/chat/ChatMessageContent';
 import {
@@ -97,8 +96,8 @@ import type { MessageBubbleAnchor } from '../components/chat/MessageBubbleAnchor
 import { canMarkChatMessage } from '../lib/canMarkLlmExclude';
 import { openMessageAction, type MessageActionTarget } from '../lib/messageActionMenu';
 import { WeChatChatHeader } from '../components/WeChatChatHeader';
-import { ChatUiIcon } from '../components/ChatUiIcon';
-import { chatIcons } from '../assets/chatIcons';
+import { ModelProviderChip } from '../components/ModelProviderChip';
+import { PixelIconButton } from '../components/PixelIconButton';
 import { useAuth } from '../components/AuthGate';
 import { getChatLlmModel, setChatLlmModel } from '../lib/chatLlmModel';
 import { AskAiHubSheet } from '../components/AskAiHubSheet';
@@ -150,7 +149,10 @@ export function ChatScreen({ route, navigation }: Props) {
   const [assistantName, setAssistantName] = useState(ASSISTANT_FALLBACK_NAME);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [messages, setMessages] = useState<ChatUiMessage[]>([]);
+  // 惰性初始化:有 sessionId 时同步读缓存,第一帧即有内容(stale-while-revalidate 真正前置)。
+  const [messages, setMessages] = useState<ChatUiMessage[]>(() =>
+    initialSessionId ? (getCachedMessages<ChatUiMessage>(initialSessionId) ?? []) : [],
+  );
   // 首载指示:仅在「无缓存可显」时兜底渲染 spinner(缓存命中则瞬时出内容)。
   const [initialLoading, setInitialLoading] = useState(true);
   const [input, setInput] = useState('');
@@ -350,6 +352,9 @@ export function ChatScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    // 同实例换会话(参数级导航,无 remount)时先用新会话缓存覆盖旧消息,
+    // 否则首帧仍是上个会话的内容,且 loadMessages 的 preserveLocal merge 会把旧消息也并进来。
+    if (initialSessionId) seedFromCache(initialSessionId);
     (async () => {
       if (initialSessionId) {
         const list = await refreshSessions();
@@ -357,7 +362,6 @@ export function ChatScreen({ route, navigation }: Props) {
         if (cancelled) return;
         if (found) {
           setSession(found);
-          seedFromCache(found.id);
           await loadMessages(found.id);
           return;
         }
@@ -372,7 +376,7 @@ export function ChatScreen({ route, navigation }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [initialSessionId, ensureSession, loadMessages, refreshSessions]);
+  }, [initialSessionId, ensureSession, loadMessages, refreshSessions, seedFromCache]);
 
   const sessionIdRef = useRef<string | null>(null);
   const messageCountRef = useRef(0);
@@ -585,7 +589,8 @@ export function ChatScreen({ route, navigation }: Props) {
           },
         });
         if (!ok && res.data.type === 'skipped') {
-          appAlert('无法执行', res.data.reason);
+          const msg = zh.intent.skipReasons[res.data.reason] ?? zh.intent.skipReasonFallback;
+          appAlert(zh.intent.cannotExecute, msg);
         }
         void refreshSessions();
         scrollToEnd();
@@ -926,17 +931,6 @@ export function ChatScreen({ route, navigation }: Props) {
           onDismiss={() => setPendingIntent(null)}
         />
       ) : null}
-        <SlashCommandsTip
-          visible={messages.length === 0 && !pendingIntent && !input.trim()}
-        />
-        <Pressable
-          onPress={() => setAgentSheetVisible(true)}
-          style={styles.agentModelChip}
-        >
-          <Text style={styles.agentModelChipText}>
-            {zh.chat.agentModelPrefix}: {agentModel.label} ▾
-          </Text>
-        </Pressable>
       <ChatComposeBar
         value={input}
         onChangeText={setInput}
@@ -973,58 +967,22 @@ export function ChatScreen({ route, navigation }: Props) {
 
   const headerRight = (
     <View style={styles.headerActions}>
-      <Pressable
-        style={styles.headerIconBtn}
+      <ModelProviderChip
+        modelId={chatModel}
         onPress={() => setAskAiHubOpen(true)}
-        hitSlop={8}
-        accessibilityRole="button"
         accessibilityLabel={zh.chat.askAiTitle}
-      >
-        <ChatUiIcon source={chatIcons.askAiInactive} size={22} />
-      </Pressable>
-      <Pressable
-        style={[styles.headerIconBtn, cuesOn && styles.headerIconBtnActive]}
+      />
+      <PixelIconButton
+        icon="sound"
         onPress={toggleCues}
-        hitSlop={8}
-        accessibilityRole="button"
+        active={cuesOn}
         accessibilityLabel={cuesOn ? zh.chat.soundCuesOn : zh.chat.soundCuesOff}
-      >
-        <ChatUiIcon source={chatIcons.readAloud} size={22} active={cuesOn} />
-      </Pressable>
-      <Pressable
-        style={styles.headerIconBtn}
-        onPress={() =>
-          session?.id
-            ? navigateBrainTab(navigation, 'SettingsMemory', {
-                scope: 'session',
-                sessionId: session.id,
-              })
-            : undefined
-        }
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={zh.me.sessionMemoryTitle}
-      >
-        <Text style={styles.headerMemLink}>记忆</Text>
-      </Pressable>
-      <Pressable
-        style={styles.headerIconBtn}
-        onPress={() => navigation.navigate('SettingsLlmLogs')}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={zh.me.llmLogTitle}
-      >
-        <Text style={styles.headerMemLink}>日志</Text>
-      </Pressable>
-      <Pressable
-        style={styles.headerIconBtn}
+      />
+      <PixelIconButton
+        icon="menu"
         onPress={() => setToolsOpen(true)}
-        hitSlop={8}
-        accessibilityRole="button"
         accessibilityLabel={zh.chat.openTools}
-      >
-        <ChatUiIcon source={chatIcons.topics} size={22} />
-      </Pressable>
+      />
     </View>
   );
 
@@ -1136,6 +1094,14 @@ export function ChatScreen({ route, navigation }: Props) {
         onClose={() => setAskAiHubOpen(false)}
         onChangeModel={() => setModelPickerOpen(true)}
         onComposeContext={() => setComposerOpen(true)}
+        onNavigateMemory={() => {
+          if (session?.id) {
+            navigation.navigate('SettingsMemory', { scope: 'session', sessionId: session.id });
+          }
+        }}
+        onNavigateLogs={() => {
+          navigation.navigate('SettingsLlmLogs');
+        }}
       />
       <AskAiModelPickerSheet
         visible={modelPickerOpen}
@@ -1184,20 +1150,7 @@ export function ChatScreen({ route, navigation }: Props) {
         closeLabel={zh.chat.closeTools}
         onClose={() => setToolsOpen(false)}
       >
-        <ChatToolsPanel
-          sessions={sessions}
-          currentSessionId={session?.id ?? null}
-          sending={sending}
-          onNewSession={() => {
-            void newSession();
-          }}
-          onSelectSession={(sessionId) => {
-            void switchSession(sessionId).then(() => setToolsOpen(false));
-          }}
-          onRenameSession={(s) => {
-            void renameSession(s);
-          }}
-        />
+        <ChatToolsPanel />
       </WritingAssistantSheet>
       <AgentModelPickerSheet
         visible={agentSheetVisible}
@@ -1250,11 +1203,6 @@ const styles = StyleSheet.create({
   headerIconBtnDisabled: {
     opacity: 0.35,
   },
-  headerMemLink: {
-    fontSize: 13,
-    color: colors.primary,
-    fontWeight: '600',
-  },
   messageCell: {
     flexGrow: 0,
     flexShrink: 0,
@@ -1279,19 +1227,4 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodyLineHeight,
   },
   emptyTablet: { fontSize: typography.body, marginTop: 56 },
-  agentModelChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    backgroundColor: colors.selectedBg,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginBottom: 4,
-    marginLeft: 8,
-  },
-  agentModelChipText: {
-    fontSize: 12,
-    color: colors.link,
-  },
 });
