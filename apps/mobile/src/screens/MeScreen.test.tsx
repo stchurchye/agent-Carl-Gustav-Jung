@@ -70,4 +70,11 @@ describe('MeScreen 一行一个像素行', () => {
     fireEvent.press(getByText(zh.me.myDog));
     expect(navigate).toHaveBeenCalledWith('SettingsMyDog');
   });
+
+  it('玩一玩 → GameHub', async () => {
+    const { getByText, navigate } = mount();
+    await waitFor(() => expect(getByText(zh.me.playGames)).toBeTruthy());
+    fireEvent.press(getByText(zh.me.playGames));
+    expect(navigate).toHaveBeenCalledWith('GameHub');
+  });
 });

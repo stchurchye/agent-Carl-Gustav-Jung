@@ -92,6 +92,13 @@ export type GroupStackParamList = {
   SettingsDocuments: { scope: 'visible' | 'hidden'; highlightId?: string };
   StudioManage: undefined;
   StudioSearch: undefined;
+  /** 小游戏合集(从「我的」进入) */
+  GameHub: undefined;
+  /** seed 可选:仅测试注入用,正常进入随机开局 */
+  GameSleuth: { seed?: number } | undefined;
+  GameEscape: undefined;
+  /** seed 可选:仅测试注入用 */
+  GamePersuade: { seed?: number } | undefined;
   PrivateChat: { sessionId?: string; scrollToMessageId?: string } | undefined;
   GroupTopics: { groupId: string; groupName: string };
   GroupChat: {

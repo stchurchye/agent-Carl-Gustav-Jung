@@ -63,6 +63,10 @@ export function MeScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('SettingsTopicExport')}
           />
           <PixelListCell
+            label={zh.me.playGames}
+            onPress={() => navigation.navigate('GameHub')}
+          />
+          <PixelListCell
             label={zh.me.clientLogTitle}
             onPress={() => navigation.navigate('SettingsClientLogs')}
           />

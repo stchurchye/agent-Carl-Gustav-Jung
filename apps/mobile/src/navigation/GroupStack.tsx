@@ -30,6 +30,10 @@ import { WritingChaptersScreen } from '../screens/WritingChaptersScreen';
 import { WritingScreen } from '../screens/WritingScreen';
 import { DiffPreviewScreen } from '../screens/DiffPreviewScreen';
 import { RevisionHistoryScreen } from '../screens/RevisionHistoryScreen';
+import { GameHubScreen } from '../features/games/GameHubScreen';
+import { GameSleuthScreen } from '../features/games/sleuth/GameSleuthScreen';
+import { GameEscapeScreen } from '../features/games/escape/GameEscapeScreen';
+import { GamePersuadeScreen } from '../features/games/persuade/GamePersuadeScreen';
 import { zh } from '../locales/zh-CN';
 import { wechat } from '../theme/wechat';
 
@@ -158,6 +162,26 @@ export function GroupStack() {
       <Stack.Screen
         name="StudioSearch"
         component={StudioSearchScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GameHub"
+        component={GameHubScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GameSleuth"
+        component={GameSleuthScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GameEscape"
+        component={GameEscapeScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GamePersuade"
+        component={GamePersuadeScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
