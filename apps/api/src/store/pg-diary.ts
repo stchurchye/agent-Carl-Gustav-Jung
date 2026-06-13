@@ -111,6 +111,24 @@ export async function listDiaryEntries(
   return rows.map(rowDiary);
 }
 
+/** 矫正:改写正文并回到 draft(内容变了需重新确认);篇不存在返回 undefined。 */
+export async function setDiarySummary(
+  userId: string,
+  scope: DiaryScope,
+  scopeId: string,
+  dayKey: string,
+  summary: string,
+): Promise<DiaryEntry | undefined> {
+  const { rows } = await getPool().query(
+    `UPDATE diary_entries
+     SET summary = $5, status = 'draft', updated_at = $6
+     WHERE owner_id = $1 AND scope = $2 AND scope_id = $3 AND day_key = $4
+     RETURNING *`,
+    [userId, scope, scopeId, dayKey, summary, now()],
+  );
+  return rows[0] ? rowDiary(rows[0]) : undefined;
+}
+
 /** 确认/蒸馏时改状态(可顺带打 distilled_at);不动正文。 */
 export async function setDiaryStatus(
   userId: string,

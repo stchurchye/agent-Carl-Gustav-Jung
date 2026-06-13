@@ -11,7 +11,7 @@ import {
 import { parseReplyDialect } from '../lib/deepseek.js';
 import { getZenMuxKey, handleZenMuxError } from '../lib/zenmux-handler.js';
 import { getDiaryEntry, listDiaryEntries } from '../store/pg-diary.js';
-import { generateDiaryForDay } from '../lib/diaryService.js';
+import { generateDiaryForDay, refineDiaryForDay } from '../lib/diaryService.js';
 
 export const diaryRouter = new Hono<{ Variables: AppVariables }>();
 
@@ -88,4 +88,46 @@ async function handleGenerate(
 diaryRouter.post('/self/:dayKey/generate', (c) => handleGenerate(c, 'self', ''));
 diaryRouter.post('/group/:groupId/:dayKey/generate', (c) =>
   handleGenerate(c, 'group', c.req.param('groupId')),
+);
+
+// ---------- 矫正(跟 bow wow 聊着改) ----------
+async function handleRefine(
+  c: Context<{ Variables: AppVariables }>,
+  scope: DiaryScope,
+  scopeId: string,
+) {
+  const dayKey = c.req.param('dayKey');
+  if (!dayKey || !isValidDiaryDayKey(dayKey)) return jsonError(c, ErrorCodes.VALIDATION, 400);
+  const body = await c.req
+    .json<{ instruction?: string }>()
+    .catch(() => ({}) as { instruction?: string });
+  const instruction = body.instruction?.trim();
+  if (!instruction) return jsonError(c, ErrorCodes.VALIDATION, 400);
+
+  let apiKey: string;
+  try {
+    apiKey = getZenMuxKey(c);
+  } catch (e) {
+    return handleZenMuxError(c, e);
+  }
+  const dialect = parseReplyDialect(c.req.header(REPLY_DIALECT_HEADER));
+  try {
+    const entry = await refineDiaryForDay({
+      userId: c.get('userId')!,
+      scope,
+      scopeId,
+      dayKey,
+      instruction,
+      apiKey,
+      dialect,
+    });
+    if (!entry) return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+    return c.json({ ok: true, data: entry, requestId: c.get('requestId') });
+  } catch (e) {
+    return handleZenMuxError(c, e);
+  }
+}
+diaryRouter.post('/self/:dayKey/refine', (c) => handleRefine(c, 'self', ''));
+diaryRouter.post('/group/:groupId/:dayKey/refine', (c) =>
+  handleRefine(c, 'group', c.req.param('groupId')),
 );

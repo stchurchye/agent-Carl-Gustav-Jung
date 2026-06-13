@@ -50,3 +50,38 @@ export async function generateDiarySummary(p: GenerateDiaryParams): Promise<stri
   );
   return raw.content.trim();
 }
+
+export interface RefineDiaryParams {
+  apiKey: string;
+  persona: UserPersonaSettings | undefined;
+  dialect?: ReplyDialect | null;
+  scope: DiaryScope;
+  /** 当前这篇日记正文 */
+  existingSummary: string;
+  /** 用户「跟 bow wow 聊着改」的自然语言意见 */
+  instruction: string;
+}
+
+/**
+ * 按用户意见重写日记(矫正)。不依赖当天原始对话,只拿现有正文 + 用户反馈让狗狗重写,
+ * 保持第一人称口吻。instruction 为空则原样返回(无可改)。
+ */
+export async function refineDiarySummary(p: RefineDiaryParams): Promise<string> {
+  const instruction = p.instruction.trim();
+  const existing = p.existingSummary.trim();
+  if (!instruction) return existing;
+
+  const system = `${chatPersonaSystem(p.persona, p.dialect)}\n\n${diaryPromptForDialect(p.scope, p.dialect)}`;
+  const userContent = `这是你已经写好的日记:\n${existing}\n\n主人希望这样改:${instruction}\n\n请按主人的意见重写这篇日记,只调整他说的地方、其余保持,仍用你这只狗的第一人称口吻,只输出日记正文。`;
+
+  const raw = await zenmuxChatFromMessages(
+    p.apiKey,
+    ZENMUX_CHAT_COMPACT_MODEL,
+    [
+      { role: 'system', content: system },
+      { role: 'user', content: userContent },
+    ],
+    { maxTokens: 600, temperature: 0.4 },
+  );
+  return raw.content.trim();
+}

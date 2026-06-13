@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
-vi.mock('./diaryGenerate.js', () => ({ generateDiarySummary: vi.fn() }));
+vi.mock('./diaryGenerate.js', () => ({ generateDiarySummary: vi.fn(), refineDiarySummary: vi.fn() }));
 
 import { randomUUID } from 'crypto';
 import { describeDb } from '../testUtils/dbGuard.js';
@@ -10,10 +10,11 @@ import { createUser, createChatSession } from '../store/pg.js';
 import { getDiaryEntry, setDiaryStatus, upsertDiaryEntry } from '../store/pg-diary.js';
 import { hashPassword } from './auth.js';
 import { ensureGroup } from './agent/__tests__/_groupFixture.js';
-import { generateDiarySummary } from './diaryGenerate.js';
-import { generateDiaryForDay } from './diaryService.js';
+import { generateDiarySummary, refineDiarySummary } from './diaryGenerate.js';
+import { generateDiaryForDay, refineDiaryForDay } from './diaryService.js';
 
 const mockGen = generateDiarySummary as unknown as ReturnType<typeof vi.fn>;
+const mockRefine = refineDiarySummary as unknown as ReturnType<typeof vi.fn>;
 
 const DAY = '2026-06-20';
 const DAY_START = '2026-06-20T00:00:00.000Z';
@@ -50,6 +51,8 @@ describeDb('diaryService.generateDiaryForDay', { timeout: 20000 }, () => {
     await getPool().query('DELETE FROM diary_entries');
     mockGen.mockReset();
     mockGen.mockResolvedValue('汪!今天的小结。');
+    mockRefine.mockReset();
+    mockRefine.mockResolvedValue('汪!改好了的小结。');
   });
 
   it('self:取当日私聊 → 喂 transcript → upsert draft', async () => {
@@ -112,5 +115,28 @@ describeDb('diaryService.generateDiaryForDay', { timeout: 20000 }, () => {
     expect(entry?.scope).toBe('group');
     expect(entry?.scopeName).toBeTruthy();
     expect(entry?.sourceCount).toBe(1);
+  });
+
+  it('refine:改写正文并回 draft(即便原先已 confirmed)', async () => {
+    const u = await mkUser('dr');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: '原始正文' });
+    await setDiaryStatus(u.id, 'self', '', DAY, 'confirmed');
+    const entry = await refineDiaryForDay({
+      userId: u.id, scope: 'self', scopeId: '', dayKey: DAY,
+      instruction: '写温暖点', apiKey: 'k',
+    });
+    expect(entry?.summary).toBe('汪!改好了的小结。');
+    expect(entry?.status).toBe('draft'); // 内容变了,回 draft 待重新确认
+    expect(mockRefine).toHaveBeenCalledTimes(1);
+  });
+
+  it('refine:篇不存在 → null,不调 LLM', async () => {
+    const u = await mkUser('dr2');
+    const entry = await refineDiaryForDay({
+      userId: u.id, scope: 'self', scopeId: '', dayKey: DAY,
+      instruction: '改改', apiKey: 'k',
+    });
+    expect(entry).toBeNull();
+    expect(mockRefine).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@ import { expect, it, beforeAll, vi } from 'vitest';
 
 vi.mock('../../lib/diaryGenerate.js', () => ({
   generateDiarySummary: vi.fn().mockResolvedValue('汪!测试日记。'),
+  refineDiarySummary: vi.fn().mockResolvedValue('汪!矫正后的日记。'),
 }));
 
 import { Hono } from 'hono';
@@ -102,5 +103,36 @@ describeDb('diary routes', { timeout: 20000 }, () => {
 
     const got = await req(`/api/diary/self/${DAY}`, { token: accessToken });
     expect(got.status).toBe(200);
+  });
+
+  it('POST refine 缺 instruction → 400', async () => {
+    const u = await ensureUser('r-rf0');
+    const { accessToken } = await signAccessToken(u);
+    const res = await req(`/api/diary/self/${DAY}/refine`, {
+      method: 'POST', token: accessToken, key: true, body: {},
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST refine 篇不存在 → 404', async () => {
+    const u = await ensureUser('r-rf404');
+    const { accessToken } = await signAccessToken(u);
+    const res = await req(`/api/diary/self/${DAY}/refine`, {
+      method: 'POST', token: accessToken, key: true, body: { instruction: '改改' },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST refine happy:先 generate 再 refine → 200,正文换成矫正结果、回 draft', async () => {
+    const u = await ensureUser('r-rf-ok');
+    const { accessToken } = await signAccessToken(u);
+    await req(`/api/diary/self/${DAY}/generate`, { method: 'POST', token: accessToken, key: true, body: WINDOW });
+    const res = await req(`/api/diary/self/${DAY}/refine`, {
+      method: 'POST', token: accessToken, key: true, body: { instruction: '写温暖点' },
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: { summary: string; status: string } };
+    expect(json.data.summary).toBe('汪!矫正后的日记。');
+    expect(json.data.status).toBe('draft');
   });
 });

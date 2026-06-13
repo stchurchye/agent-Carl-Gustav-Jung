@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('./zenmux.js', () => ({ zenmuxChatFromMessages: vi.fn() }));
 
 import { zenmuxChatFromMessages } from './zenmux.js';
-import { generateDiarySummary } from './diaryGenerate.js';
+import { generateDiarySummary, refineDiarySummary } from './diaryGenerate.js';
 
 const mockLlm = zenmuxChatFromMessages as unknown as ReturnType<typeof vi.fn>;
 
@@ -70,5 +70,31 @@ describe('generateDiarySummary', () => {
     expect(msgs[1].content).toContain('读书会');
     expect(msgs[1].content).toContain('已有日记');
     expect(msgs[1].content).toContain('更新');
+  });
+});
+
+describe('refineDiarySummary', () => {
+  it('带 instruction:system 含 persona,user 含原文 + 用户意见,返回重写正文', async () => {
+    const out = await refineDiarySummary({
+      apiKey: 'k',
+      persona: { identity: { assistantName: '旺财' } },
+      scope: 'self',
+      existingSummary: '今天主人很累。',
+      instruction: '重点写我们一起散步那段',
+    });
+    expect(out).toBe('汪!今天主人很累,我一直陪着他。');
+    const msgs = mockLlm.mock.calls[0][2] as Array<{ role: string; content: string }>;
+    expect(msgs[0].content).toContain('旺财');
+    expect(msgs[1].content).toContain('今天主人很累'); // 原文
+    expect(msgs[1].content).toContain('重点写我们一起散步那段'); // 用户意见
+  });
+
+  it('instruction 为空 → 原样返回,不调 LLM', async () => {
+    const out = await refineDiarySummary({
+      apiKey: 'k', persona: undefined, scope: 'self',
+      existingSummary: '原文', instruction: '   ',
+    });
+    expect(out).toBe('原文');
+    expect(mockLlm).not.toHaveBeenCalled();
   });
 });

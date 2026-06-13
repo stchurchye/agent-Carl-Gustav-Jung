@@ -8,8 +8,8 @@ import {
 import { getPersonaSettings } from '../store/pg-profile.js';
 import { getPrivateMessagesForDay } from '../store/pg.js';
 import { getGroupMessagesForDay, getGroupName } from '../store/pg-social.js';
-import { getDiaryEntry, upsertDiaryEntry } from '../store/pg-diary.js';
-import { generateDiarySummary } from './diaryGenerate.js';
+import { getDiaryEntry, upsertDiaryEntry, setDiarySummary } from '../store/pg-diary.js';
+import { generateDiarySummary, refineDiarySummary } from './diaryGenerate.js';
 
 /** 当日消息上限:超出只取最近的若干条,避免把一整天的群聊喂爆 LLM 上下文。 */
 const MAX_DIARY_MESSAGES = 300;
@@ -84,4 +84,34 @@ export async function generateDiaryForDay(
     status: 'draft',
     sourceCount: totalCount,
   });
+}
+
+export interface RefineDiaryForDayParams {
+  userId: string;
+  scope: DiaryScope;
+  scopeId: string;
+  dayKey: string;
+  instruction: string;
+  apiKey: string;
+  dialect?: ReplyDialect | null;
+}
+
+/**
+ * 矫正:用户「跟 bow wow 聊着改」—— 拿现有这篇日记 + 用户意见让狗狗重写,改写正文并回 draft。
+ * 篇不存在返回 null(调用方转 404)。矫正的是 owner 自己的私有篇,不需要群成员校验。
+ */
+export async function refineDiaryForDay(p: RefineDiaryForDayParams): Promise<DiaryEntry | null> {
+  const existing = await getDiaryEntry(p.userId, p.scope, p.scopeId, p.dayKey);
+  if (!existing) return null;
+
+  const persona = await getPersonaSettings(p.userId);
+  const summary = await refineDiarySummary({
+    apiKey: p.apiKey,
+    persona,
+    dialect: p.dialect,
+    scope: p.scope,
+    existingSummary: existing.summary,
+    instruction: p.instruction,
+  });
+  return (await setDiarySummary(p.userId, p.scope, p.scopeId, p.dayKey, summary)) ?? existing;
 }
