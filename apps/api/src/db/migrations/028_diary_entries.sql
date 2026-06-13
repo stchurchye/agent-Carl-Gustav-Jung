@@ -3,12 +3,12 @@
 CREATE TABLE IF NOT EXISTS diary_entries (
   id TEXT PRIMARY KEY,
   owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  scope TEXT NOT NULL DEFAULT 'self',          -- 'self' | 'group'
+  scope TEXT NOT NULL DEFAULT 'self' CHECK (scope IN ('self', 'group')),
   scope_id TEXT NOT NULL DEFAULT '',           -- self: ''; group: groupId(软引用,不硬外键 → 退群保留快照)
   scope_name TEXT,                             -- 群名快照,退群/删群后仍能展示「我眼中的{群名}」
   day_key TEXT NOT NULL,                        -- 'YYYY-MM-DD',按 owner 本地时区切分
   summary TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'draft',         -- draft | confirmed | distilled
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'confirmed', 'distilled')),
   source_count INT NOT NULL DEFAULT 0,          -- 生成时纳入的消息条数(0 = 当天无对话)
   source_max_msg_id TEXT,                       -- 见过的最后一条消息 id(增量重算水位)
   distilled_at TIMESTAMPTZ,

@@ -8,9 +8,12 @@
  *
  * 生命周期:draft(已生成,可重写/矫正) → confirmed(用户确认) → distilled(已蒸馏进记忆)。
  */
-export type DiaryScope = 'self' | 'group';
+/** scope/status 的运行时常量与类型单一来源(供 DB CHECK 之外的应用层校验/遍历复用) */
+export const DIARY_SCOPES = ['self', 'group'] as const;
+export type DiaryScope = (typeof DIARY_SCOPES)[number];
 
-export type DiaryStatus = 'draft' | 'confirmed' | 'distilled';
+export const DIARY_STATUSES = ['draft', 'confirmed', 'distilled'] as const;
+export type DiaryStatus = (typeof DIARY_STATUSES)[number];
 
 export interface DiaryEntry {
   id: string;
@@ -34,7 +37,14 @@ export interface DiaryRefineRequest {
   instruction: string;
 }
 
-/** day_key 格式校验:'YYYY-MM-DD' */
+/**
+ * day_key 校验:'YYYY-MM-DD' 且必须是真实存在的日历日。
+ * 只查格式会放过 2026-13-45 / 2026-02-30 这类不存在的日期,故回填比对剔除溢出。
+ */
 export function isValidDiaryDayKey(dayKey: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(dayKey);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) return false;
+  const [y, m, d] = dayKey.split('-').map(Number);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
