@@ -595,6 +595,24 @@ export async function getChatMessages(
   return rows.map((r) => r.payload as ChatMessage);
 }
 
+/**
+ * 取 owner 在 [dayStartIso, dayEndIso) 窗口内的所有私聊消息(跨会话),用于个人日记生成。
+ * 走 idx_private_messages_owner_created(owner_id, created_at)。窗口由调用方按本地时区算出 UTC 边界。
+ */
+export async function getPrivateMessagesForDay(
+  userId: string,
+  dayStartIso: string,
+  dayEndIso: string,
+): Promise<ChatMessage[]> {
+  const { rows } = await getPool().query(
+    `SELECT payload FROM private_chat_messages
+     WHERE owner_id = $1 AND created_at >= $2 AND created_at < $3
+     ORDER BY created_at`,
+    [userId, dayStartIso, dayEndIso],
+  );
+  return rows.map((r) => r.payload as ChatMessage);
+}
+
 export async function addChatMessage(
   userId: string,
   sessionId: string,
