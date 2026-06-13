@@ -9,6 +9,7 @@ export * from './avatar/presets.js';
 export * from './prompts/buildPersonaPrompt.js';
 export * from './social.js';
 export * from './diary.js';
+export * from './prompts/diary.js';
 export * from './memory/formatMemoryBlock.js';
 export * from './memory/scoreMemory.js';
 export * from './memory/limits.js';
