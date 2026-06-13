@@ -12,8 +12,10 @@ export type Choice = { kind: 'choice'; prompt?: string; options: ChoiceOption[] 
 export type SayLine = {
   kind: 'sayline';
   who: CharId;
-  /** 戏剧意图(喂给判官,不直接显示) */
+  /** 戏剧意图(喂给判官,不直接显示给玩家) */
   intent: string;
+  /** 场景情境(喂给判官做背景) */
+  context?: string;
   hint?: string;
   onPass?: SceneId;
   onFail?: SceneId;

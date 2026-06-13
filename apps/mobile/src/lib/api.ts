@@ -892,6 +892,19 @@ export const api = {
       { method: 'POST', body: JSON.stringify(input) },
     ),
 
+  /** 犬朝后宫:判玩家这句台词是否达到当前戏剧意图(分数+pass 服务端夹紧) */
+  dramaSay: (input: {
+    npcName: string;
+    npcPersonality?: string;
+    sceneContext: string;
+    intent: string;
+    playerLine: string;
+  }) =>
+    request<{ pass: boolean; reply: string; score: number; hint?: string }>('/api/game/drama/say', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
   listLlmLogs: (limit = 50) =>
     request<LlmRequestLogListItem[]>(`/api/llm-logs?limit=${limit}`),
 

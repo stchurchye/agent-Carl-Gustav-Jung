@@ -10,6 +10,7 @@ import { zh } from '../../../locales/zh-CN';
 import type { GroupStackParamList } from '../../../navigation/types';
 import { ACT1 } from './script';
 import { castMember } from './cast';
+import { SayLinePanel } from './SayLinePanel';
 import { advanceStory, currentStep, startStory, type DramaState } from './story';
 
 const G = zh.games.drama;
@@ -71,13 +72,12 @@ export function DramaScreen(_props: Props) {
             ))}
           </>
         ) : step?.kind === 'sayline' ? (
-          // D2 接 LLM 判定;此处先占位放行
-          <>
-            <Text style={styles.prompt}>{G.saylinePlaceholder}</Text>
-            <Pressable onPress={() => advance({ pass: true })} style={styles.contBtn}>
-              <Text style={styles.contText}>{G.cont}</Text>
-            </Pressable>
-          </>
+          <SayLinePanel
+            key={`${state.sceneId}-${state.stepIndex}`}
+            step={step}
+            npcName={castMember(step.who)?.name ?? ''}
+            onResolved={(pass) => advance({ pass })}
+          />
         ) : step?.kind === 'deduce' ? (
           // D3 接嗅探引擎;此处先占位放行
           <>
