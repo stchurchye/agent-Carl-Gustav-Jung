@@ -54,10 +54,17 @@ async function handleGenerate(
     .json<{ dayStartIso?: string; dayEndIso?: string }>()
     .catch(() => ({}) as { dayStartIso?: string; dayEndIso?: string });
   if (!body.dayStartIso || !body.dayEndIso) return jsonError(c, ErrorCodes.VALIDATION, 400);
-  // 校验是合法 ISO 时间且 start < end —— 否则非法时间戳会进 SQL created_at 比较、被 PG 拒绝
+  // 校验合法 ISO + start<end + 窗口不超 48h(一天约 24h,留时区/DST 余量)——
+  // 防非法时间戳进 SQL created_at 比较被 PG 拒,也防异常宽窗口把多天消息塞进单个 day_key。
   const startMs = Date.parse(body.dayStartIso);
   const endMs = Date.parse(body.dayEndIso);
-  if (Number.isNaN(startMs) || Number.isNaN(endMs) || startMs >= endMs) {
+  const MAX_WINDOW_MS = 48 * 3600 * 1000;
+  if (
+    Number.isNaN(startMs) ||
+    Number.isNaN(endMs) ||
+    startMs >= endMs ||
+    endMs - startMs > MAX_WINDOW_MS
+  ) {
     return jsonError(c, ErrorCodes.VALIDATION, 400);
   }
 

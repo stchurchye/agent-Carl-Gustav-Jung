@@ -79,6 +79,16 @@ describeDb('diary routes', { timeout: 20000 }, () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST generate 窗口超 48h → 400(防异常宽窗口塞多天消息)', async () => {
+    const u = await ensureUser('r-widewin');
+    const { accessToken } = await signAccessToken(u);
+    const res = await req(`/api/diary/self/${DAY}/generate`, {
+      method: 'POST', token: accessToken, key: true,
+      body: { dayStartIso: '2026-06-01T00:00:00.000Z', dayEndIso: '2026-06-20T00:00:00.000Z' },
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('POST generate 群·非成员 → 403', async () => {
     const owner = await ensureUser('r-go');
     const { groupId } = await ensureGroup(owner.id);

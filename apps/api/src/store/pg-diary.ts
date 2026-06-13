@@ -134,6 +134,27 @@ export async function setDiarySummary(
 }
 
 /**
+ * 原子确认:仅当当前是 'draft' 时才置 'confirmed' 并返回该行;否则返回 undefined。
+ * 用于 confirm 的并发原子性 —— 两个并发 confirm 只有抢到 draft→confirmed 的那个会拿到行、
+ * 去触发蒸馏,另一个拿 undefined 直接返回现状,避免重复蒸馏(TOCTOU)。
+ */
+export async function markConfirmedIfDraft(
+  userId: string,
+  scope: DiaryScope,
+  scopeId: string,
+  dayKey: string,
+): Promise<DiaryEntry | undefined> {
+  const { rows } = await getPool().query(
+    `UPDATE diary_entries
+     SET status = 'confirmed', updated_at = $5
+     WHERE owner_id = $1 AND scope = $2 AND scope_id = $3 AND day_key = $4 AND status = 'draft'
+     RETURNING *`,
+    [userId, scope, scopeId, dayKey, now()],
+  );
+  return rows[0] ? rowDiary(rows[0]) : undefined;
+}
+
+/**
  * 条件转 distilled:仅当当前仍是 'confirmed' 时才置 distilled + distilled_at。
  * 防并发:蒸馏期间若被 refine 打回 'draft',这里不会误覆盖(返回 undefined),正文/状态保持最新。
  */

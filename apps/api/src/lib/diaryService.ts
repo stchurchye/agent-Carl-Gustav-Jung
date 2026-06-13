@@ -12,7 +12,7 @@ import {
   getDiaryEntry,
   upsertDiaryEntry,
   setDiarySummary,
-  setDiaryStatus,
+  markConfirmedIfDraft,
   markDistilledIfConfirmed,
 } from '../store/pg-diary.js';
 import { generateDiarySummary, refineDiarySummary } from './diaryGenerate.js';
@@ -59,13 +59,11 @@ export async function generateDiaryForDay(
 
   let lines: Array<{ speaker: string; content: string }>;
   let scopeName: string | null = null;
-  let totalCount: number;
 
   if (p.scope === 'group') {
     const msgs = await getGroupMessagesForDay(p.userId, p.scopeId, p.dayStartIso, p.dayEndIso);
     if (msgs === null) return null; // 非成员
     scopeName = await getGroupName(p.scopeId);
-    totalCount = msgs.length;
     lines = msgs.slice(-MAX_DIARY_MESSAGES).map((m) => ({
       speaker:
         m.kind === 'ai'
@@ -77,7 +75,6 @@ export async function generateDiaryForDay(
     }));
   } else {
     const msgs = await getPrivateMessagesForDay(p.userId, p.dayStartIso, p.dayEndIso);
-    totalCount = msgs.length;
     lines = msgs.slice(-MAX_DIARY_MESSAGES).map((m) => ({
       speaker: m.role === 'user' ? '我' : assistantName,
       content: m.content,
@@ -100,7 +97,7 @@ export async function generateDiaryForDay(
     dayKey: p.dayKey,
     summary,
     status: 'draft',
-    sourceCount: totalCount,
+    sourceCount: lines.length,
   });
 }
 
@@ -154,11 +151,10 @@ export interface ConfirmDiaryForDayParams {
 export async function confirmDiaryForDay(p: ConfirmDiaryForDayParams): Promise<DiaryEntry | null> {
   const existing = await getDiaryEntry(p.userId, p.scope, p.scopeId, p.dayKey);
   if (!existing) return null;
-  // 幂等:只确认 draft;已 confirmed/distilled 直接返回,避免重复蒸馏(双确认竞态)
-  if (existing.status !== 'draft') return existing;
-
-  let entry =
-    (await setDiaryStatus(p.userId, p.scope, p.scopeId, p.dayKey, 'confirmed')) ?? existing;
+  // 原子确认:只有抢到 draft→confirmed 的请求继续蒸馏;非 draft(已确认/已蒸馏/被并发抢先)
+  // 直接返回当前状态,杜绝重复蒸馏(TOCTOU 并发安全)。
+  let entry = await markConfirmedIfDraft(p.userId, p.scope, p.scopeId, p.dayKey);
+  if (!entry) return (await getDiaryEntry(p.userId, p.scope, p.scopeId, p.dayKey)) ?? existing;
 
   // 只有【个人日记】蒸馏进记忆:群日记是「我眼中的群」,含群友实名言行,不写进我的持久记忆
   // ——从结构上消除群友隐私进我记忆的风险(不依赖软文本护栏);记忆也聚焦于「我」。
