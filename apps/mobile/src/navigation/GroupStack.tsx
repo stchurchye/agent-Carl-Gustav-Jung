@@ -6,6 +6,7 @@ import { StudioSearchScreen } from '../screens/StudioSearchScreen';
 import { GroupTopicsScreen } from '../screens/GroupTopicsScreen';
 import { GroupChatScreen } from '../screens/GroupChatScreen';
 import { ChatScreen } from '../screens/ChatScreen';
+import { DiaryScreen } from '../screens/DiaryScreen';
 import { MeScreen } from '../screens/MeScreen';
 import { SettingsDogSoundScreen } from '../screens/SettingsDogSoundScreen';
 import { SettingsVoiceScreen } from '../screens/SettingsVoiceScreen';
@@ -189,6 +190,7 @@ export function GroupStack() {
         component={ChatScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen name="Diary" component={DiaryScreen} options={{ headerShown: false }} />
       <Stack.Screen
         name="GroupTopics"
         component={GroupTopicsScreen}
