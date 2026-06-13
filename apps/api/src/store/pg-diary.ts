@@ -133,6 +133,27 @@ export async function setDiarySummary(
   return rows[0] ? rowDiary(rows[0]) : undefined;
 }
 
+/**
+ * 条件转 distilled:仅当当前仍是 'confirmed' 时才置 distilled + distilled_at。
+ * 防并发:蒸馏期间若被 refine 打回 'draft',这里不会误覆盖(返回 undefined),正文/状态保持最新。
+ */
+export async function markDistilledIfConfirmed(
+  userId: string,
+  scope: DiaryScope,
+  scopeId: string,
+  dayKey: string,
+  distilledAt: string,
+): Promise<DiaryEntry | undefined> {
+  const { rows } = await getPool().query(
+    `UPDATE diary_entries
+     SET status = 'distilled', distilled_at = $5, updated_at = $6
+     WHERE owner_id = $1 AND scope = $2 AND scope_id = $3 AND day_key = $4 AND status = 'confirmed'
+     RETURNING *`,
+    [userId, scope, scopeId, dayKey, distilledAt, now()],
+  );
+  return rows[0] ? rowDiary(rows[0]) : undefined;
+}
+
 /** 确认/蒸馏时改状态(可顺带打 distilled_at);不动正文。 */
 export async function setDiaryStatus(
   userId: string,

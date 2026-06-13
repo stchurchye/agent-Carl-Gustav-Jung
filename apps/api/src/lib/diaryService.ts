@@ -8,11 +8,18 @@ import {
 import { getPersonaSettings } from '../store/pg-profile.js';
 import { getPrivateMessagesForDay } from '../store/pg.js';
 import { getGroupMessagesForDay, getGroupName } from '../store/pg-social.js';
-import { getDiaryEntry, upsertDiaryEntry, setDiarySummary, setDiaryStatus } from '../store/pg-diary.js';
+import {
+  getDiaryEntry,
+  upsertDiaryEntry,
+  setDiarySummary,
+  setDiaryStatus,
+  markDistilledIfConfirmed,
+} from '../store/pg-diary.js';
 import { generateDiarySummary, refineDiarySummary } from './diaryGenerate.js';
 import { buildLlmClient, DEFAULT_MODEL_FOR_PROVIDER } from './llm/factory.js';
 import { runEpisodicMemory } from './memoryEpisodicWire.js';
 import { magiSystemEnabled } from './integrations/magi.js';
+import { log } from './logger.js';
 
 /**
  * 蒸馏护栏(注入 transcript):日记蒸馏进 owner 自己的记忆时,只抽与用户本人相关的事,
@@ -147,13 +154,16 @@ export interface ConfirmDiaryForDayParams {
 export async function confirmDiaryForDay(p: ConfirmDiaryForDayParams): Promise<DiaryEntry | null> {
   const existing = await getDiaryEntry(p.userId, p.scope, p.scopeId, p.dayKey);
   if (!existing) return null;
-  if (existing.status === 'distilled') return existing;
+  // 幂等:只确认 draft;已 confirmed/distilled 直接返回,避免重复蒸馏(双确认竞态)
+  if (existing.status !== 'draft') return existing;
 
   let entry =
     (await setDiaryStatus(p.userId, p.scope, p.scopeId, p.dayKey, 'confirmed')) ?? existing;
 
+  // 只有【个人日记】蒸馏进记忆:群日记是「我眼中的群」,含群友实名言行,不写进我的持久记忆
+  // ——从结构上消除群友隐私进我记忆的风险(不依赖软文本护栏);记忆也聚焦于「我」。
   const summary = entry.summary.trim();
-  if (summary && magiSystemEnabled()) {
+  if (p.scope === 'self' && summary && magiSystemEnabled()) {
     try {
       const llm = buildLlmClient({
         providerId: 'zenmux',
@@ -169,12 +179,22 @@ export async function confirmDiaryForDay(p: ConfirmDiaryForDayParams): Promise<D
         llm,
         signal: new AbortController().signal,
       });
-      entry =
-        (await setDiaryStatus(p.userId, p.scope, p.scopeId, p.dayKey, 'distilled', {
-          distilledAt: new Date().toISOString(),
-        })) ?? entry;
-    } catch {
-      // fail-open:蒸馏失败留在 confirmed
+      // 条件转 distilled:蒸馏期间若被并发 refine 打回 draft,则不覆盖(防 stale distilled_at)
+      const marked = await markDistilledIfConfirmed(
+        p.userId,
+        p.scope,
+        p.scopeId,
+        p.dayKey,
+        new Date().toISOString(),
+      );
+      entry = marked ?? (await getDiaryEntry(p.userId, p.scope, p.scopeId, p.dayKey)) ?? entry;
+    } catch (e) {
+      // fail-open:蒸馏失败留在 confirmed(记一条 warn 便于排查,不影响确认)
+      log('warn', 'diary distill failed (kept confirmed)', {
+        ownerId: p.userId,
+        dayKey: p.dayKey,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
   return entry;

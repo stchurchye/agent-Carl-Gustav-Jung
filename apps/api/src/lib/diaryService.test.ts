@@ -221,4 +221,30 @@ describeDb('diaryService.generateDiaryForDay', { timeout: 20000 }, () => {
     expect(entry?.status).toBe('confirmed');
     expect(mockEpisodic).not.toHaveBeenCalled();
   });
+
+  it('confirm 群篇:只标 confirmed,绝不蒸馏(群友实名言行不进我的记忆)', async () => {
+    const u = await mkUser('cfg');
+    await upsertDiaryEntry(u.id, { scope: 'group', scopeId: 'g1', scopeName: '读书会', dayKey: DAY, summary: '今天群里聊了书' });
+    const entry = await confirmDiaryForDay({ userId: u.id, scope: 'group', scopeId: 'g1', dayKey: DAY, apiKey: 'k' });
+    expect(entry?.status).toBe('confirmed');
+    expect(mockEpisodic).not.toHaveBeenCalled(); // MAGI 开也不蒸馏群篇
+  });
+
+  it('confirm 已 confirmed 的篇:幂等 no-op,不重蒸馏', async () => {
+    const u = await mkUser('cfc');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: '正文' });
+    await setDiaryStatus(u.id, 'self', '', DAY, 'confirmed');
+    const entry = await confirmDiaryForDay({ userId: u.id, scope: 'self', scopeId: '', dayKey: DAY, apiKey: 'k' });
+    expect(entry?.status).toBe('confirmed');
+    expect(mockEpisodic).not.toHaveBeenCalled();
+  });
+
+  it('confirm:蒸馏抛错 → fail-open,留 confirmed(不崩、不标 distilled)', async () => {
+    mockEpisodic.mockRejectedValueOnce(new Error('magi down'));
+    const u = await mkUser('cfx');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: '正文' });
+    const entry = await confirmDiaryForDay({ userId: u.id, scope: 'self', scopeId: '', dayKey: DAY, apiKey: 'k' });
+    expect(entry?.status).toBe('confirmed');
+    expect(mockEpisodic).toHaveBeenCalledTimes(1);
+  });
 });
