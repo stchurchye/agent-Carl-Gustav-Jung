@@ -21,15 +21,25 @@ const DAY = '2026-06-13';
 const DAY_START = '2026-06-13T00:00:00.000Z';
 const DAY_END = '2026-06-14T00:00:00.000Z';
 
-async function insertPrivateMsg(sessionId: string, ownerId: string, content: string, createdAt: string) {
+async function insertPrivateMsg(
+  sessionId: string,
+  ownerId: string,
+  content: string,
+  createdAt: string,
+  opts?: { llmExclude?: unknown },
+) {
   const id = randomUUID();
+  const payload = { id, sessionId, role: 'user', content, createdAt, llmExclude: opts?.llmExclude ?? null };
   await getPool().query(
     `INSERT INTO private_chat_messages (id, session_id, owner_id, payload, created_at)
      VALUES ($1,$2,$3,$4::jsonb,$5)`,
-    [id, sessionId, ownerId, JSON.stringify({ id, sessionId, role: 'user', content, createdAt }), createdAt],
+    [id, sessionId, ownerId, JSON.stringify(payload), createdAt],
   );
   return id;
 }
+
+const EXCLUDE_ACTIVE = { active: true, markers: [], everCanceled: false };
+const EXCLUDE_CANCELED = { active: false, markers: [], canceledBy: null, everCanceled: true };
 
 async function insertGroupMsg(
   groupId: string,
@@ -113,15 +123,25 @@ describeDb('pg-diary store', { timeout: 20000 }, () => {
   });
 
   // ---------- getPrivateMessagesForDay ----------
-  it('getPrivateMessagesForDay 只取窗口内 [start,end)、按时间升序', async () => {
+  it('getPrivateMessagesForDay 取 [start,end) 含下界、不含上界、按时间升序', async () => {
     const u = await mkUser('pm');
     const s = await createChatSession(u.id, 's');
-    await insertPrivateMsg(s.id, u.id, '窗口内早', '2026-06-13T02:00:00.000Z');
-    await insertPrivateMsg(s.id, u.id, '窗口内晚', '2026-06-13T20:00:00.000Z');
+    await insertPrivateMsg(s.id, u.id, '下界', DAY_START); // [start 含
+    await insertPrivateMsg(s.id, u.id, '窗口内', '2026-06-13T20:00:00.000Z');
     await insertPrivateMsg(s.id, u.id, '前一天', '2026-06-12T23:59:59.000Z');
-    await insertPrivateMsg(s.id, u.id, '后一天边界', DAY_END); // dayEnd 不含
+    await insertPrivateMsg(s.id, u.id, '上界', DAY_END); // end) 不含
     const msgs = await getPrivateMessagesForDay(u.id, DAY_START, DAY_END);
-    expect(msgs.map((m) => m.content)).toEqual(['窗口内早', '窗口内晚']);
+    expect(msgs.map((m) => m.content)).toEqual(['下界', '窗口内']);
+  });
+
+  it('getPrivateMessagesForDay 排除 llmExclude.active=true,取消排除(active=false)重新计入', async () => {
+    const u = await mkUser('pmx');
+    const s = await createChatSession(u.id, 's');
+    await insertPrivateMsg(s.id, u.id, '正常', '2026-06-13T01:00:00.000Z');
+    await insertPrivateMsg(s.id, u.id, '已排除', '2026-06-13T02:00:00.000Z', { llmExclude: EXCLUDE_ACTIVE });
+    await insertPrivateMsg(s.id, u.id, '取消排除', '2026-06-13T03:00:00.000Z', { llmExclude: EXCLUDE_CANCELED });
+    const msgs = await getPrivateMessagesForDay(u.id, DAY_START, DAY_END);
+    expect(msgs.map((m) => m.content)).toEqual(['正常', '取消排除']);
   });
 
   // ---------- getGroupMessagesForDay ----------
@@ -135,13 +155,24 @@ describeDb('pg-diary store', { timeout: 20000 }, () => {
     );
     await insertGroupMsg(groupId, topicId, owner.id, '入群前', '2026-06-13T07:00:00.000Z'); // < joined → 排除
     const inWin = await insertGroupMsg(groupId, topicId, owner.id, '入群后窗口内', '2026-06-13T10:00:00.000Z'); // 命中
-    await insertGroupMsg(groupId, topicId, owner.id, '被排除', '2026-06-13T11:00:00.000Z', { llmExclude: { by: ['x'] } }); // 排除
+    await insertGroupMsg(groupId, topicId, owner.id, '已排除', '2026-06-13T11:00:00.000Z', { llmExclude: EXCLUDE_ACTIVE }); // active=true → 排除
+    const canceled = await insertGroupMsg(groupId, topicId, owner.id, '取消排除', '2026-06-13T11:30:00.000Z', { llmExclude: EXCLUDE_CANCELED }); // active=false → 计入
     await insertGroupMsg(groupId, topicId, owner.id, '前一天', '2026-06-12T10:00:00.000Z'); // 窗口外
 
     const stranger = await mkUser('gs');
     expect(await getGroupMessagesForDay(stranger.id, groupId, DAY_START, DAY_END)).toBeNull();
 
     const msgs = await getGroupMessagesForDay(diarist.id, groupId, DAY_START, DAY_END);
-    expect(msgs?.map((m) => m.id)).toEqual([inWin]);
+    expect(msgs?.map((m) => m.id)).toEqual([inWin, canceled]);
+  });
+
+  it('upsert 命中冲突保留既有 status(不把 confirmed 打回 draft)', async () => {
+    const u = await mkUser('dst');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: 'v1' });
+    await setDiaryStatus(u.id, 'self', '', DAY, 'confirmed');
+    // 重生成(默认 status=draft)不应覆盖 confirmed
+    const re = await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: 'v2' });
+    expect(re.status).toBe('confirmed');
+    expect(re.summary).toBe('v2');
   });
 });

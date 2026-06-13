@@ -283,7 +283,8 @@ export async function listGroupMessages(
  * 取 owner「眼中今天这个群」的消息(跨该群所有话题),用于群日记生成。
  * - 成员门:非成员返回 null。
  * - 隐私下界:只取我入群之后(m.created_at >= 我的 joined_at)的消息,不回溯入群前。
- * - 排除协作标记:payload.llmExclude 非空的消息不进上下文。
+ * - 排除协作标记:仅排除 llmExclude.active=true 的消息(被显式取消后 active=false 应重新计入,
+ *   与 serverExcludedMessageIds 的 `m.llmExclude?.active` 语义一致)。
  * 窗口 [dayStartIso, dayEndIso) 由调用方按本地时区算出 UTC 边界。
  */
 export async function getGroupMessagesForDay(
@@ -301,7 +302,7 @@ export async function getGroupMessagesForDay(
      WHERE m.group_id = $1
        AND m.created_at >= $3 AND m.created_at < $4
        AND m.created_at >= gm.joined_at
-       AND (m.payload->>'llmExclude') IS NULL
+       AND (m.payload->'llmExclude'->>'active') IS DISTINCT FROM 'true'
      ORDER BY m.created_at ASC, m.id ASC`,
     [groupId, userId, dayStartIso, dayEndIso],
   );

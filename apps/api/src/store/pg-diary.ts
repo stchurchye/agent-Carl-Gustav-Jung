@@ -40,6 +40,8 @@ export interface UpsertDiaryInput {
 /**
  * 写入或覆盖一篇日记(每人每天每 scope 一篇,靠 UNIQUE 幂等)。
  * 生成/重生成用:命中 (owner,scope,scope_id,day_key) 则更新正文与水位,不新增行。
+ * 注意:status 只在首次插入时按 input.status(默认 draft)写入;命中冲突时**保留既有 status**
+ * (不会把已 confirmed/distilled 的日记打回 draft)。状态转移请走 setDiaryStatus。
  */
 export async function upsertDiaryEntry(
   userId: string,
@@ -53,7 +55,6 @@ export async function upsertDiaryEntry(
      ON CONFLICT (owner_id, scope, scope_id, day_key) DO UPDATE SET
        scope_name = EXCLUDED.scope_name,
        summary = EXCLUDED.summary,
-       status = EXCLUDED.status,
        source_count = EXCLUDED.source_count,
        source_max_msg_id = EXCLUDED.source_max_msg_id,
        updated_at = EXCLUDED.updated_at
