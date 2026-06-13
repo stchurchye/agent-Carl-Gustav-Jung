@@ -3,6 +3,8 @@ import type {
   ChatSession,
   ContextPreview,
   ContextSelection,
+  DiaryEntry,
+  DiaryScope,
   ContextUsage,
   Document,
   Group,
@@ -178,6 +180,11 @@ export type TopicSkill = {
   source: string | null;
   sourceRunId: string | null;
 };
+
+/** 日记路由前缀:个人 /api/diary/self;群 /api/diary/group/:groupId。 */
+function diaryPath(scope: DiaryScope, scopeId: string): string {
+  return scope === 'group' ? `/api/diary/group/${scopeId}` : '/api/diary/self';
+}
 
 export const api = {
   health: () => request<{ service: string }>('/health'),
@@ -357,6 +364,36 @@ export const api = {
 
   getChatMessages: (sessionId: string) =>
     request<ChatMessage[]>(`/api/chat/sessions/${sessionId}/messages`),
+
+  // ---- 日记(scope: 'self' 个人 / 'group' 群私有视角;scopeId 群篇为 groupId,个人篇传 '') ----
+  listDiary: (scope: DiaryScope, scopeId = '') =>
+    request<DiaryEntry[]>(diaryPath(scope, scopeId)),
+
+  getDiary: (scope: DiaryScope, scopeId: string, dayKey: string) =>
+    request<DiaryEntry>(`${diaryPath(scope, scopeId)}/${dayKey}`),
+
+  generateDiary: (
+    scope: DiaryScope,
+    scopeId: string,
+    dayKey: string,
+    dayStartIso: string,
+    dayEndIso: string,
+  ) =>
+    request<DiaryEntry>(`${diaryPath(scope, scopeId)}/${dayKey}/generate`, {
+      method: 'POST',
+      body: JSON.stringify({ dayStartIso, dayEndIso }),
+    }),
+
+  refineDiary: (scope: DiaryScope, scopeId: string, dayKey: string, instruction: string) =>
+    request<DiaryEntry>(`${diaryPath(scope, scopeId)}/${dayKey}/refine`, {
+      method: 'POST',
+      body: JSON.stringify({ instruction }),
+    }),
+
+  confirmDiary: (scope: DiaryScope, scopeId: string, dayKey: string) =>
+    request<DiaryEntry>(`${diaryPath(scope, scopeId)}/${dayKey}/confirm`, {
+      method: 'POST',
+    }),
 
   getChatContextUsage: (sessionId: string, pending?: string) => {
     const q = pending?.trim() ? `?pending=${encodeURIComponent(pending.trim())}` : '';
