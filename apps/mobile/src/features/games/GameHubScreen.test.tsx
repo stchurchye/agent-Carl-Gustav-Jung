@@ -21,11 +21,12 @@ function mount() {
 }
 
 describe('GameHubScreen 小游戏合集', () => {
-  it('列出三个小游戏', () => {
-    const { getByText } = mount();
+  it('列出两个小游戏', () => {
+    const { getByText, queryByText } = mount();
     expect(getByText(zh.games.sleuth.name)).toBeTruthy();
-    expect(getByText(zh.games.escape.name)).toBeTruthy();
     expect(getByText(zh.games.persuade.name)).toBeTruthy();
+    // 狗狗越狱已移除
+    expect(queryByText('狗狗越狱')).toBeNull();
   });
 
   it('点某个游戏跳到对应路由', () => {
