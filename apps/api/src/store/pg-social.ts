@@ -166,6 +166,12 @@ export async function isGroupMember(
   return rows.length > 0;
 }
 
+/** 取群名(用于群日记标题/prompt);群不存在返回 null。 */
+export async function getGroupName(groupId: string): Promise<string | null> {
+  const { rows } = await getPool().query('SELECT name FROM groups WHERE id = $1', [groupId]);
+  return rows[0] ? (rows[0].name as string) : null;
+}
+
 export async function listTopics(
   userId: string,
   groupId: string,
