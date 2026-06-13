@@ -216,6 +216,20 @@ export function GroupListScreen({ navigation }: Props) {
             onNewChat={() => openPrivateChat()}
             onPressModel={() => setModelPickerOpen(true)}
           />
+
+          {/* 今日日记入口:进个人日记屏(Bow Wow 总结今天 → 聊着矫正 → 收进记忆) */}
+          <Pressable
+            testID="home-diary-card"
+            onPress={() => navigation.navigate('Diary', { scope: 'self', scopeId: '' })}
+            style={({ pressed }) => [styles.diaryCard, pressed && styles.diaryCardPressed]}
+            accessibilityRole="button"
+          >
+            <View style={styles.diaryCardBody}>
+              <Text style={styles.diaryCardTitle}>{zh.diary.cardTitle}</Text>
+              <Text style={styles.diaryCardHint}>{zh.diary.cardEmptyHint}</Text>
+            </View>
+            <Text style={styles.diaryCardChevron}>›</Text>
+          </Pressable>
         </ScrollView>
       )}
       <AskAiModelPickerSheet
@@ -277,4 +291,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 24,
   },
+  diaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: wechat.cellBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: wechat.separator,
+    borderRadius: 12,
+    marginHorizontal: 12,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  diaryCardPressed: { opacity: 0.6 },
+  diaryCardBody: { flex: 1 },
+  diaryCardTitle: { fontSize: 16, fontWeight: '500', color: wechat.textPrimary },
+  diaryCardHint: { fontSize: 12, color: wechat.textTertiary, marginTop: 2 },
+  diaryCardChevron: { fontSize: 22, color: wechat.textTertiary, marginLeft: 8 },
 });
