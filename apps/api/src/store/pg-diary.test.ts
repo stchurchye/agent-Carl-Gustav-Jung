@@ -47,14 +47,14 @@ async function insertGroupMsg(
   authorId: string,
   content: string,
   createdAt: string,
-  opts?: { llmExclude?: unknown },
+  opts?: { llmExclude?: unknown; kind?: string },
 ) {
   const id = randomUUID();
   const payload = { content, contentMode: 'text', llmExclude: opts?.llmExclude ?? null };
   await getPool().query(
     `INSERT INTO group_messages (id, group_id, topic_id, author_id, kind, payload, created_at)
-     VALUES ($1,$2,$3,$4,'human',$5::jsonb,$6)`,
-    [id, groupId, topicId, authorId, JSON.stringify(payload), createdAt],
+     VALUES ($1,$2,$3,$4,$7,$5::jsonb,$6)`,
+    [id, groupId, topicId, authorId, JSON.stringify(payload), createdAt, opts?.kind ?? 'human'],
   );
   return id;
 }
@@ -157,6 +157,7 @@ describeDb('pg-diary store', { timeout: 20000 }, () => {
     const inWin = await insertGroupMsg(groupId, topicId, owner.id, '入群后窗口内', '2026-06-13T10:00:00.000Z'); // 命中
     await insertGroupMsg(groupId, topicId, owner.id, '已排除', '2026-06-13T11:00:00.000Z', { llmExclude: EXCLUDE_ACTIVE }); // active=true → 排除
     const canceled = await insertGroupMsg(groupId, topicId, owner.id, '取消排除', '2026-06-13T11:30:00.000Z', { llmExclude: EXCLUDE_CANCELED }); // active=false → 计入
+    await insertGroupMsg(groupId, topicId, owner.id, '某人加入了群聊', '2026-06-13T11:45:00.000Z', { kind: 'system' }); // system → 剔除
     await insertGroupMsg(groupId, topicId, owner.id, '前一天', '2026-06-12T10:00:00.000Z'); // 窗口外
 
     const stranger = await mkUser('gs');

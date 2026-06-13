@@ -54,6 +54,12 @@ async function handleGenerate(
     .json<{ dayStartIso?: string; dayEndIso?: string }>()
     .catch(() => ({}) as { dayStartIso?: string; dayEndIso?: string });
   if (!body.dayStartIso || !body.dayEndIso) return jsonError(c, ErrorCodes.VALIDATION, 400);
+  // 校验是合法 ISO 时间且 start < end —— 否则非法时间戳会进 SQL created_at 比较、被 PG 拒绝
+  const startMs = Date.parse(body.dayStartIso);
+  const endMs = Date.parse(body.dayEndIso);
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || startMs >= endMs) {
+    return jsonError(c, ErrorCodes.VALIDATION, 400);
+  }
 
   let apiKey: string;
   try {
