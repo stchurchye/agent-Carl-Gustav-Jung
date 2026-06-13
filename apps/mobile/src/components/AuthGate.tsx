@@ -46,36 +46,13 @@ type Props = {
   children: React.ReactNode;
 };
 
+// 启动加载页(BootSplash)最短展示时长。JS bundle 在热启动/生产内置时几乎瞬间就绪,
+// 不强制一下品牌加载页会一闪而过;并行一个最小延时,让它至少露脸这么久。
+const MIN_SPLASH_MS = 3600;
+
 export function AuthGate({ children }: Props) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-
-  const bootstrap = useCallback(async () => {
-    const token = await getAccessToken();
-    const stored = await getStoredUser();
-    if (!token || !stored) {
-      setUser(null);
-      setReady(true);
-      return;
-    }
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      if (json.ok) {
-        setUser(json.data as User);
-      } else {
-        if (res.status === 401) {
-          await clearAuthSession();
-        }
-        setUser(null);
-      }
-    } catch {
-      setUser(stored);
-    }
-    setReady(true);
-  }, []);
 
   const forceLogout = useCallback(async (reason?: string) => {
     await clearAuthSession();
@@ -94,8 +71,48 @@ export function AuthGate({ children }: Props) {
   }, []);
 
   useEffect(() => {
-    bootstrap();
-  }, [bootstrap]);
+    let mounted = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // 与真实初始化并行计时;最终 ready = max(初始化耗时, MIN_SPLASH_MS)。
+    const minDelay = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, MIN_SPLASH_MS);
+    });
+    void (async () => {
+      let nextUser: User | null = null;
+      try {
+        const token = await getAccessToken();
+        const stored = await getStoredUser();
+        if (token && stored) {
+          try {
+            const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const json = await res.json();
+            if (json.ok) {
+              nextUser = json.data as User;
+            } else {
+              if (res.status === 401) await clearAuthSession();
+              nextUser = null;
+            }
+          } catch {
+            // 网络失败 → 先用本地存的 user 顶上,不阻断进入
+            nextUser = stored;
+          }
+        }
+      } catch {
+        // SecureStore/keychain 读失败也绝不能卡在启动页:当作未登录,放行到登录屏
+        nextUser = null;
+      }
+      await minDelay;
+      if (!mounted) return; // 卸载后不再 setState(避免泄漏/警告)
+      setUser(nextUser);
+      setReady(true);
+    })();
+    return () => {
+      mounted = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {

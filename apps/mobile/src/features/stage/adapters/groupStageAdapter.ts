@@ -61,11 +61,13 @@ export function buildGroupStage(
       });
       const agentRunId = (m as unknown as { agentRun?: { agentRunId?: string } }).agentRun
         ?.agentRunId;
+      // 本地 AI 占位(local-ai-*,内容为空)= 等回复中 → 'pending',让舞台出「思考中」而非空气泡。
+      const isPending = m.id.startsWith('local-ai-') && !m.content?.trim();
       lines.push({
         id: m.id,
         actorId: dogId,
         text: m.content,
-        kind: agentRunId ? 'agent' : 'chat',
+        kind: agentRunId ? 'agent' : isPending ? 'pending' : 'chat',
         agentRunId,
         createdAt: m.createdAt,
       });

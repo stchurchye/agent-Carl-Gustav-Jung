@@ -141,7 +141,12 @@ function localInvokeHumanMessage(
   };
 }
 
-function localPendingAiMessage(groupId: string, topicId: string): GroupMessage {
+function localPendingAiMessage(
+  groupId: string,
+  topicId: string,
+  invokerUserId: string,
+  invokerAssistantName: string,
+): GroupMessage {
   return {
     id: `local-ai-${Date.now()}`,
     groupId,
@@ -151,6 +156,10 @@ function localPendingAiMessage(groupId: string, topicId: string): GroupMessage {
     content: '',
     contentMode: 'text',
     createdAt: new Date().toISOString(),
+    // 带上发起人 + 狗名:占位狗即「自己的狗」(dog:${invokerUserId}),
+    // 否则落到 dog:unknown 会兜底成一只陌生的通用预设狗,加载时凭空多冒一只狗。
+    invokerUserId,
+    invokerAssistantName,
   };
 }
 
@@ -479,11 +488,11 @@ export function GroupChatScreen({ route, navigation }: Props) {
       setMessages((prev) => [
         ...prev,
         localInvokeHumanMessage(groupId, topicId, user, instruction, chatModel),
-        localPendingAiMessage(groupId, topicId),
+        localPendingAiMessage(groupId, topicId, user.id, assistantName),
       ]);
       scrollToEnd();
     },
-    [user, groupId, topicId, chatModel, scrollToEnd],
+    [user, groupId, topicId, chatModel, assistantName, scrollToEnd],
   );
 
   const runIntentExecute = useCallback(
