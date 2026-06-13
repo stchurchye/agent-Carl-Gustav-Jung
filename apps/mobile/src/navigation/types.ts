@@ -96,7 +96,6 @@ export type GroupStackParamList = {
   GameHub: undefined;
   /** seed 可选:仅测试注入用,正常进入随机开局 */
   GameSleuth: { seed?: number } | undefined;
-  GameEscape: undefined;
   /** seed 可选:仅测试注入用 */
   GamePersuade: { seed?: number } | undefined;
   PrivateChat: { sessionId?: string; scrollToMessageId?: string } | undefined;
