@@ -1,9 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { GroupListItem, GroupMember } from '@xzz/shared';
+import { personaAssistantDisplayName, type GroupListItem, type GroupMember } from '@xzz/shared';
 import type { GroupStackParamList } from '../navigation/types';
 import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
@@ -12,7 +12,8 @@ import { loadGroupTopicPreviews, type TopicPreviewRow } from '../lib/studioTopic
 import { getCachedTabs } from '../lib/writingCache';
 import { WRITING_ENABLED } from '../lib/featureFlags';
 import { openWriting } from '../lib/openWriting';
-import { BowWowSessionRow } from '../components/BowWowSessionRow';
+import { BowWowWorkbenchCard } from '../components/BowWowWorkbenchCard';
+import { AskAiModelPickerSheet } from '../components/AskAiModelPickerSheet';
 import { StudioChatListRow } from '../components/StudioChatListRow';
 import { StudioGroupListBlock } from '../components/StudioGroupListBlock';
 import { StudioSearchBar } from '../components/StudioSearchBar';
@@ -22,6 +23,9 @@ import { wechat } from '../theme/wechat';
 import { wechatChatStyles } from '../theme/wechatChat';
 import { WeChatGroupedSection } from '../components/wechat/WeChatGroupedSection';
 import { useAuth } from '../components/AuthGate';
+import { usePersona } from '../hooks/usePersona';
+import { ASSISTANT_FALLBACK_NAME } from '../lib/brand';
+import { getChatLlmModel, setChatLlmModel } from '../lib/chatLlmModel';
 import { zh } from '../locales/zh-CN';
 
 type Props = NativeStackScreenProps<GroupStackParamList, 'GroupList'>;
@@ -51,6 +55,14 @@ export function GroupListScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const myAvatar = user?.pixelAvatar ?? null;
+  // 工作台头部需要狗名(persona)+ 当前私聊模型;persona 走共享缓存 hook,模型 mount 时读一次
+  const { persona, avatar: personaAvatar } = usePersona();
+  const assistantName = personaAssistantDisplayName(persona ?? undefined, ASSISTANT_FALLBACK_NAME);
+  const [chatModel, setChatModel] = useState<string>('moonshotai/kimi-k2.6');
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  useEffect(() => {
+    void getChatLlmModel().then(setChatModel);
+  }, []);
   // 成员只用于入口的「狗狗电话连线」(纯装饰),每组每个屏生命周期内最多拉一次,
   // 避免每次聚焦都对所有组发 listGroupMembers(话题预览本来就会按组重拉,不再叠加 N 个请求)。
   const membersByGroupRef = useRef<Map<string, GroupMember[]>>(new Map());
@@ -174,47 +186,47 @@ export function GroupListScreen({ navigation }: Props) {
             <Text style={styles.empty}>{zh.studio.emptyList}</Text>
           )}
 
-          <WeChatGroupedSection title={zh.studio.workbenchSection}>
           {WRITING_ENABLED ? (
-            <StudioChatListRow
-              title={zh.studio.writeText}
-              preview={
-                getCachedTabs()[0]?.title
-                  ? zh.studio.continueDocument(getCachedTabs()[0].title)
-                  : zh.studio.writeTextPreview
-              }
-              avatarName={zh.studio.writeText}
-              avatarSeed="writing"
-              onPress={() => {
-                const recentId = getCachedTabs()[0]?.id;
-                void openWriting(navigation, recentId ? { documentId: recentId } : undefined);
-              }}
-            />
+            <WeChatGroupedSection title={zh.studio.workbenchSection}>
+              <StudioChatListRow
+                title={zh.studio.writeText}
+                preview={
+                  getCachedTabs()[0]?.title
+                    ? zh.studio.continueDocument(getCachedTabs()[0].title)
+                    : zh.studio.writeTextPreview
+                }
+                avatarName={zh.studio.writeText}
+                avatarSeed="writing"
+                onPress={() => {
+                  const recentId = getCachedTabs()[0]?.id;
+                  void openWriting(navigation, recentId ? { documentId: recentId } : undefined);
+                }}
+              />
+            </WeChatGroupedSection>
           ) : null}
-          {workbenchSessions.map((session) => (
-            <BowWowSessionRow
-              key={session.id}
-              title={session.title}
-              preview={session.preview}
-              time={session.time}
-              avatar={myAvatar}
-              seed={user?.id}
-              onPress={() => openPrivateChat(session.id)}
-            />
-          ))}
-          {workbenchSessions.length === 0 ? (
-            <BowWowSessionRow
-              title={zh.chat.newSession}
-              preview={zh.studio.workbenchPreviewEmpty}
-              avatar={myAvatar}
-              seed={user?.id}
-              isNew
-              onPress={() => openPrivateChat()}
-            />
-          ) : null}
-          </WeChatGroupedSection>
+
+          {/* 「我的 Bow Wow」分支式卡片:单头部(狗+名字+模型+对话数+新建)+ 紧凑话题分支 */}
+          <BowWowWorkbenchCard
+            assistantName={assistantName}
+            avatar={personaAvatar ?? myAvatar}
+            seed={user?.id}
+            modelId={chatModel}
+            topics={workbenchSessions}
+            onPressTopic={openPrivateChat}
+            onNewChat={() => openPrivateChat()}
+            onPressModel={() => setModelPickerOpen(true)}
+          />
         </ScrollView>
       )}
+      <AskAiModelPickerSheet
+        visible={modelPickerOpen}
+        modelId={chatModel}
+        onClose={() => setModelPickerOpen(false)}
+        onSelectModel={(id) => {
+          setChatModel(id);
+          void setChatLlmModel(id);
+        }}
+      />
     </View>
   );
 }
