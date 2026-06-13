@@ -788,7 +788,8 @@ export const zh = {
     statusDraft: '草稿',
     statusConfirmed: '已确认',
     statusDistilled: '已收进记忆',
-    loadFailed: '加载失败,下拉重试',
+    loadFailed: '日记加载失败了',
+    retry: '重试',
   },
   studio: {
     manageTitle: '创建',

@@ -45,6 +45,61 @@ it('404 → entry 留 null,无 error(该天还没生成)', async () => {
   expect(result.current.error).toBeNull();
 });
 
+it('非 404 首拉失败 → loadError=true、entry 留 null、无动作 error;reload 重试成功后恢复', async () => {
+  mockGetDiary.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 500 }));
+  const { result } = renderHook(() => useDiaryEntry('self', '', '2026-06-20'));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.loadError).toBe(true);
+  expect(result.current.entry).toBeNull();
+  expect(result.current.error).toBeNull();
+
+  mockGetDiary.mockResolvedValueOnce(ok(ent({ summary: '重试到了' })));
+  await act(async () => {
+    result.current.reload();
+  });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.loadError).toBe(false);
+  expect(result.current.entry?.summary).toBe('重试到了');
+});
+
+it('refine 成功返回 true、失败返回 false 且保留旧篇 + 置 error', async () => {
+  mockGetDiary.mockResolvedValue(ok(ent({ summary: '原文' })));
+  const { result } = renderHook(() => useDiaryEntry('self', '', '2026-06-20'));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+
+  mockRefine.mockRejectedValueOnce(new Error('refine 挂了'));
+  let okRefine: boolean | undefined;
+  await act(async () => {
+    okRefine = await result.current.refine('写温暖点');
+  });
+  expect(okRefine).toBe(false);
+  expect(result.current.entry?.summary).toBe('原文');
+  expect(result.current.error).toBe('refine 挂了');
+
+  mockRefine.mockResolvedValueOnce(ok(ent({ summary: '改后' })));
+  await act(async () => {
+    okRefine = await result.current.refine('再试一次');
+  });
+  expect(okRefine).toBe(true);
+  expect(result.current.entry?.summary).toBe('改后');
+  expect(result.current.error).toBeNull();
+});
+
+it('clearError 清掉动作 error', async () => {
+  mockGetDiary.mockResolvedValue(ok(ent()));
+  mockConfirm.mockRejectedValueOnce(new Error('确认失败'));
+  const { result } = renderHook(() => useDiaryEntry('self', '', '2026-06-20'));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  await act(async () => {
+    await result.current.confirm();
+  });
+  expect(result.current.error).toBe('确认失败');
+  act(() => {
+    result.current.clearError();
+  });
+  expect(result.current.error).toBeNull();
+});
+
 it('generate 用本地时区窗口拉取生成,更新 entry', async () => {
   mockGetDiary.mockRejectedValue(Object.assign(new Error('nf'), { status: 404 }));
   mockGenerate.mockResolvedValue(ok(ent({ summary: '生成的' })));

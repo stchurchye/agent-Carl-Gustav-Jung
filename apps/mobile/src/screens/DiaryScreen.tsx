@@ -32,11 +32,8 @@ export function DiaryScreen({ route }: Props) {
   const insets = useSafeAreaInsets();
   const { scope, scopeId, scopeName, dayKey: dayKeyParam } = route.params;
   const dayKey = dayKeyParam ?? localDayKey();
-  const { entry, loading, busy, error, generate, refine, confirm } = useDiaryEntry(
-    scope,
-    scopeId,
-    dayKey,
-  );
+  const { entry, loading, loadError, busy, error, reload, clearError, generate, refine, confirm } =
+    useDiaryEntry(scope, scopeId, dayKey);
   const [draft, setDraft] = useState('');
 
   const title = scope === 'group' && scopeName ? zh.diary.groupTitle(scopeName) : zh.diary.title;
@@ -47,6 +44,18 @@ export function DiaryScreen({ route }: Props) {
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}>
         {loading ? (
           <ActivityIndicator style={styles.loader} color={brainTokens.accent} />
+        ) : loadError ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyText}>{zh.diary.loadFailed}</Text>
+            <Pressable
+              testID="diary-retry"
+              onPress={() => reload()}
+              style={({ pressed }) => [styles.primaryBtn, pressed && styles.btnDim]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.primaryBtnText}>{zh.diary.retry}</Text>
+            </Pressable>
+          </View>
         ) : !entry ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyText}>{zh.diary.empty}</Text>
@@ -73,7 +82,10 @@ export function DiaryScreen({ route }: Props) {
               <TextInput
                 testID="diary-refine-input"
                 value={draft}
-                onChangeText={setDraft}
+                onChangeText={(t) => {
+                  setDraft(t);
+                  if (error) clearError();
+                }}
                 placeholder={zh.diary.refinePlaceholder}
                 placeholderTextColor={brainTokens.textDim}
                 style={styles.refineInput}
@@ -83,8 +95,10 @@ export function DiaryScreen({ route }: Props) {
               <Pressable
                 testID="diary-refine"
                 onPress={() => {
-                  void refine(draft);
-                  setDraft('');
+                  // 仅成功才清空输入:失败时保留用户写的意见,免得重打
+                  void refine(draft).then((okRefine) => {
+                    if (okRefine) setDraft('');
+                  });
                 }}
                 disabled={busy || !draft.trim()}
                 style={({ pressed }) => [

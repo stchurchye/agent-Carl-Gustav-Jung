@@ -1,16 +1,21 @@
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 import type { DiaryEntry } from '@xzz/shared';
 
 const mockGenerate = jest.fn();
 const mockRefine = jest.fn();
 const mockConfirm = jest.fn();
+const mockReload = jest.fn();
+const mockClearError = jest.fn();
 let mockHookState: {
   entry: DiaryEntry | null;
   loading: boolean;
+  loadError: boolean;
   busy: boolean;
   error: string | null;
+  reload: () => void;
+  clearError: () => void;
   generate: () => void;
-  refine: (s: string) => void;
+  refine: (s: string) => Promise<boolean>;
   confirm: () => void;
 };
 
@@ -40,8 +45,10 @@ function mount(params: Record<string, unknown>) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockRefine.mockResolvedValue(true);
   mockHookState = {
-    entry: null, loading: false, busy: false, error: null,
+    entry: null, loading: false, loadError: false, busy: false, error: null,
+    reload: mockReload, clearError: mockClearError,
     generate: mockGenerate, refine: mockRefine, confirm: mockConfirm,
   };
 });
@@ -61,12 +68,43 @@ it('有 draft 篇:显示正文 + 确认按钮,确认触发 confirm', () => {
   expect(mockConfirm).toHaveBeenCalled();
 });
 
-it('矫正:输入意见 + 点改 → refine(意见)', () => {
+it('矫正:输入意见 + 点改 → refine(意见),成功后清空输入', async () => {
   mockHookState.entry = draftEntry();
   const { getByTestId } = mount({ scope: 'self', scopeId: '' });
   fireEvent.changeText(getByTestId('diary-refine-input'), '写温暖点');
-  fireEvent.press(getByTestId('diary-refine'));
+  await act(async () => {
+    fireEvent.press(getByTestId('diary-refine'));
+  });
   expect(mockRefine).toHaveBeenCalledWith('写温暖点');
+  expect(getByTestId('diary-refine-input').props.value).toBe('');
+});
+
+it('矫正失败:保留输入不清空(免得重打)', async () => {
+  mockRefine.mockResolvedValue(false);
+  mockHookState.entry = draftEntry();
+  const { getByTestId } = mount({ scope: 'self', scopeId: '' });
+  fireEvent.changeText(getByTestId('diary-refine-input'), '写温暖点');
+  await act(async () => {
+    fireEvent.press(getByTestId('diary-refine'));
+  });
+  expect(getByTestId('diary-refine-input').props.value).toBe('写温暖点');
+});
+
+it('矫正区改字 → 清掉残留 error', () => {
+  mockHookState.entry = draftEntry();
+  mockHookState.error = '上次失败了';
+  const { getByTestId } = mount({ scope: 'self', scopeId: '' });
+  fireEvent.changeText(getByTestId('diary-refine-input'), '新意见');
+  expect(mockClearError).toHaveBeenCalled();
+});
+
+it('首拉失败:显示重试,点击触发 reload(而非生成按钮)', () => {
+  mockHookState.loadError = true;
+  const { getByTestId, getByText, queryByTestId } = mount({ scope: 'self', scopeId: '' });
+  expect(getByText(zh.diary.loadFailed)).toBeTruthy();
+  expect(queryByTestId('diary-generate')).toBeNull();
+  fireEvent.press(getByTestId('diary-retry'));
+  expect(mockReload).toHaveBeenCalled();
 });
 
 it('已 distilled:不显示确认按钮(已收进记忆)', () => {
