@@ -135,4 +135,19 @@ describeDb('diary routes', { timeout: 20000 }, () => {
     expect(json.data.summary).toBe('汪!矫正后的日记。');
     expect(json.data.status).toBe('draft');
   });
+
+  it('POST refine 群篇 happy(自有私有篇)→ 200', async () => {
+    const owner = await ensureUser('r-grf');
+    const { groupId } = await ensureGroup(owner.id);
+    const { accessToken } = await signAccessToken(owner);
+    await req(`/api/diary/group/${groupId}/${DAY}/generate`, {
+      method: 'POST', token: accessToken, key: true, body: WINDOW,
+    });
+    const res = await req(`/api/diary/group/${groupId}/${DAY}/refine`, {
+      method: 'POST', token: accessToken, key: true, body: { instruction: '写温暖点' },
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: { summary: string } };
+    expect(json.data.summary).toBe('汪!矫正后的日记。');
+  });
 });

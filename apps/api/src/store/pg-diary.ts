@@ -111,7 +111,11 @@ export async function listDiaryEntries(
   return rows.map(rowDiary);
 }
 
-/** 矫正:改写正文并回到 draft(内容变了需重新确认);篇不存在返回 undefined。 */
+/**
+ * 矫正:改写正文并回到 draft(内容变了需重新确认);篇不存在返回 undefined。
+ * 同时清掉 distilled_at —— 正文变了,先前蒸馏进记忆的内容已过时,需在重新确认时再蒸馏,
+ * 避免「draft 却带着 distilled_at、记忆与日记背离」的不一致状态。
+ */
 export async function setDiarySummary(
   userId: string,
   scope: DiaryScope,
@@ -121,7 +125,7 @@ export async function setDiarySummary(
 ): Promise<DiaryEntry | undefined> {
   const { rows } = await getPool().query(
     `UPDATE diary_entries
-     SET summary = $5, status = 'draft', updated_at = $6
+     SET summary = $5, status = 'draft', distilled_at = NULL, updated_at = $6
      WHERE owner_id = $1 AND scope = $2 AND scope_id = $3 AND day_key = $4
      RETURNING *`,
     [userId, scope, scopeId, dayKey, summary, now()],

@@ -103,6 +103,9 @@ export interface RefineDiaryForDayParams {
 export async function refineDiaryForDay(p: RefineDiaryForDayParams): Promise<DiaryEntry | null> {
   const existing = await getDiaryEntry(p.userId, p.scope, p.scopeId, p.dayKey);
   if (!existing) return null;
+  // 空意见 → 不改、不动状态(守卫与状态变更同层,不依赖调用方/下游 no-op)
+  const instruction = p.instruction.trim();
+  if (!instruction) return existing;
 
   const persona = await getPersonaSettings(p.userId);
   const summary = await refineDiarySummary({
@@ -111,7 +114,7 @@ export async function refineDiaryForDay(p: RefineDiaryForDayParams): Promise<Dia
     dialect: p.dialect,
     scope: p.scope,
     existingSummary: existing.summary,
-    instruction: p.instruction,
+    instruction,
   });
   return (await setDiarySummary(p.userId, p.scope, p.scopeId, p.dayKey, summary)) ?? existing;
 }

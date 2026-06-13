@@ -139,4 +139,31 @@ describeDb('diaryService.generateDiaryForDay', { timeout: 20000 }, () => {
     expect(entry).toBeNull();
     expect(mockRefine).not.toHaveBeenCalled();
   });
+
+  it('refine 已蒸馏的篇:回 draft 且清掉 distilled_at(防与记忆背离)', async () => {
+    const u = await mkUser('drd');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: '蒸馏过的正文' });
+    await setDiaryStatus(u.id, 'self', '', DAY, 'distilled', { distilledAt: '2026-06-20T12:00:00.000Z' });
+    await refineDiaryForDay({
+      userId: u.id, scope: 'self', scopeId: '', dayKey: DAY, instruction: '改改', apiKey: 'k',
+    });
+    const { rows } = await getPool().query(
+      `SELECT status, distilled_at FROM diary_entries WHERE owner_id=$1 AND scope='self' AND scope_id='' AND day_key=$2`,
+      [u.id, DAY],
+    );
+    expect(rows[0].status).toBe('draft');
+    expect(rows[0].distilled_at).toBeNull();
+  });
+
+  it('refine 空意见 → 原样返回,不改状态、不调 LLM', async () => {
+    const u = await mkUser('dre');
+    await upsertDiaryEntry(u.id, { scope: 'self', scopeId: '', dayKey: DAY, summary: '原文' });
+    await setDiaryStatus(u.id, 'self', '', DAY, 'confirmed');
+    const entry = await refineDiaryForDay({
+      userId: u.id, scope: 'self', scopeId: '', dayKey: DAY, instruction: '   ', apiKey: 'k',
+    });
+    expect(entry?.status).toBe('confirmed'); // 未被打回 draft
+    expect(entry?.summary).toBe('原文');
+    expect(mockRefine).not.toHaveBeenCalled();
+  });
 });
