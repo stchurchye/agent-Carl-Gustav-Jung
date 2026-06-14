@@ -20,8 +20,20 @@ export type SayLine = {
   onPass?: SceneId;
   onFail?: SceneId;
 };
-/** 查案推理(D3 接嗅探引擎):solved/fail → 走不同场景 */
-export type Deduce = { kind: 'deduce'; onSolve?: SceneId; onFail?: SceneId };
+/** 查案推理(接嗅探引擎):嗅线索揪真凶,猜错=fail。难度由 count/budget 调 */
+export type Deduce = {
+  kind: 'deduce';
+  /** 案情引子(剧情框) */
+  prompt?: string;
+  /** 嫌疑狗数(默认 6,比现版难) */
+  count?: number;
+  /** 嗅探次数预算(默认 2,比现版紧) */
+  budget?: number;
+  /** 固定种子(可复现);缺省随机 */
+  seed?: number;
+  onSolve?: SceneId;
+  onFail?: SceneId;
+};
 export type Ending = { kind: 'ending'; outcome: 'good' | 'bad'; text: string };
 
 export type Step = Line | Choice | SayLine | Deduce | Ending;

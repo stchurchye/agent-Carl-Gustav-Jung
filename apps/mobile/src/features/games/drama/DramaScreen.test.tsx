@@ -11,6 +11,8 @@ jest.mock('../../../hooks/useHoldToSpeak', () => ({
 
 import { api } from '../../../lib/api';
 import { DramaScreen } from './DramaScreen';
+import { mulberry32 } from '../shared/rng';
+import { generateCase } from '../sleuth/engine';
 import { zh } from '../../../locales/zh-CN';
 
 const G = zh.games.drama;
@@ -52,10 +54,20 @@ describe('DramaScreen 犬朝后宫(D2:对白→选择→说台词→分支→结
     expect(await findByText('答应倒有几分胆色。')).toBeTruthy();
     expect(getByText(G.sayPass)).toBeTruthy();
     expect(sayMock).toHaveBeenCalledTimes(1);
-    fireEvent.press(getByText(G.cont));
+    fireEvent.press(getByText(G.cont)); // 结算 → hall
+
+    // 说对 → 进入查案
+    expect(getByText(/稳住了贵妃/)).toBeTruthy();
+    fireEvent.press(getByText(G.cont)); // hall → probe 引子
+    expect(getByText(/泻药/)).toBeTruthy();
+    fireEvent.press(getByText(G.cont)); // → 查案面板
+
+    // 指对真凶(seed=7 的牌局)
+    const culprit = generateCase(mulberry32(7), { count: 6, budget: 2 }).culpritIndex;
+    fireEvent.press(getByTestId(`suspect-${culprit}`));
 
     // 好结局
-    expect(getByText(/稳住了贵妃/)).toBeTruthy();
+    expect(getByText(/真凶落网/)).toBeTruthy();
     fireEvent.press(getByText(G.cont));
     expect(getByText(/初露锋芒/)).toBeTruthy();
   });

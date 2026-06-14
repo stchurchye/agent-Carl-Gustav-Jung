@@ -1,8 +1,8 @@
 import type { Script } from './story';
 
 /**
- * 犬朝后宫 · 第一幕(D1 骨架 + D2 说台词戏点;原创内容,不涉及任何版权作品)。
- * D3 接查案、D5 扩写成完整一幕。
+ * 犬朝后宫 · 第一幕(完整竖切:对白 → 选择 → 说台词 → 查案 → 好/坏结局)。
+ * 全部为原创人物、原创台词、原创情节,不涉及任何版权作品。D5 再扩写打磨。
  */
 export const ACT1: Script = {
   start: 'gate',
@@ -48,9 +48,48 @@ export const ACT1: Script = {
       id: 'hall',
       bg: 'hall',
       cast: ['xuetuan'],
+      goto: 'probe',
       steps: [
-        { kind: 'line', who: 'xuetuan', text: '一句话稳住了贵妃。这后宫的水深,但雪团总算站住了第一步。' },
-        { kind: 'ending', outcome: 'good', text: '【第一幕·序】雪团不卑不亢,在前殿初露锋芒。' },
+        { kind: 'line', who: 'xuetuan', text: '一句话稳住了贵妃。可还没喘口气,前殿就出了乱子——' },
+      ],
+    },
+    probe: {
+      id: 'probe',
+      bg: 'garden',
+      cast: ['molan', 'xuetuan'],
+      steps: [
+        {
+          kind: 'line',
+          who: 'molan',
+          text: '不好了!贵妃的茶点里被人下了泻药,如今矛头都指向你这新人。',
+        },
+        {
+          kind: 'deduce',
+          prompt: '当值的几只宫女狗里藏着真凶。嗅出蛛丝马迹,揪出下药的那一只,替雪团自证清白。',
+          count: 6,
+          budget: 2,
+          seed: 7,
+          onSolve: 'win',
+          onFail: 'frame',
+        },
+      ],
+    },
+    win: {
+      id: 'win',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '真凶落网,清白得证。这后宫的第一关,雪团总算稳稳迈过。' },
+        { kind: 'ending', outcome: 'good', text: '【第一幕·序】洗清冤屈,初露锋芒。雪团在犬朝后宫站住了脚跟。' },
+      ],
+    },
+    frame: {
+      id: 'frame',
+      bg: 'garden',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'jinyu', text: '查不出真凶?那这黑锅,就只好你这新人来背了。' },
+        { kind: 'ending', outcome: 'bad', text: '【第一幕·冤】指错了人,雪团百口莫辩,被扣下了罪名。' },
       ],
     },
     snub: {

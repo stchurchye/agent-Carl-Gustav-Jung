@@ -11,6 +11,7 @@ import type { GroupStackParamList } from '../../../navigation/types';
 import { ACT1 } from './script';
 import { castMember } from './cast';
 import { SayLinePanel } from './SayLinePanel';
+import { DeducePanel } from './DeducePanel';
 import { advanceStory, currentStep, startStory, type DramaState } from './story';
 
 const G = zh.games.drama;
@@ -79,13 +80,11 @@ export function DramaScreen(_props: Props) {
             onResolved={(pass) => advance({ pass })}
           />
         ) : step?.kind === 'deduce' ? (
-          // D3 接嗅探引擎;此处先占位放行
-          <>
-            <Text style={styles.prompt}>{G.deducePlaceholder}</Text>
-            <Pressable onPress={() => advance({ solved: true })} style={styles.contBtn}>
-              <Text style={styles.contText}>{G.cont}</Text>
-            </Pressable>
-          </>
+          <DeducePanel
+            key={`${state.sceneId}-${state.stepIndex}`}
+            step={step}
+            onResolved={(solved) => advance({ solved })}
+          />
         ) : null}
       </View>
 
