@@ -12,16 +12,10 @@ import { ACT1 } from './script';
 import { castMember } from './cast';
 import { SayLinePanel } from './SayLinePanel';
 import { DeducePanel } from './DeducePanel';
+import { SceneBackground } from './SceneBackground';
 import { advanceStory, currentStep, startStory, type DramaState } from './story';
 
 const G = zh.games.drama;
-
-/** 占位背景色(D4 换成全像素场景) */
-const BG_COLOR: Record<string, string> = {
-  gate: '#6E6759',
-  hall: '#8A6E4B',
-  garden: '#5A6E4E',
-};
 
 type Props = NativeStackScreenProps<GroupStackParamList, 'GameDrama'>;
 
@@ -43,7 +37,10 @@ export function DramaScreen(_props: Props) {
   return (
     <View style={wechatChatStyles.page}>
       <WeChatChatHeader title={G.name} showBack />
-      <View style={[styles.stage, { backgroundColor: BG_COLOR[scene.bg] ?? '#6E6759' }]}>
+      <View style={styles.stage}>
+        <View style={StyleSheet.absoluteFill}>
+          <SceneBackground bg={scene.bg} />
+        </View>
         <View style={styles.cast}>
           {castSprites.map(({ id, m }) => (
             <View key={id} style={styles.castSlot}>
