@@ -12,6 +12,8 @@
  * 单实例内存实现;多副本部署各算各的,需要全局一致时改用 Redis 等共享存储。
  */
 
+import { intEnv } from './env.js';
+
 export interface LoginThrottleOptions {
   /** 窗口内连续失败多少次后锁定 */
   maxFailures: number;
@@ -120,11 +122,6 @@ export function createLoginThrottle(opts: LoginThrottleOptions): LoginThrottle {
       opsSinceSweep = 0;
     },
   };
-}
-
-function intEnv(name: string, fallback: number): number {
-  const v = Number(process.env[name]);
-  return Number.isFinite(v) && v > 0 ? v : fallback;
 }
 
 /** 进程级单例,登录路由用它。阈值/窗口/锁定时长可经环境变量调。 */
