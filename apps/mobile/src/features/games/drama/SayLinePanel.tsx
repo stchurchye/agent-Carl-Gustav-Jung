@@ -7,6 +7,9 @@ import type { SayLine } from './story';
 
 const G = zh.games.drama;
 
+/** 说错可重试的总次数(1 次 + 5 次重试);用完才真走 onFail */
+const MAX_TRIES = 6;
+
 type Verdict = { pass: boolean; reply: string; score: number; hint?: string };
 
 /** 说对台词:打字 + 按住念台词 → 判官判定 → 入戏回应 + 过/不过 → 继续走分支 */
@@ -22,6 +25,7 @@ export function SayLinePanel({
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [tries, setTries] = useState(0); // 已失败次数
   const [error, setError] = useState<string | null>(null);
   const hold = useHoldToSpeak((t) => setInput((p) => (p ? `${p}${t}` : t)));
 
@@ -38,6 +42,7 @@ export function SayLinePanel({
         playerLine: line,
       });
       setVerdict(res.data);
+      if (!res.data.pass) setTries((t) => t + 1);
     } catch {
       // 网络/密钥失败:留住输入并给明确反馈,别静默
       setError(G.sayError);
@@ -46,7 +51,11 @@ export function SayLinePanel({
     }
   };
 
+  // 说错但还有重试 → 退回输入(留着上一句让玩家改),不判失败
+  const retry = () => setVerdict(null);
+
   if (verdict) {
+    const canRetry = !verdict.pass && tries < MAX_TRIES; // 说错且还有重试余地
     return (
       <View style={styles.box}>
         <Text style={[styles.badge, verdict.pass ? styles.pass : styles.fail]}>
@@ -56,9 +65,16 @@ export function SayLinePanel({
           <Text style={styles.bubbleText}>{verdict.reply}</Text>
         </View>
         {!verdict.pass && verdict.hint ? <Text style={styles.hint}>💡 {verdict.hint}</Text> : null}
-        <Pressable onPress={() => onResolved(verdict.pass)} style={styles.contBtn}>
-          <Text style={styles.contText}>{G.cont}</Text>
-        </Pressable>
+        {!verdict.pass && !canRetry ? <Text style={styles.hint}>{G.sayNoMoreTries}</Text> : null}
+        {canRetry ? (
+          <Pressable onPress={retry} style={styles.contBtn}>
+            <Text style={styles.contText}>{G.sayRetry(MAX_TRIES - tries)}</Text>
+          </Pressable>
+        ) : (
+          <Pressable onPress={() => onResolved(verdict.pass)} style={styles.contBtn}>
+            <Text style={styles.contText}>{G.cont}</Text>
+          </Pressable>
+        )}
       </View>
     );
   }

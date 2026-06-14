@@ -66,6 +66,8 @@ export const zh = {
       sayThinking: '对面在掂量你这句话…',
       sayPass: '说得漂亮!',
       sayFail: '差了点意思…',
+      sayRetry: (n: number) => `再说一次(还可重试 ${n} 次)`,
+      sayNoMoreTries: '几次都没能说到点上——这一关,过去了。',
       sayError: '这句没递上去——检查网络,或先到「我的」配置 DeepSeek 密钥,再说一次。',
     },
   },
