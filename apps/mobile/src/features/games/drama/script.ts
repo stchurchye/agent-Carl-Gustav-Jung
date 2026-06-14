@@ -519,7 +519,7 @@ export const ACT1: Script = {
     // ══════════ 第三幕《试毒局》· 验毒配伍 ══════════
     act2_5: {
       id: 'act2_5',
-      bg: 'hall',
+      bg: 'clinic',
       act: '第三幕 · 试毒局',
       cast: ['molan', 'xuetuan'],
       steps: [
@@ -530,7 +530,7 @@ export const ACT1: Script = {
     },
     tp_trace: {
       id: 'tp_trace',
-      bg: 'hall',
+      bg: 'clinic',
       cast: ['xuetuan'],
       goto: 'tp_grid',
       steps: [
@@ -539,14 +539,14 @@ export const ACT1: Script = {
     },
     tp_blind: {
       id: 'tp_blind',
-      bg: 'hall',
+      bg: 'clinic',
       cast: ['xuetuan'],
       goto: 'tp_grid',
       steps: [{ kind: 'line', who: 'xuetuan', text: '查不出是谁下的手,只觉这一局,分明是冲着我来的。容不得我出半分差错。' }],
     },
     tp_grid: {
       id: 'tp_grid',
-      bg: 'hall',
+      bg: 'clinic',
       cast: ['xuetuan'],
       steps: [
         {
@@ -562,7 +562,7 @@ export const ACT1: Script = {
     },
     tp_win: {
       id: 'tp_win',
-      bg: 'hall',
+      bg: 'clinic',
       cast: ['xuetuan'],
       goto: 'np_intro',
       steps: [
@@ -571,7 +571,7 @@ export const ACT1: Script = {
     },
     tp_fail: {
       id: 'tp_fail',
-      bg: 'hall',
+      bg: 'clinic',
       cast: ['laofu', 'xuetuan'],
       steps: [
         { kind: 'line', who: 'xuetuan', text: '(药方递出去的刹那,心猛地一沉——那一对,我标反了!汤已端向太后)' },
@@ -587,7 +587,7 @@ export const ACT1: Script = {
     },
     tp_recover: {
       id: 'tp_recover',
-      bg: 'hall',
+      bg: 'clinic',
       cast: ['xuetuan'],
       goto: 'np_intro',
       steps: [
@@ -596,7 +596,7 @@ export const ACT1: Script = {
     },
     tp_doom: {
       id: 'tp_doom',
-      bg: 'hall',
+      bg: 'clinic',
       cast: ['jinyu', 'xuetuan'],
       steps: [
         {
@@ -952,7 +952,7 @@ export const ACT1: Script = {
     // ══════════ 第七幕《听更夜奏》· 抚弦惊鸿 ══════════
     lw_intro: {
       id: 'lw_intro',
-      bg: 'hall',
+      bg: 'pavilion',
       act: '第七幕 · 听更夜奏',
       cast: ['jinyu', 'xuetuan'],
       steps: [
@@ -963,7 +963,7 @@ export const ACT1: Script = {
     },
     lw_glory: {
       id: 'lw_glory',
-      bg: 'hall',
+      bg: 'pavilion',
       cast: ['xuetuan'],
       goto: 'lw_play',
       steps: [
@@ -972,7 +972,7 @@ export const ACT1: Script = {
     },
     lw_play: {
       id: 'lw_play',
-      bg: 'hall',
+      bg: 'pavilion',
       cast: ['quanhuang', 'xuetuan'],
       steps: [
         {
@@ -985,7 +985,7 @@ export const ACT1: Script = {
     },
     lw_win: {
       id: 'lw_win',
-      bg: 'hall',
+      bg: 'pavilion',
       cast: ['quanhuang', 'xuetuan'],
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(久久无言,末了一叹)留白处屏息如止水,音落处惊鸿照影。此女有静气,有风骨——堪当中宫。' },
@@ -997,7 +997,7 @@ export const ACT1: Script = {
     },
     lw_fail: {
       id: 'lw_fail',
-      bg: 'hall',
+      bg: 'pavilion',
       cast: ['jinyu', 'xuetuan'],
       steps: [
         { kind: 'line', who: 'jinyu', text: '(掩唇轻笑,声音却让满殿都听见)一曲乱了节律、留白没忍住——可见心浮气躁,德行尚浅。这样的人,也配执掌中宫?陛下可要三思。' },
@@ -1011,7 +1011,7 @@ export const ACT1: Script = {
     // ══════════ 第八幕《滴血验亲》· 公堂辩论 ══════════
     bx_intro: {
       id: 'bx_intro',
-      bg: 'hall',
+      bg: 'court',
       act: '第八幕 · 滴血验亲',
       cast: ['quanhuang', 'taihou', 'jinyu', 'xuetuan'],
       goto: 'bx_debate',
@@ -1023,7 +1023,7 @@ export const ACT1: Script = {
     },
     bx_debate: {
       id: 'bx_debate',
-      bg: 'hall',
+      bg: 'court',
       cast: ['quanhuang', 'taihou', 'jinyu', 'xuetuan'],
       steps: [
         {
@@ -1064,7 +1064,7 @@ export const ACT1: Script = {
     },
     bx_test: {
       id: 'bx_test',
-      bg: 'hall',
+      bg: 'court',
       cast: ['xuetuan', 'jinyu', 'taihou'],
       steps: [
         { kind: 'line', who: 'xuetuan', text: '(两滴血落入玉碗——竟缓缓相融!满殿哗然)怎么会……罪臣的血与我的血,八竿子打不着,怎会相融?除非——这碗水,被人做了手脚!' },
@@ -1081,7 +1081,7 @@ export const ACT1: Script = {
     },
     bx_expose: {
       id: 'bx_expose',
-      bg: 'hall',
+      bg: 'court',
       cast: ['xuetuan', 'quanhuang', 'taihou'],
       steps: [
         { kind: 'line', who: 'xuetuan', text: '(攥着那包白霜)抓住了!碗里被掺了明矾——但凡掺了明矾,管它谁的血滴进去,都会相融!这一场滴血验亲,从头到尾,就是金羽做的局!' },
@@ -1097,7 +1097,7 @@ export const ACT1: Script = {
     },
     bx_win: {
       id: 'bx_win',
-      bg: 'hall',
+      bg: 'court',
       cast: ['taihou', 'quanhuang', 'xuetuan', 'molan'],
       goto: 'act4',
       steps: [
@@ -1108,7 +1108,7 @@ export const ACT1: Script = {
     // ── 滴血验亲 · 三处恶果(game over)──
     bx_doom1: {
       id: 'bx_doom1',
-      bg: 'hall',
+      bg: 'court',
       cast: ['jinyu', 'xuetuan'],
       steps: [
         {
@@ -1120,7 +1120,7 @@ export const ACT1: Script = {
     },
     bx_doom2: {
       id: 'bx_doom2',
-      bg: 'hall',
+      bg: 'court',
       cast: ['jinyu', 'xuetuan'],
       steps: [
         {
@@ -1132,7 +1132,7 @@ export const ACT1: Script = {
     },
     bx_doom3: {
       id: 'bx_doom3',
-      bg: 'hall',
+      bg: 'court',
       cast: ['jinyu', 'xuetuan'],
       steps: [
         {
