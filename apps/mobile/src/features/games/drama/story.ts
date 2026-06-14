@@ -56,11 +56,22 @@ export type Pairing = {
 };
 /** 月下夜探:回合制潜行,避开巡夜犬视锥摸到目标。脱困=onSolve、被发现/弃行=onFail */
 export type Prowl = { kind: 'prowl'; prompt?: string; onSolve?: SceneId; onFail?: SceneId };
+/** 默宫仪:宫礼版 Simon,复现示范、跳过诈仪禁手。通仪=onSolve、失仪/告退=onFail */
+export type Koulli = {
+  kind: 'koulli';
+  prompt?: string;
+  length?: number;
+  paletteSize?: number;
+  seed?: number;
+  revealTrap?: boolean; // 标出禁手(守礼者得老福暗点 → 降难)
+  onSolve?: SceneId;
+  onFail?: SceneId;
+};
 export type Ending = { kind: 'ending'; outcome: 'good' | 'bad'; text: string };
 /** 旗标条件分支(无玩家输入,自动按旗标走);让选择产生后果 */
 export type Branch = { kind: 'branch'; flag: string; whenSet?: SceneId; whenUnset?: SceneId };
 
-export type Step = Line | Choice | SayLine | Deduce | Sokoban | Pairing | Prowl | Branch | Ending;
+export type Step = Line | Choice | SayLine | Deduce | Sokoban | Pairing | Prowl | Koulli | Branch | Ending;
 
 export type Scene = {
   id: SceneId;
@@ -153,6 +164,9 @@ export function advanceStory(script: Script, state: DramaState, input?: AdvanceI
       next = target(script, state, input?.solved ? step.onSolve : step.onFail);
       break;
     case 'prowl':
+      next = target(script, state, input?.solved ? step.onSolve : step.onFail);
+      break;
+    case 'koulli':
       next = target(script, state, input?.solved ? step.onSolve : step.onFail);
       break;
     case 'branch':

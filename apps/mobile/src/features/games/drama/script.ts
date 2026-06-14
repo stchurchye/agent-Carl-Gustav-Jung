@@ -786,7 +786,7 @@ export const ACT1: Script = {
       id: 'act3win',
       bg: 'hall',
       cast: ['xuetuan', 'molan'],
-      goto: 'act4',
+      goto: 'cf_intro',
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(声色俱厉)好一出贼喊捉贼!金羽,自导这等巫蛊污案、构陷宫嫔,先褫你协理六宫之权,闭门思过!' },
         { kind: 'line', who: 'molan', text: '(泪如雨下,死死攥住雪团的手)是你……是你拿自家性命,从那三尺白绫底下,把我夺了回来。这条命,从今往后,便是你的了。' },
@@ -797,7 +797,7 @@ export const ACT1: Script = {
       id: 'forsake',
       bg: 'hall',
       cast: ['xuetuan', 'molan', 'jinyu'],
-      goto: 'act4',
+      goto: 'cf_intro',
       steps: [
         { kind: 'line', who: 'molan', text: '(难以置信地望着她,声音碎了)妹妹……连你也别过脸去么?当初是你说的,要与我共进退……' },
         { kind: 'line', who: 'jinyu', text: '(似笑非笑)识时务者为俊杰。本宫赏你看清了这宫里的规矩——人心,比命贱。' },
@@ -831,11 +831,98 @@ export const ACT1: Script = {
       ],
     },
 
-    // ══════════ 第六幕《凤仪定鼎》〔大结局〕 ══════════
+    // ══════════ 第六幕《椒房册仪》· 默宫仪 ══════════
+    cf_intro: {
+      id: 'cf_intro',
+      bg: 'hall',
+      act: '第六幕 · 椒房册仪',
+      cast: ['xuetuan', 'molan'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '惊变方歇,立后在即。六宫为我办册封彩排,满殿礼乐。掌仪嬷嬷领着我,一遍遍演那套繁复的册后大礼。' },
+        { kind: 'branch', flag: 'trust_molan', whenSet: 'cf_warn', whenUnset: 'cf_steady' },
+      ],
+    },
+    cf_warn: {
+      id: 'cf_warn',
+      bg: 'hall',
+      cast: ['molan', 'xuetuan'],
+      goto: 'cf_gate',
+      steps: [
+        { kind: 'line', who: 'molan', text: '(急急附耳)妹妹当心!金羽买通了掌仪,这套礼里藏着一记『御前叩首』的诈仪——你若跟着叩下去,便是当殿僭越,册后之议立时就废。那一拍,千万忍住!' },
+      ],
+    },
+    cf_steady: {
+      id: 'cf_steady',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      goto: 'cf_gate',
+      steps: [{ kind: 'line', who: 'xuetuan', text: '满殿礼乐,我心里却不踏实——这套礼繁得吓人,哪一拍错了、多了,都是当殿失仪。' }],
+    },
+    cf_gate: {
+      id: 'cf_gate',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      steps: [{ kind: 'branch', flag: 'polite', whenSet: 'cf_ritual_hint', whenUnset: 'cf_ritual_blind' }],
+    },
+    cf_ritual_hint: {
+      id: 'cf_ritual_hint',
+      bg: 'hall',
+      cast: ['laofu', 'xuetuan'],
+      steps: [
+        {
+          kind: 'koulli',
+          prompt: '掌仪示范册后大礼,记下整套、按序复现——老福嬷嬷念旧情,悄悄替你标出了那记诈仪禁手。看到也别跟着做。',
+          length: 5,
+          seed: 23,
+          revealTrap: true,
+          onSolve: 'cf_win',
+          onFail: 'cf_fail',
+        },
+      ],
+    },
+    cf_ritual_blind: {
+      id: 'cf_ritual_blind',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      steps: [
+        {
+          kind: 'koulli',
+          prompt: '掌仪示范册后大礼,记下整套、按序复现。那记诈仪禁手藏在其中,示范里出现也务必忍住、跳过——全凭你自己记牢。',
+          length: 5,
+          seed: 23,
+          revealTrap: false,
+          onSolve: 'cf_win',
+          onFail: 'cf_fail',
+        },
+      ],
+    },
+    cf_win: {
+      id: 'cf_win',
+      bg: 'hall',
+      cast: ['quanhuang', 'xuetuan'],
+      goto: 'act4',
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '一套大礼演得滴水不漏,那记诈仪稳稳跳了过去。金羽买通掌仪的算盘,又落了空。犬皇在上颔首——册封之礼,可成。' },
+      ],
+    },
+    cf_fail: {
+      id: 'cf_fail',
+      bg: 'hall',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'bad',
+          text: '【椒房册仪 · 僭越】掌仪示范到那一拍,雪团一时恍神,竟跟着叩首下去——御前叩首,僭越大罪!满殿哗然,金羽掩唇而笑:「连一套礼都演不周全,也配母仪天下?」册后之议,就此作罢,先前的步步苦心,尽付东流。',
+        },
+      ],
+    },
+
+    // ══════════ 第七幕《凤仪定鼎》〔大结局〕 ══════════
     act4: {
       id: 'act4',
       bg: 'hall',
-      act: '第六幕 · 凤仪定鼎',
+      act: '第七幕 · 凤仪定鼎',
       cast: ['quanhuang', 'jinyu'],
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(临朝)中宫之位虚悬已久。六宫无主,终非长法——朕,该立后了。' },
