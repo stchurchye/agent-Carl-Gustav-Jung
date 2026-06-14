@@ -43,11 +43,22 @@ export type Sokoban = {
   onSolve?: SceneId;
   onFail?: SceneId;
 };
+/** 验毒配伍:逻辑约束网格,凭医案标注全部药对的安/烈,呈对=onSolve、标错/弃局=onFail */
+export type Pairing = {
+  kind: 'pairing';
+  prompt?: string;
+  n?: number;
+  clueBudget?: number;
+  useCounts?: boolean;
+  seed?: number;
+  onSolve?: SceneId;
+  onFail?: SceneId;
+};
 export type Ending = { kind: 'ending'; outcome: 'good' | 'bad'; text: string };
 /** 旗标条件分支(无玩家输入,自动按旗标走);让选择产生后果 */
 export type Branch = { kind: 'branch'; flag: string; whenSet?: SceneId; whenUnset?: SceneId };
 
-export type Step = Line | Choice | SayLine | Deduce | Sokoban | Branch | Ending;
+export type Step = Line | Choice | SayLine | Deduce | Sokoban | Pairing | Branch | Ending;
 
 export type Scene = {
   id: SceneId;
@@ -134,6 +145,9 @@ export function advanceStory(script: Script, state: DramaState, input?: AdvanceI
       next = target(script, state, input?.solved ? step.onSolve : step.onFail);
       break;
     case 'sokoban':
+      next = target(script, state, input?.solved ? step.onSolve : step.onFail);
+      break;
+    case 'pairing':
       next = target(script, state, input?.solved ? step.onSolve : step.onFail);
       break;
     case 'branch':

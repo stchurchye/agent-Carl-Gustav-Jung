@@ -11,7 +11,7 @@ import type { Script } from './story';
  *  - glory(锋芒夺宠)      → 第四幕金羽纠集的党羽更盛
  *  - saved_molan / cold_blood(救/弃墨兰)→ 第四幕站着的是盟友还是孤影,决定终局
  *
- * 每幕"善果"续进下一幕,只有第四幕才是真正的大结局;各幕"恶果"即game over(有画面的重击)。
+ * 每幕"善果"续进下一幕,只有最末一幕(凤仪定鼎)才是真正的大结局;各幕"恶果"即game over(有画面的重击)。
  */
 export const ACT1: Script = {
   start: 'gate',
@@ -432,7 +432,7 @@ export const ACT1: Script = {
       id: 'talentWin',
       bg: 'hall',
       cast: ['quanhuang', 'xuetuan'],
-      goto: 'act3',
+      goto: 'act2_5',
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(目光骤亮,一掌按在御案上)好——满座颂圣的辞藻,朕听了三年,倒不及她这一句锋利。出身微末又何妨?朕要的,从不是温吞的贤静,是这把藏不住的锋。来人,赐东珠一斛,晋一阶,以彰其才。' },
         { kind: 'line', who: 'xuetuan', text: '(一句咏月,刀光似的劈开满殿珠翠。金羽当场白了脸)这后宫头一回,有人在御前抢了贵妃的彩。我赢得耀眼——也赢得满身的敌意。' },
@@ -458,7 +458,7 @@ export const ACT1: Script = {
       id: 'hiddenWin',
       bg: 'hall',
       cast: ['quanhuang', 'xuetuan'],
-      goto: 'act3',
+      goto: 'act2_5',
       steps: [
         { kind: 'line', who: 'xuetuan', text: '【隐藏 · 贤宠】墨兰的密语让我摸准了圣心,老福的作证替我正了清名——内外皆备,滴水不漏。犬皇赞我贤德端方,晋为妃,赐居椒房。满宫艳羡,唯我自知:这一步登天,是一子一子落出来的。' },
       ],
@@ -467,7 +467,7 @@ export const ACT1: Script = {
       id: 'virtuePlain',
       bg: 'hall',
       cast: ['quanhuang', 'xuetuan'],
-      goto: 'act3',
+      goto: 'act2_5',
       steps: [
         { kind: 'line', who: 'xuetuan', text: '不争而争,贤德稳重得了犬皇看重,圣眷绵长。我在这后宫,又稳稳进了一阶——只是这份安稳,在金羽眼里,大约又是一根扎心的刺。' },
       ],
@@ -512,11 +512,76 @@ export const ACT1: Script = {
       ],
     },
 
-    // ══════════ 第三幕《棠梨惊变》〔揪心〕 ══════════
+    // ══════════ 第三幕《试毒局》· 验毒配伍 ══════════
+    act2_5: {
+      id: 'act2_5',
+      bg: 'hall',
+      act: '第三幕 · 试毒局',
+      cast: ['molan', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'molan', text: '太后寿诞将至,六宫献礼。偏你被点了去太医院协理寿宴汤剂——这是抬举,也是火坑。' },
+        { kind: 'line', who: 'xuetuan', text: '金羽的人早把手伸进了药局。一味配伍调错,奉到太后嘴边的就是毒——而担罪的,是经手的我。' },
+        { kind: 'branch', flag: 'humiliated_jinyu', whenSet: 'tp_trace', whenUnset: 'tp_blind' },
+      ],
+    },
+    tp_trace: {
+      id: 'tp_trace',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      goto: 'tp_grid',
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(指尖发冷)这手笔我认得——上回当殿被我点破出身,她就把这笔账记到了今日。配伍里那点反常,是她惯用的阴招。' },
+      ],
+    },
+    tp_blind: {
+      id: 'tp_blind',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      goto: 'tp_grid',
+      steps: [{ kind: 'line', who: 'xuetuan', text: '查不出是谁下的手,只觉这一局,分明是冲着我来的。容不得我出半分差错。' }],
+    },
+    tp_grid: {
+      id: 'tp_grid',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      steps: [
+        {
+          kind: 'pairing',
+          prompt: '梆子响前,凭医案把整张配伍图标全——拣出被人调成「烈」的那一对,呈上稳妥的方子。错一格,太后就喝下你亲手奉的毒。',
+          n: 5,
+          seed: 31,
+          onSolve: 'tp_win',
+          onFail: 'tp_fail',
+        },
+      ],
+    },
+    tp_win: {
+      id: 'tp_win',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      goto: 'act3',
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(梆子刚落,我合上药方)就是这一对——本是相济的安药,被人调成了烈。换了方子,寿宴无虞。金羽这一局,又落了空。' },
+      ],
+    },
+    tp_fail: {
+      id: 'tp_fail',
+      bg: 'hall',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'bad',
+          text: '【试毒局 · 一念之差】医案上那几行字,她终究没参透。一味烈药混进寿宴汤剂,太后才沾唇便觉不对。「谋害太后」四个字砸下来,经手的雪团百口莫辩——帘后的金羽,笑得像等到了猎物自己踩中的扣。',
+        },
+      ],
+    },
+
+    // ══════════ 第四幕《棠梨惊变》〔揪心〕 ══════════
     act3: {
       id: 'act3',
       bg: 'garden',
-      act: '第三幕 · 棠梨惊变',
+      act: '第四幕 · 棠梨惊变',
       cast: ['xuetuan', 'molan'],
       steps: [
         { kind: 'line', who: 'xuetuan', text: '入宫一年,我从答应走到了妃位。可越是站得高,夜里越是睡不安稳——金羽沉得太久了,静得反常。' },
@@ -678,11 +743,11 @@ export const ACT1: Script = {
       ],
     },
 
-    // ══════════ 第四幕《凤仪定鼎》〔大结局〕 ══════════
+    // ══════════ 第五幕《凤仪定鼎》〔大结局〕 ══════════
     act4: {
       id: 'act4',
       bg: 'hall',
-      act: '第四幕 · 凤仪定鼎',
+      act: '第五幕 · 凤仪定鼎',
       cast: ['quanhuang', 'jinyu'],
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(临朝)中宫之位虚悬已久。六宫无主,终非长法——朕,该立后了。' },
