@@ -552,6 +552,7 @@ export const ACT1: Script = {
           prompt: '梆子响前,凭医案把整张配伍图标全——拣出被人调成「烈」的那一对,呈上稳妥的方子。错一格,太后就喝下你亲手奉的毒。',
           n: 5,
           seed: 31,
+          useCounts: true, // 加行计数/奇偶约束 → 真推理,非照抄(生成器仍证唯一可解)
           onSolve: 'tp_win',
           onFail: 'tp_fail',
         },
@@ -569,12 +570,37 @@ export const ACT1: Script = {
     tp_fail: {
       id: 'tp_fail',
       bg: 'hall',
+      cast: ['laofu', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(药方递出去的刹那,心猛地一沉——那一对,我标反了!汤已端向太后)' },
+        {
+          kind: 'sayline',
+          who: 'laofu',
+          context: '雪团配伍标错,一盏含烈的汤剂已端到太后唇边。千钧一发,她必须当场叫停、圆出一个说得通的由头,拦下这盏毒汤。',
+          intent: '危急圆场——抢在太后沾唇前叫停,称这方配伍尚有可疑、须请太医当场复核,既稳稳拦下汤、又把缘由推得在情在理,不显得是自己出了错该当问罪。',
+          onPass: 'tp_recover',
+          onFail: 'tp_doom',
+        },
+      ],
+    },
+    tp_recover: {
+      id: 'tp_recover',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      goto: 'np_intro',
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(一句话叫停了那盏汤,后背已湿透)太医一验,果然有差——人是保住了。可这一回好险,差一线就万劫不复。金羽藏在帘后的那点笑,我记下了。' },
+      ],
+    },
+    tp_doom: {
+      id: 'tp_doom',
+      bg: 'hall',
       cast: ['jinyu', 'xuetuan'],
       steps: [
         {
           kind: 'ending',
           outcome: 'bad',
-          text: '【试毒局 · 一念之差】医案上那几行字,她终究没参透。一味烈药混进寿宴汤剂,太后才沾唇便觉不对。「谋害太后」四个字砸下来,经手的雪团百口莫辩——帘后的金羽,笑得像等到了猎物自己踩中的扣。',
+          text: '【试毒局 · 一念之差】圆场的话也没说圆。一味烈药混进寿宴汤剂,太后才沾唇便觉不对。「谋害太后」四个字砸下来,经手的雪团百口莫辩——帘后的金羽,笑得像等到了猎物自己踩中的扣。',
         },
       ],
     },
@@ -838,10 +864,11 @@ export const ACT1: Script = {
       id: 'cf_intro',
       bg: 'hall',
       act: '第六幕 · 椒房册仪',
-      cast: ['xuetuan', 'molan'],
+      cast: ['xuetuan'],
       steps: [
         { kind: 'line', who: 'xuetuan', text: '惊变方歇,立后在即。六宫为我办册封彩排,满殿礼乐。掌仪嬷嬷领着我,一遍遍演那套繁复的册后大礼。' },
-        { kind: 'branch', flag: 'trust_molan', whenSet: 'cf_warn', whenUnset: 'cf_steady' },
+        // 墨兰若还活着(你拼死救下),她才会来通风报信;弃了她的,这里只剩自己
+        { kind: 'branch', flag: 'saved_molan', whenSet: 'cf_warn', whenUnset: 'cf_steady' },
       ],
     },
     cf_warn: {
@@ -1086,9 +1113,35 @@ export const ACT1: Script = {
       id: 'a4taihou',
       bg: 'hall',
       cast: ['laofu', 'quanhuang'],
-      goto: 'finalShow',
+      goto: 'finalShowStrong',
       steps: [
         { kind: 'line', who: 'laofu', text: '(代传太后懿旨)太后早得了这封密报,暗中查了金羽多日。太后口谕:此女所奏句句属实,金羽之罪,证据确凿——着即彻查!(有了太后撑腰,金羽的党羽霎时噤了声)' },
+      ],
+    },
+    // 证据碾压(密信 + 太后人证)→ 这一句只是补刀;纵说得不够漂亮,铁证懿旨也已替你定了她的罪
+    finalShowStrong: {
+      id: 'finalShowStrong',
+      bg: 'hall',
+      cast: ['xuetuan', 'quanhuang'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '密信在前,太后懿旨在后,党羽噤声。这最后一句,我只需把刀递实——金羽,已无路可退。' },
+        {
+          kind: 'sayline',
+          who: 'quanhuang',
+          context: '凤仪大殿,密信与太后懿旨俱在、人证物证齐全,金羽党羽噤声。雪团只需当殿把最后的定罪之词递实。',
+          intent: '当殿为金羽定死罪、补上最后一刀——铁证太后皆已在你这边,只需顺势把罪名钉死、把圣心彻底推向你,无需再翻盘,只要不失态。',
+          onPass: 'a4vouch',
+          onFail: 'a4carried',
+        },
+      ],
+    },
+    a4carried: {
+      id: 'a4carried',
+      bg: 'hall',
+      cast: ['quanhuang', 'xuetuan'],
+      goto: 'a4vouch',
+      steps: [
+        { kind: 'line', who: 'quanhuang', text: '(摆手止住她)不必再说了。这封通敌的信、太后的懿旨,字字够定她的罪。金羽——你还有什么可辩?(纵雪团那一句没说圆,铁证已替她钉死了金羽)' },
       ],
     },
     finalShow: {
@@ -1157,7 +1210,14 @@ export const ACT1: Script = {
       bg: 'hall',
       cast: ['xuetuan'],
       // 狠路 + 那封通敌密信在手 → 名正言顺族诛;否则按是否负墨兰分流
-      steps: [{ kind: 'branch', flag: 'stole_letter', whenSet: 'endPurge', whenUnset: 'a4ruthDark' }],
+      steps: [{ kind: 'branch', flag: 'stole_letter', whenSet: 'a4purgeSplit', whenUnset: 'a4ruthDark' }],
+    },
+    // 名正族诛也分两味:救过墨兰的,身边还有人;弃过的,登顶即孤绝
+    a4purgeSplit: {
+      id: 'a4purgeSplit',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      steps: [{ kind: 'branch', flag: 'cold_blood', whenSet: 'endPurge', whenUnset: 'endPurgeAlly' }],
     },
     a4ruthDark: {
       id: 'a4ruthDark',
@@ -1186,6 +1246,18 @@ export const ACT1: Script = {
           kind: 'ending',
           outcome: 'good',
           text: '【大结局 · 名正族诛】通敌的铁证在手,雪团不必再赶尽杀绝——国法自会替她动手。金羽以「私通外敌」论罪,一族尽没,无人能道一个冤字。她赢得名正言顺,半分把柄不留。可当那道族诛的旨意明发天下,她立在凤仪殿上,望着金羽被拖走的背影,忽然觉得冷——原来最干净的杀人,是借刀;而她,早已学会了借刀。凤位在握,再无敌手,只是夜里偶尔会想:自己究竟是赢家,还是又一个金羽。〔全剧终 · 隐藏 · 借刀之路〕',
+        },
+      ],
+    },
+    endPurgeAlly: {
+      id: 'endPurgeAlly',
+      bg: 'hall',
+      cast: ['xuetuan', 'molan'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'good',
+          text: '【大结局 · 名正族诛(义之所至)】通敌的铁证在手,雪团借国法之刀,将金羽以「私通外敌」论罪族诛,名正言顺、无人能道一个冤字。手段是狠了,可她没有滥杀无辜,也没有踏过自己人——当年拼死从白绫底下夺回的墨兰,如今就立在她身侧。「值得么?」墨兰轻声问。她望着金羽被拖走的背影,良久才答:「为了能护住的人,值得。」凤位在握,身边尚有一人知她冷暖。狠,却没狠到孤身。〔全剧终 · 隐藏 · 铁腕仁心〕',
         },
       ],
     },

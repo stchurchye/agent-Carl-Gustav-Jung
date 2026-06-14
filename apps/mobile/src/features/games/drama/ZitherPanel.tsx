@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { zh } from '../../../locales/zh-CN';
-import { buildZither, resolveBeat, isFlourish, COMPOSURE_MAX, WATCH_CHART, type ZitherState } from './zither';
+import { buildZither, resolveBeat, isFlourish, COMPOSURE_MAX, WATCH_CHART, type ZitherState, type Quality } from './zither';
 import type { Zither } from './story';
 
 const G = zh.games.drama;
@@ -12,17 +12,23 @@ export function ZitherPanel({ step, onResolved }: { step: Zither; onResolved: (s
   const [state, setState] = useState<ZitherState>(() => buildZither(WATCH_CHART));
   const [phase, setPhase] = useState<'ready' | 'play'>('ready');
   const [flash, setFlash] = useState(false);
-  const tapped = useRef(false);
+  const tapOffset = useRef<number | null>(null); // 本拍拨弦距下拍起点的毫秒;null=没拨
+  const beatStart = useRef(0);
   const done = useRef(false);
 
-  // 更鼓节拍:每拍结算当前拍(本窗是否拨过弦)
+  // 更鼓节拍:每拍结算当前拍(拨没拨 + 拨得准不准)
   useEffect(() => {
     if (phase !== 'play') return;
+    beatStart.current = Date.now();
     const id = setInterval(() => {
-      const played = tapped.current;
-      tapped.current = false;
+      const off = tapOffset.current;
+      const played = off !== null;
+      // 越贴下拍起点越准:前 1/4 拍=绝、前半拍=稳、拖到后半拍=飘
+      const q: Quality = !played ? '稳' : off < BEAT_MS * 0.25 ? '绝' : off < BEAT_MS * 0.5 ? '稳' : '飘';
+      tapOffset.current = null;
+      beatStart.current = Date.now();
       setState((s) => {
-        const ns = resolveBeat(s, played, '稳');
+        const ns = resolveBeat(s, played, q);
         if (isFlourish(ns)) {
           setFlash(true);
           setTimeout(() => setFlash(false), 260);
@@ -44,7 +50,7 @@ export function ZitherPanel({ step, onResolved }: { step: Zither; onResolved: (s
   const restart = () => {
     setState(buildZither(WATCH_CHART));
     setPhase('ready');
-    tapped.current = false;
+    tapOffset.current = null;
   };
 
   const lost = state.status === 'lost';
@@ -102,7 +108,7 @@ export function ZitherPanel({ step, onResolved }: { step: Zither; onResolved: (s
           <Pressable
             testID="zither-pluck"
             onPress={() => {
-              tapped.current = true;
+              if (tapOffset.current === null) tapOffset.current = Date.now() - beatStart.current;
             }}
             style={[styles.pluck, curRest && styles.pluckWarn]}
           >
