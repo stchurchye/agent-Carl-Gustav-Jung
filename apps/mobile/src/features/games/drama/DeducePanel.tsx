@@ -4,13 +4,17 @@ import { PixelSprite } from '../../../components/pixel/PixelSprite';
 import { buildDogCharacter } from '../../../pixel/buildDog';
 import { zh } from '../../../locales/zh-CN';
 import { mulberry32, randomSeed } from '../shared/rng';
-import { generateCase, SNIFFABLE_ATTRS, survivingSuspects, type Clue, type SniffAttr } from '../sleuth/engine';
+import { generateCase, SNIFFABLE_ATTRS, type Clue, type SniffAttr } from '../sleuth/engine';
 import { attrLabel, valueLabel } from '../sleuth/labels';
 import type { Deduce } from './story';
 
 const G = zh.games.drama;
 
-/** 剧情查案戏点:复用嗅探引擎——嗅特征缩小嫌疑、指认真凶,猜错即 fail。比合集版更难(嫌疑多、嗅探紧)。 */
+/**
+ * 剧情查案戏点:复用嗅探引擎——嗅出真凶在某维度的取值当线索,玩家**自己对照**全部线索、
+ * 在一排嫌疑狗里认出符合所有特征的那一只,猜错即 fail。
+ * 刻意不替玩家缩小范围(嫌疑狗始终全亮、全可点),让推理留给玩家。比合集版更难(嫌疑多、嗅探紧)。
+ */
 export function DeducePanel({ step, onResolved }: { step: Deduce; onResolved: (solved: boolean) => void }) {
   const count = step.count ?? 6;
   const budget = step.budget ?? 2;
@@ -21,7 +25,6 @@ export function DeducePanel({ step, onResolved }: { step: Deduce; onResolved: (s
   const [clues, setClues] = useState<Clue[]>([]);
 
   const sniffed = useMemo(() => new Set(clues.map((c) => c.attr)), [clues]);
-  const survivors = useMemo(() => new Set(survivingSuspects(theCase.suspects, clues)), [theCase, clues]);
   const sniffsLeft = budget - clues.length;
   const remaining = SNIFFABLE_ATTRS.filter((a) => !sniffed.has(a));
 
@@ -38,20 +41,12 @@ export function DeducePanel({ step, onResolved }: { step: Deduce; onResolved: (s
       <Text style={styles.hint}>{G.deduceAccuseHint}</Text>
 
       <View style={styles.lineup}>
-        {theCase.suspects.map((dog, i) => {
-          const alive = survivors.has(i);
-          return (
-            <Pressable
-              key={i}
-              testID={`suspect-${i}`}
-              onPress={alive ? () => accuse(i) : undefined}
-              disabled={!alive}
-              style={[styles.suspect, !alive && styles.out]}
-            >
-              <PixelSprite sprite={buildDogCharacter(dog).still} size={52} />
-            </Pressable>
-          );
-        })}
+        {/* 嫌疑狗始终全亮、全可点——不替玩家筛掉不匹配的,推理留给玩家自己对线索 */}
+        {theCase.suspects.map((dog, i) => (
+          <Pressable key={i} testID={`suspect-${i}`} onPress={() => accuse(i)} style={styles.suspect}>
+            <PixelSprite sprite={buildDogCharacter(dog).still} size={52} />
+          </Pressable>
+        ))}
       </View>
 
       {clues.length ? (
@@ -99,7 +94,6 @@ const styles = StyleSheet.create({
     borderColor: INK,
     borderRadius: 4,
   },
-  out: { opacity: 0.28 },
   clues: { gap: 2 },
   clue: { fontSize: 14, color: INK },
   muted: { fontSize: 13, color: '#8A8377' },
