@@ -63,11 +63,23 @@ const EMPEROR: PixelGrid = grid24([
   [5, 'PP', 11],
 ]);
 
+/** 太后冠:最隆重——宽金冠 + 四颗红宝 + 顶珠 + 两侧垂珠(尊于贵妃凤冠) */
+const TAIHOU: PixelGrid = grid24([
+  [1, 'PP', 11],
+  [2, 'RGGGGR', 9],
+  [3, 'GGGGGGGG', 8],
+  [4, 'GHHHHHHG', 8],
+  [5, 'RGGGGGGR', 8],
+  [6, 'P', 8],
+  [6, 'P', 15],
+]);
+
 const HEADDRESS_GRIDS: Record<string, PixelGrid> = {
   phoenix: PHOENIX,
   buyao: BUYAO,
   court: COURT,
   emperor: EMPEROR,
+  taihou: TAIHOU,
 };
 
 const cache = new Map<string, CompiledSprite>();

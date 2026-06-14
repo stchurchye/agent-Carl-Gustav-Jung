@@ -1,12 +1,14 @@
 import type { Script } from './story';
 
 /**
- * 犬朝后宫 ·《雪团传》全本:八幕原创宫斗。
+ * 犬朝后宫 ·《雪团传》全本:九幕原创宫斗。
  * 全部为原创人物、原创台词、原创情节——宫斗只是类型套路(不受版权),不照搬、不"小改"任何作品。
+ * (「滴血验亲」是《洗冤集录》就有的历史验亲法、公共素材;此处为原创公堂,非复刻任何作品的具体桥段。)
  *
- * 八幕(机制各异):初入宫闱(查案/说台词)· 御宴争辉(说台词/查案/选择)· 试毒局(验毒配伍)·
+ * 九幕(机制各异):初入宫闱(查案/说台词)· 御宴争辉(说台词/查案/选择)· 试毒局(验毒配伍)·
  *   月下夜探(潜行)· 棠梨惊变(选择/推箱/查案/说台词)· 椒房册仪(默宫仪)· 听更夜奏(抚弦节奏)·
- *   凤仪定鼎(大结局)。每幕"善果"续进下一幕,只有末幕才有真正的大结局;各幕"恶果"即 game over。
+ *   滴血验亲(公堂辩论/查案/说台词,多狗对质)· 凤仪定鼎(大结局)。
+ *   每幕"善果"续进下一幕,只有末幕才有真正的大结局;各幕"恶果"即 game over。
  *
  * 旗标一路贯穿、皆有回响(无死旗标),终幕汇成「证据 × 风向 × 人证」:
  *  - polite(行礼)→ 老福三度作证(vouch/vouch2/laofuFinal);trust_molan(结盟)→ 情报/隐藏贤宠/救墨兰
@@ -989,7 +991,7 @@ export const ACT1: Script = {
         { kind: 'line', who: 'quanhuang', text: '(久久无言,末了一叹)留白处屏息如止水,音落处惊鸿照影。此女有静气,有风骨——堪当中宫。' },
         {
           kind: 'choice',
-          options: [{ label: '(敛衽谢恩,不露半分得色)', setFlags: ['night_favor'], goto: 'act4' }],
+          options: [{ label: '(敛衽谢恩,不露半分得色)', setFlags: ['night_favor'], goto: 'bx_intro' }],
         },
       ],
     },
@@ -1001,16 +1003,151 @@ export const ACT1: Script = {
         { kind: 'line', who: 'jinyu', text: '(掩唇轻笑,声音却让满殿都听见)一曲乱了节律、留白没忍住——可见心浮气躁,德行尚浅。这样的人,也配执掌中宫?陛下可要三思。' },
         {
           kind: 'choice',
-          options: [{ label: '(强咽下这口气,指尖掐进掌心)', setFlags: ['lost_composure'], goto: 'act4' }],
+          options: [{ label: '(强咽下这口气,指尖掐进掌心)', setFlags: ['lost_composure'], goto: 'bx_intro' }],
         },
       ],
     },
 
-    // ══════════ 第八幕《凤仪定鼎》〔大结局〕 ══════════
+    // ══════════ 第八幕《滴血验亲》· 公堂辩论 ══════════
+    bx_intro: {
+      id: 'bx_intro',
+      bg: 'hall',
+      act: '第八幕 · 滴血验亲',
+      cast: ['quanhuang', 'taihou', 'jinyu', 'xuetuan'],
+      goto: 'bx_debate',
+      steps: [
+        { kind: 'line', who: 'jinyu', text: '(当殿抬出一只玉碗、一卷旧档)陛下!太后!立后乃国本,岂能立一个来路不明之人?臣妾查实——这雪团,实为前朝罪臣之后!请当殿滴血验亲:取罪臣遗骨之血,与她一验,清浊立判!' },
+        { kind: 'line', who: 'taihou', text: '(端坐凤位,声沉如钟)兹事体大,关乎国本。准。滴血验亲,当殿验个明白。' },
+        { kind: 'line', who: 'xuetuan', text: '(指尖发凉)罪臣之后,是诛九族的死罪。她敢当殿验,这碗里,必有名堂。辩,要辩;查,也要查——今日,一步都错不得。' },
+      ],
+    },
+    bx_debate: {
+      id: 'bx_debate',
+      bg: 'hall',
+      cast: ['quanhuang', 'taihou', 'jinyu', 'xuetuan'],
+      steps: [
+        {
+          kind: 'debate',
+          prompt: '验亲之前,金羽先要在唇舌上把你压垮。她步步发难,你逐句回敬——气势压不住,不等滴血,满堂民心就先倒向她了。',
+          onWin: 'bx_test',
+          onLose: 'bx_doom1',
+          rounds: [
+            {
+              argument: '一个连出身都遮遮掩掩的,也配母仪天下?当众说清楚——你到底是谁的种?',
+              who: 'jinyu',
+              rebuttals: [
+                { label: '出身寒微非罪,德行有亏才是罪。臣妾这一年的功过,满宫都看在眼里。', delta: 20 },
+                { label: '(慌)我…我不是罪臣之后!', delta: -15 },
+                { label: '贵妃血口喷人,才该治罪!', delta: -10 },
+              ],
+            },
+            {
+              argument: '空口无凭。本宫这卷旧档、这坛罪臣之血,桩桩是铁证。你敢不敢验?',
+              who: 'jinyu',
+              rebuttals: [
+                { label: '验。臣妾行得正、坐得直,这碗血,正好替臣妾洗一身清白。', delta: 20 },
+                { label: '旧档真假难辨,焉知不是伪造?', delta: -8 },
+                { label: '(垂首不敢应声)', delta: -25 },
+              ],
+            },
+            {
+              argument: '(逼视凤位)太后明鉴!立后在即,岂容这等血脉不正之人玷污中宫?求太后,替犬朝做主!',
+              who: 'jinyu',
+              rebuttals: [
+                { label: '(向太后伏身)太后明察。血脉清浊,一验便知;臣妾只求一个公道,不求宽宥。', delta: 20 },
+                { label: '太后别听她的,她才是包藏祸心!', delta: -12 },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    bx_test: {
+      id: 'bx_test',
+      bg: 'hall',
+      cast: ['xuetuan', 'jinyu', 'taihou'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(两滴血落入玉碗——竟缓缓相融!满殿哗然)怎么会……罪臣的血与我的血,八竿子打不着,怎会相融?除非——这碗水,被人做了手脚!' },
+        {
+          kind: 'deduce',
+          prompt: '备碗、捧血、当值验亲的宫人都在此。嗅出谁手上沾着不该有的明矾气、谁是金羽埋的钉子——揪出做手脚的那一只。',
+          count: 7,
+          budget: 2,
+          seed: 23,
+          onSolve: 'bx_expose',
+          onFail: 'bx_doom2',
+        },
+      ],
+    },
+    bx_expose: {
+      id: 'bx_expose',
+      bg: 'hall',
+      cast: ['xuetuan', 'quanhuang', 'taihou'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(攥着那包白霜)抓住了!碗里被掺了明矾——但凡掺了明矾,管它谁的血滴进去,都会相融!这一场滴血验亲,从头到尾,就是金羽做的局!' },
+        {
+          kind: 'sayline',
+          who: 'quanhuang',
+          context: '滴血验亲被金羽掺了明矾做假,雪团当殿揪出做手脚的宫人、举出明矾。要当着犬皇与太后,把这桩伪验亲彻底翻案,反钉金羽构陷之罪。',
+          intent: '当殿翻案、反将一军——以「明矾使血相融」的事理为锋,把这场伪验亲彻底揭穿,既洗清自身血脉之诬,又让犬皇与太后看清金羽构陷的真面目,而不显得是狡辩脱罪。',
+          onPass: 'bx_win',
+          onFail: 'bx_doom3',
+        },
+      ],
+    },
+    bx_win: {
+      id: 'bx_win',
+      bg: 'hall',
+      cast: ['taihou', 'quanhuang', 'xuetuan', 'molan'],
+      goto: 'act4',
+      steps: [
+        { kind: 'line', who: 'taihou', text: '(拍案而起)好一个金羽!当殿伪造验亲、构陷宫嫔——其心可诛!来人,先将金羽看押,容后发落。这中宫之位,断容不得这般构陷之徒。' },
+        { kind: 'line', who: 'xuetuan', text: '(叩首)谢太后、陛下明察。这一局,我赢得堂堂正正。只是金羽狗急跳墙——立后那日,只怕还有最后一搏。' },
+      ],
+    },
+    // ── 滴血验亲 · 三处恶果(game over)──
+    bx_doom1: {
+      id: 'bx_doom1',
+      bg: 'hall',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'bad',
+          text: '【滴血验亲 · 被驳】唇枪舌剑里,雪团一句不慎,被金羽步步紧逼到哑口无言。不等那碗血滴下,满堂民心已倒向贵妃。「连话都说不周全,何谈母仪天下」——立后之议,先输在了一张嘴上。',
+        },
+      ],
+    },
+    bx_doom2: {
+      id: 'bx_doom2',
+      bg: 'hall',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'bad',
+          text: '【滴血验亲 · 坐实】做手脚的人,终究没能揪出来。那碗「相融」的血,成了铁证如山。「前朝罪臣之后」八个字砸下来,雪团百口莫辩。立后是再不必想了——能不能保住这条命,都在两可之间。金羽,笑到了最后。',
+        },
+      ],
+    },
+    bx_doom3: {
+      id: 'bx_doom3',
+      bg: 'hall',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'bad',
+          text: '【滴血验亲 · 功亏】明矾攥在手里,话却没能说进犬皇与太后心里去。金羽反咬一口「妖言惑众、狡辩脱罪」,满殿风向霎时倒转。揭穿不成,反把「攀诬贵妃」的罪名,结结实实扣回了自己头上。',
+        },
+      ],
+    },
+
+    // ══════════ 第九幕《凤仪定鼎》〔大结局〕 ══════════
     act4: {
       id: 'act4',
       bg: 'hall',
-      act: '第八幕 · 凤仪定鼎',
+      act: '第九幕 · 凤仪定鼎',
       cast: ['quanhuang', 'jinyu'],
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(临朝)中宫之位虚悬已久。六宫无主,终非长法——朕,该立后了。' },

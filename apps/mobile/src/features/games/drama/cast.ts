@@ -37,6 +37,12 @@ export const CAST: Record<CharId, CastMember> = {
     dog: { ...DEFAULT_DOG, body: 'sturdy', coat: 'terra', ears: 'pointy', tail: 'curl', personality: 'calm' },
     headdress: 'emperor',
   },
+  // 幕后至高权柄·立后定夺:银发沉静 + 最隆重太后冠
+  taihou: {
+    name: '太后',
+    dog: { ...DEFAULT_DOG, body: 'sturdy', coat: 'mist', ears: 'fold', tail: 'curl', personality: 'calm' },
+    headdress: 'taihou',
+  },
 };
 
 export function castMember(id: CharId): CastMember | null {
