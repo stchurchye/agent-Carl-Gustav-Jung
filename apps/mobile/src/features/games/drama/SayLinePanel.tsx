@@ -22,12 +22,14 @@ export function SayLinePanel({
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const hold = useHoldToSpeak((t) => setInput((p) => (p ? `${p}${t}` : t)));
 
   const say = async () => {
     const line = input.trim();
     if (!line || busy) return;
     setBusy(true);
+    setError(null);
     try {
       const res = await api.dramaSay({
         npcName,
@@ -37,7 +39,8 @@ export function SayLinePanel({
       });
       setVerdict(res.data);
     } catch {
-      // 网络/密钥失败:留住输入,玩家可重试
+      // 网络/密钥失败:留住输入并给明确反馈,别静默
+      setError(G.sayError);
     } finally {
       setBusy(false);
     }
@@ -86,6 +89,7 @@ export function SayLinePanel({
         </Pressable>
       </View>
       {busy ? <Text style={styles.thinking}>{G.sayThinking}</Text> : null}
+      {error && !busy ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
 }
@@ -129,6 +133,7 @@ const styles = StyleSheet.create({
   sayBtnOff: { opacity: 0.6 },
   sayText: { fontSize: 15, fontWeight: '700', color: '#F4EFE4' },
   thinking: { fontSize: 13, color: '#8A8377', textAlign: 'center' },
+  error: { fontSize: 13, color: '#B3402F', textAlign: 'center' },
   badge: { fontSize: 15, fontWeight: '800', textAlign: 'center' },
   pass: { color: '#3F7A4E' },
   fail: { color: '#B3402F' },

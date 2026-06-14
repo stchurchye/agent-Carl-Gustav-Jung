@@ -3,12 +3,12 @@ import type { Script } from './story';
 /**
  * 犬朝后宫 · 第一幕《初入宫闱》。
  * 全部为原创人物、原创台词、原创情节,不涉及任何版权作品。
- * 机制贯穿:对白 + 选择(旗标有后果)+ 说对台词 + 查案 + 旗标分支 + 多结局。
+ * 机制贯穿:对白 + 选择(选完当场不同反应 + 旗标影响结局)+ 说对台词 + 查案 + 旗标分支 + 多结局。
  */
 export const ACT1: Script = {
   start: 'gate',
   scenes: {
-    // ── 宫门:初入 ──
+    // ── 宫门:初入,行礼/直言当场不同 ──
     gate: {
       id: 'gate',
       bg: 'gate',
@@ -20,13 +20,31 @@ export const ACT1: Script = {
           kind: 'choice',
           prompt: '老福嬷嬷拦在宫门前,该如何应对?',
           options: [
-            { label: '屈膝行礼,先递上见面礼', setFlags: ['polite'], goto: 'courtyard' },
-            { label: '抬头直言,我是奉旨入宫', goto: 'courtyard' },
+            { label: '屈膝行礼,先递上见面礼', setFlags: ['polite'], goto: 'gateBow' },
+            { label: '抬头直言,我是奉旨入宫', goto: 'gateBold' },
           ],
         },
       ],
     },
-    // ── 御花园:遇墨兰,结盟与否 ──
+    gateBow: {
+      id: 'gateBow',
+      bg: 'gate',
+      cast: ['laofu', 'xuetuan'],
+      goto: 'courtyard',
+      steps: [
+        { kind: 'line', who: 'laofu', text: '(脸色稍缓)倒是个懂规矩的。罢了,进去吧——记着,这宫里规矩比天大。' },
+      ],
+    },
+    gateBold: {
+      id: 'gateBold',
+      bg: 'gate',
+      cast: ['laofu', 'xuetuan'],
+      goto: 'courtyard',
+      steps: [
+        { kind: 'line', who: 'laofu', text: '(冷哼)牙尖嘴利。且看你这张利嘴,在这宫里能横到几时。' },
+      ],
+    },
+    // ── 御花园:遇墨兰,信/疑当场不同(信她还得一条情报)──
     courtyard: {
       id: 'courtyard',
       bg: 'garden',
@@ -42,10 +60,32 @@ export const ACT1: Script = {
           kind: 'choice',
           prompt: '墨兰主动示好,信她,还是留个心眼?',
           options: [
-            { label: '谢姐姐相助,愿与你共进退', setFlags: ['trust_molan'], goto: 'meet' },
-            { label: '多谢提点,余事我自有分寸', goto: 'meet' },
+            { label: '谢姐姐相助,愿与你共进退', setFlags: ['trust_molan'], goto: 'cyTrust' },
+            { label: '多谢提点,余事我自有分寸', goto: 'cyWary' },
           ],
         },
+      ],
+    },
+    cyTrust: {
+      id: 'cyTrust',
+      bg: 'garden',
+      cast: ['molan', 'xuetuan'],
+      goto: 'meet',
+      steps: [
+        {
+          kind: 'line',
+          who: 'molan',
+          text: '(压低声)好妹妹,爽快。那我便交你个底——金羽最忌讳人提她的出身,这话你记着,关键时用得上。',
+        },
+      ],
+    },
+    cyWary: {
+      id: 'cyWary',
+      bg: 'garden',
+      cast: ['molan', 'xuetuan'],
+      goto: 'meet',
+      steps: [
+        { kind: 'line', who: 'molan', text: '(神色一淡)也罢,各凭本事。只盼你别栽得太难看。' },
       ],
     },
     // ── 金銮殿:贵妃刁难,说对台词 ──
@@ -69,7 +109,6 @@ export const ACT1: Script = {
         },
       ],
     },
-    // ── 金銮殿:暂稳,贵妃记恨 ──
     favor: {
       id: 'favor',
       bg: 'hall',
@@ -80,7 +119,6 @@ export const ACT1: Script = {
         { kind: 'line', who: 'xuetuan', text: '一句话稳住了贵妃,可她眼里那点寒意,才是真正的开始。' },
       ],
     },
-    // ── 御花园:茶点投毒,案起 ──
     incident: {
       id: 'incident',
       bg: 'garden',
@@ -96,11 +134,7 @@ export const ACT1: Script = {
       bg: 'garden',
       cast: ['molan', 'xuetuan'],
       steps: [
-        {
-          kind: 'line',
-          who: 'molan',
-          text: '当值的几只宫女狗都在这儿了。蛛丝马迹,就看你的眼力。',
-        },
+        { kind: 'line', who: 'molan', text: '当值的几只宫女狗都在这儿了。蛛丝马迹,就看你的眼力。' },
         {
           kind: 'deduce',
           prompt: '嗅出破绽,揪出在茶点里动手脚的那一只,替雪团自证清白。',
@@ -148,7 +182,6 @@ export const ACT1: Script = {
         },
       ],
     },
-    // ── 坏结局 ──
     snub: {
       id: 'snub',
       bg: 'hall',
