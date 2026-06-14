@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WeChatChatHeader } from '../../../components/WeChatChatHeader';
 import { PixelSprite } from '../../../components/pixel/PixelSprite';
@@ -43,7 +43,9 @@ export function DramaScreen(_props: Props) {
   return (
     <View style={wechatChatStyles.page}>
       <WeChatChatHeader title={G.name} showBack />
-      <View style={styles.stage}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* 点场景任意处收起键盘(说台词时键盘别挡住按钮) */}
+      <Pressable style={styles.stage} onPress={() => Keyboard.dismiss()}>
         <View style={StyleSheet.absoluteFill}>
           <SceneBackground bg={scene.bg} />
         </View>
@@ -61,7 +63,7 @@ export function DramaScreen(_props: Props) {
             );
           })}
         </View>
-      </View>
+      </Pressable>
 
       <View style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {step?.kind === 'line' ? (
@@ -96,6 +98,7 @@ export function DramaScreen(_props: Props) {
           />
         ) : null}
       </View>
+      </KeyboardAvoidingView>
 
       {step?.kind === 'ending' ? (
         <View style={styles.overlay}>
@@ -114,6 +117,7 @@ export function DramaScreen(_props: Props) {
 const INK = '#3D3229';
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   stage: { flex: 1, justifyContent: 'flex-end' },
   cast: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', padding: 16 },
   castSlot: { alignItems: 'center', gap: 4 },
