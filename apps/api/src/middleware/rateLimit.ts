@@ -6,6 +6,16 @@ import type { AppVariables } from '../types.js';
 type Bucket = { count: number; resetAt: number };
 
 const buckets = new Map<string, Bucket>();
+// 过期 bucket 若从不删除,Map 会随不同 key(IP)无限增长 → 内存型 DoS。
+// 每若干次请求顺手清理一次已过期条目。
+let opsSinceSweep = 0;
+const SWEEP_EVERY = 256;
+
+function sweepExpired(now: number): void {
+  for (const [key, bucket] of buckets) {
+    if (now >= bucket.resetAt) buckets.delete(key);
+  }
+}
 
 /** 简易内存限流（单实例）；多副本部署请改用 Redis 等共享存储 */
 export function rateLimit(options: {
@@ -20,6 +30,10 @@ export function rateLimit(options: {
 
   return async (c, next) => {
     const now = Date.now();
+    if (++opsSinceSweep >= SWEEP_EVERY) {
+      opsSinceSweep = 0;
+      sweepExpired(now);
+    }
     const key = `${options.keyPrefix}:${keyFromRequest(c)}`;
     let bucket = buckets.get(key);
     if (!bucket || now >= bucket.resetAt) {

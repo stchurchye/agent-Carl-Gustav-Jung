@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,7 +19,18 @@ import { ProwlPanel } from './ProwlPanel';
 import { KoulliPanel } from './KoulliPanel';
 import { ZitherPanel } from './ZitherPanel';
 import { SceneBackground } from './SceneBackground';
-import { advanceStory, currentStep, startStory, type DramaState } from './story';
+import { currentStep, type DramaState } from './story';
+import {
+  initSave,
+  advanceSave,
+  restartAct,
+  isResumable,
+  checkpointActLabel,
+  serializeSave,
+  parseSave,
+  type DramaSave,
+} from './dramaSave';
+import { loadDramaSaveRaw, saveDramaRaw, clearDramaSave } from './dramaSaveStore';
 
 const G = zh.games.drama;
 
@@ -27,7 +38,10 @@ type Props = NativeStackScreenProps<GroupStackParamList, 'GameDrama'>;
 
 export function DramaScreen(_props: Props) {
   const insets = useSafeAreaInsets();
-  const [state, setState] = useState<DramaState>(() => startStory(ACT1));
+  const [save, setSave] = useState<DramaSave>(() => initSave(ACT1));
+  const [resume, setResume] = useState<DramaSave | null>(null); // 待确认的"继续上次"存档
+  const hydrated = useRef(false);
+  const state: DramaState = save.current;
 
   const scene = ACT1.scenes[state.sceneId];
   const step = currentStep(ACT1, state);
@@ -37,12 +51,34 @@ export function DramaScreen(_props: Props) {
   );
 
   const advance = (input?: { choice?: number; pass?: boolean; solved?: boolean }) =>
-    setState((s) => advanceStory(ACT1, s, input));
-  const restart = () => setState(startStory(ACT1));
+    setSave((s) => advanceSave(ACT1, s, input));
+  const restart = () => setSave(initSave(ACT1)); // 从头再看(自动存档随之清空)
+  const backToAct = () => setSave((s) => restartAct(s)); // 回到本幕开头
+
+  // 进屏读存档:有可续进度 → 弹「继续上次」
+  useEffect(() => {
+    let alive = true;
+    void loadDramaSaveRaw().then((raw) => {
+      if (!alive) return;
+      const s = parseSave(raw, ACT1);
+      if (isResumable(ACT1, s)) setResume(s);
+      hydrated.current = true;
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 自动存档:有进度则存,回到起点/结束态则清(读完档后才开始,避免首帧误清掉旧档)
+  useEffect(() => {
+    if (!hydrated.current) return;
+    if (isResumable(ACT1, save)) void saveDramaRaw(serializeSave(save));
+    else void clearDramaSave();
+  }, [save]);
 
   // branch 步无 UI:按旗标自动推进
   useEffect(() => {
-    if (step?.kind === 'branch') setState((s) => advanceStory(ACT1, s));
+    if (step?.kind === 'branch') setSave((s) => advanceSave(ACT1, s));
   }, [step]);
 
   return (
@@ -144,9 +180,47 @@ export function DramaScreen(_props: Props) {
         <View style={styles.overlay}>
           <View style={styles.overlayCard}>
             <Text style={styles.endText}>{step.text}</Text>
-            <Pressable onPress={restart} style={styles.contBtn}>
-              <Text style={styles.contText}>{G.restart}</Text>
-            </Pressable>
+            <View style={styles.endBtns}>
+              {step.outcome === 'bad' && save.checkpoint.sceneId !== ACT1.start ? (
+                <Pressable testID="drama-back-act" onPress={backToAct} style={styles.contBtn}>
+                  <Text style={styles.contText}>{G.restartAct}</Text>
+                </Pressable>
+              ) : null}
+              <Pressable testID="drama-restart" onPress={restart} style={[styles.contBtn, styles.ghostBtn]}>
+                <Text style={[styles.contText, styles.ghostText]}>{G.restart}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {resume ? (
+        <View style={styles.overlay}>
+          <View style={styles.overlayCard}>
+            <Text style={styles.resumeTitle}>{G.resumeTitle}</Text>
+            <Text style={styles.resumeSub}>{checkpointActLabel(ACT1, resume) ?? ''}</Text>
+            <View style={styles.endBtns}>
+              <Pressable
+                testID="drama-resume"
+                onPress={() => {
+                  setSave(resume);
+                  setResume(null);
+                }}
+                style={styles.contBtn}
+              >
+                <Text style={styles.contText}>{G.resumeContinue}</Text>
+              </Pressable>
+              <Pressable
+                testID="drama-fresh"
+                onPress={() => {
+                  setResume(null);
+                  setSave(initSave(ACT1));
+                }}
+                style={[styles.contBtn, styles.ghostBtn]}
+              >
+                <Text style={[styles.contText, styles.ghostText]}>{G.resumeRestart}</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       ) : null}
@@ -225,4 +299,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
   },
   endText: { fontSize: 16, fontWeight: '700', color: INK, textAlign: 'center', lineHeight: 24 },
+  endBtns: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' },
+  ghostBtn: { backgroundColor: '#FFFDF7', borderWidth: 2, borderColor: INK },
+  ghostText: { color: INK },
+  resumeTitle: { fontSize: 17, fontWeight: '800', color: INK, textAlign: 'center' },
+  resumeSub: { fontSize: 14, color: '#8A8377', textAlign: 'center' },
 });
