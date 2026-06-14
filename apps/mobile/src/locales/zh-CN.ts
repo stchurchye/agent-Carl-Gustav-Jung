@@ -63,7 +63,7 @@ export const zh = {
       pairingSubmit: '呈药',
       pairingReset: '重判',
       pairingGiveUp: '弃局',
-      prowlHint: '潜到金门偏殿取密信。巡夜犬沿固定路线走,灯笼光锥照其去向——你每动一步它们也走一步。落进光锥或撞上犬即被擒。「屏息」原地等一拍,放它们先过。',
+      prowlHint: '潜到金门偏殿取密信。巡夜犬沿固定路线走,灯笼照亮它们身前一片明处(随朝向变)——你每动一步它们也走一步。落进那片灯影、或撞上犬即被擒。「屏息」原地等一拍,放它们先过。',
       prowlMoves: (n: number) => `已潜 ${n} 步`,
       prowlWait: '屏息',
       prowlReset: '重来',

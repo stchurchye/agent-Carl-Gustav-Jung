@@ -613,7 +613,7 @@ export const ACT1: Script = {
       cast: ['molan', 'xuetuan'],
       goto: 'np_prowl',
       steps: [
-        { kind: 'line', who: 'molan', text: '金羽栽我的局,八成已经布下。可她那道伪造的「巫蛊」底稿、勾连宫外的私信,都锁在偏殿——拿到它,你就不是待宰的羔羊,是握刀的人。' },
+        { kind: 'line', who: 'molan', text: '金羽栽我的局,八成已经布下。可她那道伪造的「巫蛊」底稿、勾连宫外的私信,都锁在偏殿——拿到它,你就不是任人宰割的鱼肉,是握刀的那个人了。' },
         { kind: 'line', who: 'xuetuan', text: '偏殿外,巡夜犬走了一夜的固定哨路,灯笼光锥扫过满地月色。今夜,我去把那封信,偷出来。' },
       ],
     },
@@ -624,7 +624,7 @@ export const ACT1: Script = {
       steps: [
         {
           kind: 'prowl',
-          prompt: '趁夜潜到金门偏殿取出密信。看准巡夜犬的哨路与光锥,该走则走、该屏息则屏息——撞上一回,满盘皆输。',
+          prompt: '趁夜潜到金门偏殿取出密信。看准巡夜犬的哨路、避开灯笼扫过的明处,该走则走、该屏息则屏息——撞上一回,满盘皆输。',
           onSolve: 'np_got',
           onFail: 'np_caught',
         },
