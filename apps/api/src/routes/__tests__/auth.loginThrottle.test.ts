@@ -38,6 +38,7 @@ function login(username: string, password: string, ip: string) {
 
 describe('登录路由 · 按账号防爆破', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     loginThrottle.reset(); // 默认阈值 5 次失败 / 锁 15min
   });
 
