@@ -23,6 +23,10 @@ function targetsOf(scene: Scene): string[] {
       if (step.onSolve) t.push(step.onSolve);
       if (step.onFail) t.push(step.onFail);
     }
+    if (step.kind === 'debate') {
+      if (step.onWin) t.push(step.onWin);
+      if (step.onLose) t.push(step.onLose);
+    }
     if (step.kind === 'branch') {
       if (step.whenSet) t.push(step.whenSet);
       if (step.whenUnset) t.push(step.whenUnset);

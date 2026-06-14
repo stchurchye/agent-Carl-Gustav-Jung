@@ -18,6 +18,7 @@ import { PairingPanel } from './PairingPanel';
 import { ProwlPanel } from './ProwlPanel';
 import { KoulliPanel } from './KoulliPanel';
 import { ZitherPanel } from './ZitherPanel';
+import { DebatePanel } from './DebatePanel';
 import { SceneBackground } from './SceneBackground';
 import { currentStep, type DramaState } from './story';
 import {
@@ -180,6 +181,12 @@ export function DramaScreen(_props: Props) {
             key={`${state.sceneId}-${state.stepIndex}`}
             step={step}
             onResolved={(solved) => advance({ solved })}
+          />
+        ) : step?.kind === 'debate' ? (
+          <DebatePanel
+            key={`${state.sceneId}-${state.stepIndex}`}
+            step={step}
+            onResolved={(won) => advance({ solved: won })}
           />
         ) : null}
       </View>

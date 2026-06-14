@@ -69,6 +69,14 @@ export type Koulli = {
 };
 /** 听更夜奏:更鼓节拍抚弦,亮拍拨弦、留白屏息。通仪=onSolve、失态/搁琴=onFail */
 export type Zither = { kind: 'zither'; prompt?: string; onSolve?: SceneId; onFail?: SceneId };
+/** 公堂辩论:逐轮择驳词对垒气势。压服全场=onWin、落于下风/被驳哑=onLose;各轮内容在 rounds */
+export type Debate = {
+  kind: 'debate';
+  prompt?: string;
+  rounds: import('./debate').DebateRound[];
+  onWin?: SceneId;
+  onLose?: SceneId;
+};
 export type Ending = { kind: 'ending'; outcome: 'good' | 'bad'; text: string };
 /** 旗标条件分支(无玩家输入,自动按旗标走);让选择产生后果 */
 export type Branch = { kind: 'branch'; flag: string; whenSet?: SceneId; whenUnset?: SceneId };
@@ -83,6 +91,7 @@ export type Step =
   | Prowl
   | Koulli
   | Zither
+  | Debate
   | Branch
   | Ending;
 
@@ -184,6 +193,9 @@ export function advanceStory(script: Script, state: DramaState, input?: AdvanceI
       break;
     case 'zither':
       next = target(script, state, input?.solved ? step.onSolve : step.onFail);
+      break;
+    case 'debate':
+      next = target(script, state, input?.solved ? step.onWin : step.onLose);
       break;
     case 'branch':
       next = target(script, state, state.flags.includes(step.flag) ? step.whenSet : step.whenUnset);
