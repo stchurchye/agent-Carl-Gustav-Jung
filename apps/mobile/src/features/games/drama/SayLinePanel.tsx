@@ -27,7 +27,46 @@ export function SayLinePanel({
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [tries, setTries] = useState(0); // 已失败次数
   const [error, setError] = useState<string | null>(null);
+  const [pickedWrong, setPickedWrong] = useState<number[]>([]); // 多选题:试过且错的选项
+  const [retort, setRetort] = useState<string | null>(null); // 多选题:对面的回怼
   const hold = useHoldToSpeak((t) => setInput((p) => (p ? `${p}${t}` : t)));
+
+  // ── 多选题模式(给了 options):挑一句应对,挑对即过,纯离线 ──
+  if (step.options) {
+    const opts = step.options;
+    const choose = (i: number) => {
+      if (opts[i].good) return onResolved(true);
+      setPickedWrong((w) => (w.includes(i) ? w : [...w, i]));
+      setRetort(opts[i].reply ?? G.sayWrongPick);
+    };
+    return (
+      <View style={styles.box}>
+        <Text style={styles.prompt}>{G.sayPickPrompt}</Text>
+        {opts.map((o, i) => {
+          const wrong = pickedWrong.includes(i);
+          return (
+            <Pressable
+              key={i}
+              testID={`say-opt-${i}`}
+              disabled={wrong}
+              onPress={() => choose(i)}
+              style={[styles.optBtn, wrong && styles.optWrong]}
+            >
+              <Text style={[styles.optText, wrong && styles.optWrongText]}>{o.label}</Text>
+            </Pressable>
+          );
+        })}
+        {retort ? (
+          <View style={styles.bubble}>
+            <Text style={styles.bubbleText}>{retort}</Text>
+          </View>
+        ) : null}
+        <Pressable testID="say-giveup" onPress={() => onResolved(false)} style={styles.giveUpBtn}>
+          <Text style={styles.giveUpText}>{G.sayGiveUp}</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   const say = async () => {
     const line = input.trim();
@@ -165,4 +204,17 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, color: '#8A8377' },
   contBtn: { alignSelf: 'flex-end', paddingHorizontal: 18, paddingVertical: 8, backgroundColor: INK, borderRadius: 6 },
   contText: { fontSize: 15, fontWeight: '700', color: '#F4EFE4' },
+  optBtn: {
+    backgroundColor: '#FFFDF7',
+    borderWidth: 2,
+    borderColor: INK,
+    borderRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  optWrong: { opacity: 0.45, borderColor: '#B3402F' },
+  optText: { fontSize: 15, color: INK },
+  optWrongText: { color: '#B3402F' },
+  giveUpBtn: { alignSelf: 'center', paddingHorizontal: 22, paddingVertical: 8, backgroundColor: '#8A8377', borderRadius: 6, marginTop: 2 },
+  giveUpText: { fontSize: 14, fontWeight: '700', color: '#F4EFE4' },
 });
