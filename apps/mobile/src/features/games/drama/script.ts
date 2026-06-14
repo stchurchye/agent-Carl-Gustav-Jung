@@ -20,6 +20,7 @@ export const ACT1: Script = {
     gate: {
       id: 'gate',
       bg: 'gate',
+      act: '第一幕 · 初入宫闱',
       cast: ['laofu', 'xuetuan'],
       steps: [
         { kind: 'line', who: 'laofu', text: '新来的答应?规矩还没学全,就敢往前凑。' },
@@ -284,6 +285,7 @@ export const ACT1: Script = {
     act2: {
       id: 'act2',
       bg: 'garden',
+      act: '第二幕 · 御宴争辉',
       cast: ['xuetuan', 'molan'],
       goto: 'banquetNews',
       steps: [
@@ -514,6 +516,7 @@ export const ACT1: Script = {
     act3: {
       id: 'act3',
       bg: 'garden',
+      act: '第三幕 · 棠梨惊变',
       cast: ['xuetuan', 'molan'],
       steps: [
         { kind: 'line', who: 'xuetuan', text: '入宫一年,我从答应走到了妃位。可越是站得高,夜里越是睡不安稳——金羽沉得太久了,静得反常。' },
@@ -642,6 +645,7 @@ export const ACT1: Script = {
     act4: {
       id: 'act4',
       bg: 'hall',
+      act: '第四幕 · 凤仪定鼎',
       cast: ['quanhuang', 'jinyu'],
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(临朝)中宫之位虚悬已久。六宫无主,终非长法——朕,该立后了。' },

@@ -49,6 +49,11 @@ export function DramaScreen(_props: Props) {
         <View style={StyleSheet.absoluteFill}>
           <SceneBackground bg={scene.bg} />
         </View>
+        {scene.act ? (
+          <View style={styles.actBanner} pointerEvents="none">
+            <Text style={styles.actBannerText}>{scene.act}</Text>
+          </View>
+        ) : null}
         <View style={styles.cast}>
           {castSprites.map(({ id, m }) => {
             const crown = m!.headdress ? buildHeaddress(m!.headdress) : null;
@@ -119,6 +124,18 @@ const INK = '#3D3229';
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   stage: { flex: 1, justifyContent: 'flex-end' },
+  actBanner: {
+    position: 'absolute',
+    top: 14,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(61,50,41,0.78)',
+    borderWidth: 1,
+    borderColor: '#D7AE4E',
+    borderRadius: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 7,
+  },
+  actBannerText: { fontSize: 15, fontWeight: '800', color: '#F1D67E', letterSpacing: 2 },
   cast: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', padding: 16 },
   castSlot: { alignItems: 'center', gap: 4 },
   dogStack: { width: 72, height: 72 },

@@ -49,6 +49,8 @@ export type Scene = {
   steps: Step[];
   /** 步骤走完后接续的场景(无则停在原地) */
   goto?: SceneId;
+  /** 幕开场标题(如「第三幕 · 棠梨惊变」);设了则进此场景时在舞台顶部亮一道过场横幅 */
+  act?: string;
 };
 
 export type Script = { start: SceneId; scenes: Record<SceneId, Scene> };
