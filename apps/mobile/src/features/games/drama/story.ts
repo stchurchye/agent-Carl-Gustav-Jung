@@ -35,8 +35,10 @@ export type Deduce = {
   onFail?: SceneId;
 };
 export type Ending = { kind: 'ending'; outcome: 'good' | 'bad'; text: string };
+/** 旗标条件分支(无玩家输入,自动按旗标走);让选择产生后果 */
+export type Branch = { kind: 'branch'; flag: string; whenSet?: SceneId; whenUnset?: SceneId };
 
-export type Step = Line | Choice | SayLine | Deduce | Ending;
+export type Step = Line | Choice | SayLine | Deduce | Branch | Ending;
 
 export type Scene = {
   id: SceneId;
@@ -119,6 +121,9 @@ export function advanceStory(script: Script, state: DramaState, input?: AdvanceI
       break;
     case 'deduce':
       next = target(script, state, input?.solved ? step.onSolve : step.onFail);
+      break;
+    case 'branch':
+      next = target(script, state, state.flags.includes(step.flag) ? step.whenSet : step.whenUnset);
       break;
     case 'ending':
       return state;

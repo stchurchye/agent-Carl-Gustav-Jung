@@ -1,12 +1,14 @@
 import type { Script } from './story';
 
 /**
- * 犬朝后宫 · 第一幕(完整竖切:对白 → 选择 → 说台词 → 查案 → 好/坏结局)。
- * 全部为原创人物、原创台词、原创情节,不涉及任何版权作品。D5 再扩写打磨。
+ * 犬朝后宫 · 第一幕《初入宫闱》。
+ * 全部为原创人物、原创台词、原创情节,不涉及任何版权作品。
+ * 机制贯穿:对白 + 选择(旗标有后果)+ 说对台词 + 查案 + 旗标分支 + 多结局。
  */
 export const ACT1: Script = {
   start: 'gate',
   scenes: {
+    // ── 宫门:初入 ──
     gate: {
       id: 'gate',
       bg: 'gate',
@@ -18,12 +20,35 @@ export const ACT1: Script = {
           kind: 'choice',
           prompt: '老福嬷嬷拦在宫门前,该如何应对?',
           options: [
-            { label: '屈膝行礼,先递上见面礼', setFlags: ['polite'], goto: 'meet' },
-            { label: '抬头直言,我是奉旨入宫', goto: 'meet' },
+            { label: '屈膝行礼,先递上见面礼', setFlags: ['polite'], goto: 'courtyard' },
+            { label: '抬头直言,我是奉旨入宫', goto: 'courtyard' },
           ],
         },
       ],
     },
+    // ── 御花园:遇墨兰,结盟与否 ──
+    courtyard: {
+      id: 'courtyard',
+      bg: 'garden',
+      cast: ['molan', 'xuetuan'],
+      steps: [
+        {
+          kind: 'line',
+          who: 'molan',
+          text: '妹妹小心。金羽贵妃最容不得新人,前殿那一关,她定要给你个下马威。',
+        },
+        { kind: 'line', who: 'xuetuan', text: '姐姐何故提点我?这宫里,可没有白给的好意。' },
+        {
+          kind: 'choice',
+          prompt: '墨兰主动示好,信她,还是留个心眼?',
+          options: [
+            { label: '谢姐姐相助,愿与你共进退', setFlags: ['trust_molan'], goto: 'meet' },
+            { label: '多谢提点,余事我自有分寸', goto: 'meet' },
+          ],
+        },
+      ],
+    },
+    // ── 金銮殿:贵妃刁难,说对台词 ──
     meet: {
       id: 'meet',
       bg: 'hall',
@@ -37,20 +62,33 @@ export const ACT1: Script = {
         {
           kind: 'sayline',
           who: 'jinyu',
-          context: '前殿初见,金羽贵妃当众刁难新入宫的雪团,众人围观。',
+          context: '前殿初见,金羽贵妃当众刁难新入宫的雪团,满殿宫眷围观。',
           intent: '不卑不亢地化解贵妃的当众刁难——既不示弱讨饶,也不顶撞冒犯,把场面稳住、留有余地。',
-          onPass: 'hall',
+          onPass: 'favor',
           onFail: 'snub',
         },
       ],
     },
-    hall: {
-      id: 'hall',
+    // ── 金銮殿:暂稳,贵妃记恨 ──
+    favor: {
+      id: 'favor',
       bg: 'hall',
-      cast: ['xuetuan'],
+      cast: ['jinyu', 'xuetuan'],
+      goto: 'incident',
+      steps: [
+        { kind: 'line', who: 'jinyu', text: '(冷笑)伶牙俐齿。这宫里,嘴利的活不长,咱们走着瞧。' },
+        { kind: 'line', who: 'xuetuan', text: '一句话稳住了贵妃,可她眼里那点寒意,才是真正的开始。' },
+      ],
+    },
+    // ── 御花园:茶点投毒,案起 ──
+    incident: {
+      id: 'incident',
+      bg: 'garden',
+      cast: ['molan', 'xuetuan'],
       goto: 'probe',
       steps: [
-        { kind: 'line', who: 'xuetuan', text: '一句话稳住了贵妃。可还没喘口气,前殿就出了乱子——' },
+        { kind: 'line', who: 'molan', text: '不好了!贵妃的茶点里被人下了泻药,如今矛头都指向你这新人!' },
+        { kind: 'line', who: 'xuetuan', text: '欲加之罪。可这罪名,我背不起——得自己查清楚。' },
       ],
     },
     probe: {
@@ -61,26 +99,63 @@ export const ACT1: Script = {
         {
           kind: 'line',
           who: 'molan',
-          text: '不好了!贵妃的茶点里被人下了泻药,如今矛头都指向你这新人。',
+          text: '当值的几只宫女狗都在这儿了。蛛丝马迹,就看你的眼力。',
         },
         {
           kind: 'deduce',
-          prompt: '当值的几只宫女狗里藏着真凶。嗅出蛛丝马迹,揪出下药的那一只,替雪团自证清白。',
+          prompt: '嗅出破绽,揪出在茶点里动手脚的那一只,替雪团自证清白。',
           count: 6,
           budget: 2,
           seed: 7,
-          onSolve: 'win',
+          onSolve: 'vindicate',
           onFail: 'frame',
         },
       ],
     },
-    win: {
-      id: 'win',
+    // ── 金銮殿:洗冤,按结盟与否分两种好结局 ──
+    vindicate: {
+      id: 'vindicate',
+      bg: 'hall',
+      cast: ['xuetuan', 'jinyu'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '真凶落网,人证物证俱在。贵妃这一局,算是落了空。' },
+        { kind: 'branch', flag: 'trust_molan', whenSet: 'winAlly', whenUnset: 'winSolo' },
+      ],
+    },
+    winAlly: {
+      id: 'winAlly',
+      bg: 'hall',
+      cast: ['molan', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'molan', text: '我就说妹妹不是池中物。往后这宫里,你我互为奥援。' },
+        {
+          kind: 'ending',
+          outcome: 'good',
+          text: '【第一幕·终】洗清冤屈,初露锋芒,还结下了墨兰这门盟友。雪团在犬朝后宫,稳稳站住了第一步。',
+        },
+      ],
+    },
+    winSolo: {
+      id: 'winSolo',
       bg: 'hall',
       cast: ['xuetuan'],
       steps: [
-        { kind: 'line', who: 'xuetuan', text: '真凶落网,清白得证。这后宫的第一关,雪团总算稳稳迈过。' },
-        { kind: 'ending', outcome: 'good', text: '【第一幕·序】洗清冤屈,初露锋芒。雪团在犬朝后宫站住了脚跟。' },
+        { kind: 'line', who: 'xuetuan', text: '这一回,靠的是自己。这宫里,终究谁也指望不上。' },
+        {
+          kind: 'ending',
+          outcome: 'good',
+          text: '【第一幕·终】洗清冤屈,初露锋芒。雪团孤身一人,也在犬朝后宫站住了脚跟。',
+        },
+      ],
+    },
+    // ── 坏结局 ──
+    snub: {
+      id: 'snub',
+      bg: 'hall',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'jinyu', text: '就这点本事,也配进这后宫?来人,送答应回去好好学规矩。' },
+        { kind: 'ending', outcome: 'bad', text: '【第一幕·挫】雪团一句话没说好,当众失了颜面。' },
       ],
     },
     frame: {
@@ -90,15 +165,6 @@ export const ACT1: Script = {
       steps: [
         { kind: 'line', who: 'jinyu', text: '查不出真凶?那这黑锅,就只好你这新人来背了。' },
         { kind: 'ending', outcome: 'bad', text: '【第一幕·冤】指错了人,雪团百口莫辩,被扣下了罪名。' },
-      ],
-    },
-    snub: {
-      id: 'snub',
-      bg: 'hall',
-      cast: ['jinyu', 'xuetuan'],
-      steps: [
-        { kind: 'line', who: 'jinyu', text: '就这点本事,也配进这后宫?来人,送答应回去好好学规矩。' },
-        { kind: 'ending', outcome: 'bad', text: '【第一幕·挫】雪团一句话没说好,当众失了颜面。' },
       ],
     },
   },

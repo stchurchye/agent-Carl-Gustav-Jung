@@ -102,6 +102,43 @@ describe('advanceStory:说台词 / 查案 分支 + 结局状态', () => {
   });
 });
 
+describe('advanceStory:branch 按旗标自动分支', () => {
+  const S: Script = {
+    start: 'a',
+    scenes: {
+      a: {
+        id: 'a',
+        bg: 'x',
+        cast: [],
+        steps: [
+          {
+            kind: 'choice',
+            options: [
+              { label: '信', setFlags: ['trust'], goto: 'b' },
+              { label: '疑', goto: 'b' },
+            ],
+          },
+        ],
+      },
+      b: { id: 'b', bg: 'x', cast: [], steps: [{ kind: 'branch', flag: 'trust', whenSet: 'good', whenUnset: 'bad' }] },
+      good: { id: 'good', bg: 'x', cast: [], steps: [{ kind: 'ending', outcome: 'good', text: '好' }] },
+      bad: { id: 'bad', bg: 'x', cast: [], steps: [{ kind: 'ending', outcome: 'bad', text: '坏' }] },
+    },
+  };
+  it('旗标置位 → whenSet', () => {
+    let s = advanceStory(S, startStory(S), { choice: 0 });
+    s = advanceStory(S, s);
+    expect(s.sceneId).toBe('good');
+    expect(s.status).toBe('won');
+  });
+  it('旗标未置 → whenUnset', () => {
+    let s = advanceStory(S, startStory(S), { choice: 1 });
+    s = advanceStory(S, s);
+    expect(s.sceneId).toBe('bad');
+    expect(s.status).toBe('lost');
+  });
+});
+
 describe('advanceStory:场景内走完靠 scene.goto 接续', () => {
   const LINEAR: Script = {
     start: 'a',

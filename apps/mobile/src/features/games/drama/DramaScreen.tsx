@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +34,11 @@ export function DramaScreen(_props: Props) {
   const advance = (input?: { choice?: number; pass?: boolean; solved?: boolean }) =>
     setState((s) => advanceStory(ACT1, s, input));
   const restart = () => setState(startStory(ACT1));
+
+  // branch 步无 UI:按旗标自动推进
+  useEffect(() => {
+    if (step?.kind === 'branch') setState((s) => advanceStory(ACT1, s));
+  }, [step]);
 
   return (
     <View style={wechatChatStyles.page}>

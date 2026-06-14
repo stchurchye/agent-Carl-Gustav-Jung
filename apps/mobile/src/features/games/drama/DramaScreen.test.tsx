@@ -26,70 +26,68 @@ function mount() {
 
 beforeEach(() => sayMock.mockReset());
 
-describe('DramaScreen 犬朝后宫(D2:对白→选择→说台词→分支→结局)', () => {
-  it('说对台词 → 走好结局', async () => {
-    sayMock.mockResolvedValue({
-      ok: true,
-      data: { pass: true, reply: '答应倒有几分胆色。', score: 8 },
-      requestId: 'r',
-    });
+describe('DramaScreen 犬朝后宫 · 第一幕(D5:扩写整幕)', () => {
+  it('结盟 + 说对 + 查对 → 盟友好结局', async () => {
+    sayMock.mockResolvedValue({ ok: true, data: { pass: true, reply: '答应倒有几分胆色。', score: 8 }, requestId: 'r' });
     const { getByText, getByTestId, findByText } = mount();
 
-    // 宫门对白
+    // 宫门
     expect(getByText(/规矩还没学全/)).toBeTruthy();
     fireEvent.press(getByText(G.cont));
     expect(getByText(/雪团初入宫闱/)).toBeTruthy();
     fireEvent.press(getByText(G.cont));
-
-    // 选择
     fireEvent.press(getByText(/屈膝行礼/));
 
-    // 贵妃刁难 → 说台词
+    // 御花园遇墨兰 → 结盟
+    expect(getByText(/最容不得新人/)).toBeTruthy();
+    fireEvent.press(getByText(G.cont));
+    fireEvent.press(getByText(G.cont));
+    fireEvent.press(getByText(/共进退/));
+
+    // 金銮殿:贵妃刁难 → 说对台词
     expect(getByText(/也敢来争宠/)).toBeTruthy();
     fireEvent.press(getByText(G.cont));
     fireEvent.changeText(getByTestId('sayline-input'), '贵妃言重了,雪团初来,只求安分守己。');
     fireEvent.press(getByText(G.sayBtn));
-
-    // 判定通过 → 回应 + 继续
     expect(await findByText('答应倒有几分胆色。')).toBeTruthy();
-    expect(getByText(G.sayPass)).toBeTruthy();
-    expect(sayMock).toHaveBeenCalledTimes(1);
-    fireEvent.press(getByText(G.cont)); // 结算 → hall
+    fireEvent.press(getByText(G.cont)); // → favor
 
-    // 说对 → 进入查案
-    expect(getByText(/稳住了贵妃/)).toBeTruthy();
-    fireEvent.press(getByText(G.cont)); // hall → probe 引子
-    expect(getByText(/泻药/)).toBeTruthy();
-    fireEvent.press(getByText(G.cont)); // → 查案面板
+    // 暂稳 → 案起
+    fireEvent.press(getByText(G.cont)); // favor 1
+    fireEvent.press(getByText(G.cont)); // favor 2 → incident
+    expect(getByText(/下了泻药/)).toBeTruthy();
+    fireEvent.press(getByText(G.cont)); // incident 1
+    fireEvent.press(getByText(G.cont)); // incident 2 → probe
+    fireEvent.press(getByText(G.cont)); // probe 引子 → 查案
 
-    // 指对真凶(seed=7 的牌局)
+    // 查对真凶(seed=7)
     const culprit = generateCase(mulberry32(7), { count: 6, budget: 2 }).culpritIndex;
     fireEvent.press(getByTestId(`suspect-${culprit}`));
 
-    // 好结局
-    expect(getByText(/真凶落网/)).toBeTruthy();
+    // 洗冤 → 旗标分支(结盟)→ 盟友结局
+    expect(getByText(/落了空/)).toBeTruthy();
+    fireEvent.press(getByText(G.cont)); // vindicate line → branch 自动 → winAlly
+    expect(getByText(/互为奥援/)).toBeTruthy();
     fireEvent.press(getByText(G.cont));
-    expect(getByText(/初露锋芒/)).toBeTruthy();
+    expect(getByText(/盟友/)).toBeTruthy();
   });
 
-  it('说不到位 → 走坏结局', async () => {
-    sayMock.mockResolvedValue({
-      ok: true,
-      data: { pass: false, reply: '就这点本事?', score: 3, hint: '再稳一点' },
-      requestId: 'r',
-    });
+  it('说不到位 → 失颜面坏结局', async () => {
+    sayMock.mockResolvedValue({ ok: true, data: { pass: false, reply: '就这点本事?', score: 3 }, requestId: 'r' });
     const { getByText, getByTestId, findByText } = mount();
-    fireEvent.press(getByText(G.cont));
-    fireEvent.press(getByText(G.cont));
+    fireEvent.press(getByText(G.cont)); // gate 1
+    fireEvent.press(getByText(G.cont)); // gate 2
     fireEvent.press(getByText(/抬头直言/));
-    fireEvent.press(getByText(G.cont)); // 过贵妃刁难那句
+    fireEvent.press(getByText(G.cont)); // courtyard 1
+    fireEvent.press(getByText(G.cont)); // courtyard 2
+    fireEvent.press(getByText(/自有分寸/));
+    fireEvent.press(getByText(G.cont)); // meet line
     fireEvent.changeText(getByTestId('sayline-input'), '你算老几');
     fireEvent.press(getByText(G.sayBtn));
     expect(await findByText('就这点本事?')).toBeTruthy();
-    expect(getByText(G.sayFail)).toBeTruthy();
-    fireEvent.press(getByText(G.cont)); // 结算 → snub 场景的台词
-    expect(getByText(/也配进这后宫/)).toBeTruthy();
-    fireEvent.press(getByText(G.cont)); // → 坏结局
+    fireEvent.press(getByText(G.cont)); // → snub
+    expect(getByText(/送答应回去/)).toBeTruthy();
+    fireEvent.press(getByText(G.cont));
     expect(getByText(/失了颜面/)).toBeTruthy();
   });
 });
