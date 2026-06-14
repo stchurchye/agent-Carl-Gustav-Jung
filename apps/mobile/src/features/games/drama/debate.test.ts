@@ -32,6 +32,15 @@ describe('公堂辩论 · 气势对垒', () => {
     expect(rebut(s, -1)).toBe(s);
   });
 
+  it('lastDelta 记实际涨跌(封顶不夸大,与气势条同步)', () => {
+    const big: DebateRound[] = [{ argument: 'a', rebuttals: [R(45)] }, { argument: 'b', rebuttals: [R(45)] }];
+    let s = rebut(buildDebate(big), 0); // 50→95
+    expect(s.lastDelta).toBe(45);
+    s = rebut(s, 0); // 95→clamp(140)=100,实际只涨 5
+    expect(s.momentum).toBe(100);
+    expect(s.lastDelta).toBe(5);
+  });
+
   it('全程犀利 → 辩完气势够高 → 压服全场 won', () => {
     expect(playAll(ROUNDS, [0, 0]).status).toBe('won');
   });

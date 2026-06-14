@@ -36,5 +36,6 @@ export function rebut(state: DebateState, choice: number): DebateState {
   let status: DebateState['status'] = 'playing';
   if (momentum <= 0) status = 'lost'; // 被驳哑
   else if (idx >= state.rounds.length) status = momentum >= WIN_AT ? 'won' : 'lost';
-  return { ...state, idx, momentum, status, lastDelta: r.delta };
+  // lastDelta 记"实际涨跌"(夹紧后),与气势条同步,封顶时不夸大
+  return { ...state, idx, momentum, status, lastDelta: momentum - state.momentum };
 }

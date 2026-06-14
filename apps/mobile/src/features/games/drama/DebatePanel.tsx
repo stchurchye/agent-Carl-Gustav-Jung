@@ -20,12 +20,17 @@ export function DebatePanel({ step, onResolved }: { step: Debate; onResolved: (w
   }, [state, onResolved]);
 
   const pick = (i: number) => setState((s) => rebut(s, i));
-  const reset = () => setState(buildDebate(step.rounds));
+  const reset = () => {
+    done.current = false;
+    setState(buildDebate(step.rounds));
+  };
 
   const round = state.rounds[state.idx];
   const lost = state.status === 'lost';
   const pct = Math.round((state.momentum / MOMENTUM_MAX) * 100);
-  const argWho = round ? castMember(round.who ?? '')?.name : '';
+  const argWho = round?.who ? castMember(round.who)?.name : undefined;
+  // 被驳哑(气势归零)与落下风(辩完气势不足)两种败北,文案分开
+  const lostText = state.momentum <= 0 ? G.debateLost : G.debateLostFell;
 
   return (
     <View style={styles.box}>
@@ -48,7 +53,7 @@ export function DebatePanel({ step, onResolved }: { step: Debate; onResolved: (w
 
       {lost ? (
         <View style={styles.center}>
-          <Text style={styles.lostText}>{G.debateLost}</Text>
+          <Text style={styles.lostText}>{lostText}</Text>
           <View style={styles.actions}>
             <Pressable testID="debate-reset" onPress={reset} style={styles.minorBtn}>
               <Text style={styles.minorText}>{G.debateReset}</Text>

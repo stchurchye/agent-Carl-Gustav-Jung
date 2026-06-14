@@ -1,5 +1,6 @@
 import { ACT1 } from './script';
 import { CAST } from './cast';
+import { SCENE_GRIDS } from '../../../pixel/grids/dramaScenes';
 import type { Scene, Step } from './story';
 
 /** 一个场景所有可能跳转到的目标场景 id */
@@ -70,12 +71,30 @@ describe('ACT1 剧情图完整性', () => {
     expect(outcomes).toContain('bad');
   });
 
-  it('在场角色与台词说话人都在角色表里', () => {
+  it('在场角色与所有说话人(对白/说台词/辩论发难)都在角色表里', () => {
     const bad: string[] = [];
+    const checkWho = (sid: string, who: string | undefined, tag: string) => {
+      if (who && !CAST[who]) bad.push(`${sid} ${tag}:${who}`);
+    };
     for (const scene of Object.values(ACT1.scenes)) {
       for (const id of scene.cast) if (!CAST[id]) bad.push(`${scene.id} cast:${id}`);
-      for (const step of scene.steps) if (step.kind === 'line' && !CAST[step.who]) bad.push(`${scene.id} who:${step.who}`);
+      for (const step of scene.steps) {
+        if (step.kind === 'line') checkWho(scene.id, step.who, 'who');
+        if (step.kind === 'sayline') checkWho(scene.id, step.who, 'say');
+        if (step.kind === 'debate') {
+          checkWho(scene.id, step.who, 'debate');
+          for (const r of step.rounds) checkWho(scene.id, r.who, 'round');
+        }
+      }
     }
+    expect(bad).toEqual([]);
+  });
+
+  it('每个场景的 bg 都在 SCENE_GRIDS 里(防 typo 静默回退到 hall)', () => {
+    const keys = new Set(Object.keys(SCENE_GRIDS));
+    const bad = Object.values(ACT1.scenes)
+      .filter((s) => !keys.has(s.bg))
+      .map((s) => `${s.id}:${s.bg}`);
     expect(bad).toEqual([]);
   });
 });

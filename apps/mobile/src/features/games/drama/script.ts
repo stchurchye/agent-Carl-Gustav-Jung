@@ -815,7 +815,7 @@ export const ACT1: Script = {
     act3win: {
       id: 'act3win',
       bg: 'hall',
-      cast: ['xuetuan', 'molan'],
+      cast: ['quanhuang', 'xuetuan', 'molan'],
       goto: 'cf_intro',
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(声色俱厉)好一出贼喊捉贼!金羽,自导这等巫蛊污案、构陷宫嫔,先褫你协理六宫之权,闭门思过!' },
@@ -1028,6 +1028,7 @@ export const ACT1: Script = {
       steps: [
         {
           kind: 'debate',
+          who: 'jinyu',
           prompt: '验亲之前,金羽先要在唇舌上把你压垮。她步步发难,你逐句回敬——气势压不住,不等滴血,满堂民心就先倒向她了。',
           onWin: 'bx_test',
           onLose: 'bx_doom1',
@@ -1114,7 +1115,7 @@ export const ACT1: Script = {
         {
           kind: 'ending',
           outcome: 'bad',
-          text: '【滴血验亲 · 被驳】唇枪舌剑里,雪团一句不慎,被金羽步步紧逼到哑口无言。不等那碗血滴下,满堂民心已倒向贵妃。「连话都说不周全,何谈母仪天下」——立后之议,先输在了一张嘴上。',
+          text: '【滴血验亲 · 落下风】唇枪舌剑里,雪团终究没能压住金羽的气势。不等那碗血滴下,满堂民心已倒向贵妃。「连一场口舌都占不得上风,何谈母仪天下」——立后之议,先输在了这张嘴上。',
         },
       ],
     },

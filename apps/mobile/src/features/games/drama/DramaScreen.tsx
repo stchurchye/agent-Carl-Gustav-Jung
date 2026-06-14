@@ -50,8 +50,15 @@ export function DramaScreen(_props: Props) {
     () => scene.cast.map((id) => ({ id, m: castMember(id) })).filter((c) => c.m),
     [scene],
   );
-  // 当前说话的角色(对白/说台词步)→ 高亮它、压暗旁人
-  const speakerId = step && (step.kind === 'line' || step.kind === 'sayline') ? step.who : null;
+  // 当前说话的角色(对白/说台词/辩论发难)→ 高亮它、压暗旁人
+  const speakerId =
+    step?.kind === 'line' || step?.kind === 'sayline'
+      ? step.who
+      : step?.kind === 'debate'
+        ? step.who ?? null
+        : null;
+  // 只有说话者确实在场时才压暗旁人;说话者不在 cast(如旁白/未登场)→ 谁都不暗
+  const speakerOnStage = speakerId != null && castSprites.some((c) => c.id === speakerId);
 
   const advance = (input?: { choice?: number; pass?: boolean; solved?: boolean }) =>
     setSave((s) => advanceSave(ACT1, s, input));
@@ -102,7 +109,7 @@ export function DramaScreen(_props: Props) {
           {castSprites.map(({ id, m }) => {
             const crown = m!.headdress ? buildHeaddress(m!.headdress) : null;
             const speaking = id === speakerId;
-            const dim = speakerId != null && !speaking;
+            const dim = speakerOnStage && !speaking;
             const size = castSprites.length >= 4 ? 50 : castSprites.length === 3 ? 60 : 72;
             return (
               <View
