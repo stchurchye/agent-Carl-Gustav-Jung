@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WeChatChatHeader } from '../../../components/WeChatChatHeader';
 import { PixelSprite } from '../../../components/pixel/PixelSprite';
 import { buildDogCharacter } from '../../../pixel/buildDog';
+import { buildHeaddress } from '../../../pixel/grids/palaceParts';
 import { wechatChatStyles } from '../../../theme/wechatChat';
 import { zh } from '../../../locales/zh-CN';
 import type { GroupStackParamList } from '../../../navigation/types';
@@ -42,12 +43,18 @@ export function DramaScreen(_props: Props) {
           <SceneBackground bg={scene.bg} />
         </View>
         <View style={styles.cast}>
-          {castSprites.map(({ id, m }) => (
-            <View key={id} style={styles.castSlot}>
-              <PixelSprite sprite={buildDogCharacter(m!.dog).still} size={72} />
-              <Text style={styles.castName}>{m!.name}</Text>
-            </View>
-          ))}
+          {castSprites.map(({ id, m }) => {
+            const crown = m!.headdress ? buildHeaddress(m!.headdress) : null;
+            return (
+              <View key={id} style={styles.castSlot}>
+                <View style={styles.dogStack}>
+                  <PixelSprite sprite={buildDogCharacter(m!.dog).still} size={72} />
+                  {crown ? <PixelSprite sprite={crown} size={72} style={StyleSheet.absoluteFill} /> : null}
+                </View>
+                <Text style={styles.castName}>{m!.name}</Text>
+              </View>
+            );
+          })}
         </View>
       </View>
 
@@ -105,6 +112,7 @@ const styles = StyleSheet.create({
   stage: { flex: 1, justifyContent: 'flex-end' },
   cast: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', padding: 16 },
   castSlot: { alignItems: 'center', gap: 4 },
+  dogStack: { width: 72, height: 72 },
   castName: {
     fontSize: 12,
     color: '#FFFDF7',
