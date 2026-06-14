@@ -9,6 +9,7 @@ import {
 } from '../lib/auth.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
+import { loginThrottle } from '../lib/loginThrottle.js';
 import * as pg from '../store/pg.js';
 
 export const authRouter = new Hono<{ Variables: AppVariables }>();
@@ -81,13 +82,23 @@ authRouter.post('/login', authRateLimit, async (c) => {
     return jsonError(c, ErrorCodes.VALIDATION, 400);
   }
 
+  // 按账号防爆破:同一用户名失败过多则冷却。对存在/不存在的用户名一视同仁,
+  // 不泄露账号是否存在(与下面的恒时 bcrypt 同理)。IP 限流挡不住换 IP 死磕。
+  const gate = loginThrottle.check(username);
+  if (!gate.allowed) {
+    c.header('Retry-After', String(gate.retryAfterSec));
+    return jsonError(c, ErrorCodes.RATE_LIMITED, 429);
+  }
+
   const row = await pg.findUserByUsername(username);
   // 恒时:用户不存在也跑一次 bcrypt,防响应时间枚举用户名(review P2)
   const passwordOk = await verifyPasswordOrDummy(password, row?.passwordHash);
   if (!row || !passwordOk) {
+    loginThrottle.recordFailure(username);
     return jsonError(c, ErrorCodes.AUTH_UNAUTHORIZED, 401);
   }
 
+  loginThrottle.recordSuccess(username);
   const { passwordHash: _, ...user } = row;
   const tokens = await signAccessToken(user);
   return c.json({ ok: true, data: { user, tokens }, requestId: c.get('requestId') });
