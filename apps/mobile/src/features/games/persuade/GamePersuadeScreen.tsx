@@ -126,7 +126,11 @@ export function GamePersuadeScreen({ route }: Props) {
   return (
     <View style={wechatChatStyles.page}>
       <WeChatChatHeader title={G.name} showBack />
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <Text style={styles.demand}>{G.demandTitle(duel.demand)}</Text>
         <Text style={styles.turns}>{G.turnsLeft(duel.turnsLeft)}</Text>
 

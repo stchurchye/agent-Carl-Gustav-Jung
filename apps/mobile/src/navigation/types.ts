@@ -98,6 +98,8 @@ export type GroupStackParamList = {
   GameSleuth: { seed?: number } | undefined;
   /** seed 可选:仅测试注入用 */
   GamePersuade: { seed?: number } | undefined;
+  /** 犬朝后宫剧情游戏 */
+  GameDrama: undefined;
   PrivateChat: { sessionId?: string; scrollToMessageId?: string } | undefined;
   /** 日记屏:scope=self 个人 / group 群私有视角;scopeId 群篇为 groupId(self 传 '');dayKey 省略=今天 */
   Diary: { scope: 'self' | 'group'; scopeId: string; scopeName?: string; dayKey?: string };
