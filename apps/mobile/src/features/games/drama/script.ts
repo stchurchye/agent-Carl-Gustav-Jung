@@ -900,7 +900,7 @@ export const ACT1: Script = {
       id: 'cf_win',
       bg: 'hall',
       cast: ['quanhuang', 'xuetuan'],
-      goto: 'act4',
+      goto: 'lw_intro',
       steps: [
         { kind: 'line', who: 'xuetuan', text: '一套大礼演得滴水不漏,那记诈仪稳稳跳了过去。金羽买通掌仪的算盘,又落了空。犬皇在上颔首——册封之礼,可成。' },
       ],
@@ -918,11 +918,70 @@ export const ACT1: Script = {
       ],
     },
 
-    // ══════════ 第七幕《凤仪定鼎》〔大结局〕 ══════════
+    // ══════════ 第七幕《听更夜奏》· 抚弦惊鸿 ══════════
+    lw_intro: {
+      id: 'lw_intro',
+      bg: 'hall',
+      act: '第七幕 · 听更夜奏',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'jinyu', text: '(抢先抱琴上前)陛下夜不能寐,臣妾愿先奏一曲解忧。说来也是,中宫之位何等尊崇,总该是德才双全之人——可不能让那些上不得台面的,污了这听更阁的雅。' },
+        { kind: 'line', who: 'xuetuan', text: '她要在册后前最后一夜,当着圣面,把我的圣眷做成一桩笑话。这一曲,我得稳。' },
+        { kind: 'branch', flag: 'glory', whenSet: 'lw_glory', whenUnset: 'lw_play' },
+      ],
+    },
+    lw_glory: {
+      id: 'lw_glory',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      goto: 'lw_play',
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '当年御宴我锋芒太露,金羽身后,跟着一片等着看我跌跤的人。今夜这一曲,但凡露一点破绽,就是满殿落井下石——容不得半分飘。' },
+      ],
+    },
+    lw_play: {
+      id: 'lw_play',
+      bg: 'hall',
+      cast: ['quanhuang', 'xuetuan'],
+      steps: [
+        {
+          kind: 'zither',
+          prompt: '听更阁里更鼓声声。跟着鼓点抚弦——亮拍拨弦、留白处屏息止手。一曲奏到留白若止水、音落如惊鸿,圣心自倾。',
+          onSolve: 'lw_win',
+          onFail: 'lw_fail',
+        },
+      ],
+    },
+    lw_win: {
+      id: 'lw_win',
+      bg: 'hall',
+      cast: ['quanhuang', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'quanhuang', text: '(久久无言,末了一叹)留白处屏息如止水,音落处惊鸿照影。此女有静气,有风骨——堪当中宫。' },
+        {
+          kind: 'choice',
+          options: [{ label: '(敛衽谢恩,不露半分得色)', setFlags: ['night_favor'], goto: 'act4' }],
+        },
+      ],
+    },
+    lw_fail: {
+      id: 'lw_fail',
+      bg: 'hall',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'jinyu', text: '(掩唇轻笑,声音却让满殿都听见)一曲乱了节律、留白没忍住——可见心浮气躁,德行尚浅。这样的人,也配执掌中宫?陛下可要三思。' },
+        {
+          kind: 'choice',
+          options: [{ label: '(强咽下这口气,指尖掐进掌心)', setFlags: ['lost_composure'], goto: 'act4' }],
+        },
+      ],
+    },
+
+    // ══════════ 第八幕《凤仪定鼎》〔大结局〕 ══════════
     act4: {
       id: 'act4',
       bg: 'hall',
-      act: '第七幕 · 凤仪定鼎',
+      act: '第八幕 · 凤仪定鼎',
       cast: ['quanhuang', 'jinyu'],
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(临朝)中宫之位虚悬已久。六宫无主,终非长法——朕,该立后了。' },

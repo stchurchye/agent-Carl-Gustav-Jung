@@ -17,7 +17,8 @@ function targetsOf(scene: Scene): string[] {
       step.kind === 'sokoban' ||
       step.kind === 'pairing' ||
       step.kind === 'prowl' ||
-      step.kind === 'koulli'
+      step.kind === 'koulli' ||
+      step.kind === 'zither'
     ) {
       if (step.onSolve) t.push(step.onSolve);
       if (step.onFail) t.push(step.onFail);
