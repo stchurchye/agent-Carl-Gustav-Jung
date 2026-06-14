@@ -12,7 +12,7 @@ function targetsOf(scene: Scene): string[] {
       if (step.onPass) t.push(step.onPass);
       if (step.onFail) t.push(step.onFail);
     }
-    if (step.kind === 'deduce' || step.kind === 'sokoban' || step.kind === 'pairing') {
+    if (step.kind === 'deduce' || step.kind === 'sokoban' || step.kind === 'pairing' || step.kind === 'prowl') {
       if (step.onSolve) t.push(step.onSolve);
       if (step.onFail) t.push(step.onFail);
     }

@@ -559,7 +559,7 @@ export const ACT1: Script = {
       id: 'tp_win',
       bg: 'hall',
       cast: ['xuetuan'],
-      goto: 'act3',
+      goto: 'np_intro',
       steps: [
         { kind: 'line', who: 'xuetuan', text: '(梆子刚落,我合上药方)就是这一对——本是相济的安药,被人调成了烈。换了方子,寿宴无虞。金羽这一局,又落了空。' },
       ],
@@ -577,11 +577,99 @@ export const ACT1: Script = {
       ],
     },
 
-    // ══════════ 第四幕《棠梨惊变》〔揪心〕 ══════════
+    // ══════════ 第四幕《月下夜探》· 潜行避哨 ══════════
+    np_intro: {
+      id: 'np_intro',
+      bg: 'garden',
+      act: '第四幕 · 月下夜探',
+      cast: ['molan', 'xuetuan'],
+      goto: 'np_prowl',
+      steps: [
+        { kind: 'line', who: 'molan', text: '金羽栽我的局,八成已经布下。可她那道伪造的「巫蛊」底稿、勾连宫外的私信,都锁在偏殿——拿到它,你就不是待宰的羔羊,是握刀的人。' },
+        { kind: 'line', who: 'xuetuan', text: '偏殿外,巡夜犬走了一夜的固定哨路,灯笼光锥扫过满地月色。今夜,我去把那封信,偷出来。' },
+      ],
+    },
+    np_prowl: {
+      id: 'np_prowl',
+      bg: 'garden',
+      cast: ['xuetuan'],
+      steps: [
+        {
+          kind: 'prowl',
+          prompt: '趁夜潜到金门偏殿取出密信。看准巡夜犬的哨路与光锥,该走则走、该屏息则屏息——撞上一回,满盘皆输。',
+          onSolve: 'np_got',
+          onFail: 'np_caught',
+        },
+      ],
+    },
+    np_got: {
+      id: 'np_got',
+      bg: 'garden',
+      cast: ['xuetuan'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(攥着那封密信,指节发白)到手了——金羽伪造巫蛊、私通宫外的铁证,如今在我手心。她若敢动墨兰,我便反手钉死她。' },
+        {
+          kind: 'choice',
+          prompt: '铁证在手,这张牌怎么打?',
+          options: [
+            { label: '留作底牌,引而不发——等她对墨兰动手那日,当殿反将', setFlags: ['stole_letter'], goto: 'act3' },
+            { label: '连夜呈到太后处,先发制人、打她个措手不及', setFlags: ['stole_letter', 'struck_first'], goto: 'np_strike' },
+          ],
+        },
+      ],
+    },
+    np_strike: {
+      id: 'np_strike',
+      bg: 'garden',
+      cast: ['xuetuan'],
+      goto: 'act3',
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '太后将信将疑,把信留了下。金羽一时不敢轻举妄动——可打草惊蛇,她也知道有人在查她了。这一步,赌的是先机。' },
+      ],
+    },
+    np_caught: {
+      id: 'np_caught',
+      bg: 'garden',
+      cast: ['laofu', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'laofu', text: '(提灯而来,光照到她发抖的爪)三更半夜,妃主不在椒房安歇,在这偏殿外鬼鬼祟祟——做什么?' },
+        {
+          kind: 'sayline',
+          who: 'laofu',
+          context: '深夜潜行被巡夜犬惊动,掌宫规的老福嬷嬷提灯当面盘问。雪团手里没拿到信,必须当场圆一个谎、脱身。',
+          intent: '镇定圆谎、化解老福的当场盘问——谎称深夜不寐、特来给太后或犬皇煎一盅安神汤,既要把来由说得滴水不漏、又不露半分破绽,让阅人无数的老福挑不出错。',
+          onPass: 'np_slip',
+          onFail: 'np_doom',
+        },
+      ],
+    },
+    np_slip: {
+      id: 'np_slip',
+      bg: 'garden',
+      cast: ['xuetuan'],
+      goto: 'act3',
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(老福将信将疑,提灯走了)一身冷汗。信没偷成,人是脱了身——可手里空空,明日金羽动手,我只能硬扛。这条路,难走了。' },
+      ],
+    },
+    np_doom: {
+      id: 'np_doom',
+      bg: 'garden',
+      cast: ['laofu', 'xuetuan'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'bad',
+          text: '【月下夜探 · 落网】谎话说得磕磕绊绊,老福的灯笼凑近了她发抖的爪。「深更半夜,潜伏禁地……」偏殿外这点见不得光的行迹,转眼成了金羽参她「夜探禁地、图谋不轨」的铁证。没偷到金羽的把柄,反把自己的把柄,亲手送进了她手里。',
+        },
+      ],
+    },
+
+    // ══════════ 第五幕《棠梨惊变》〔揪心〕 ══════════
     act3: {
       id: 'act3',
       bg: 'garden',
-      act: '第四幕 · 棠梨惊变',
+      act: '第五幕 · 棠梨惊变',
       cast: ['xuetuan', 'molan'],
       steps: [
         { kind: 'line', who: 'xuetuan', text: '入宫一年,我从答应走到了妃位。可越是站得高,夜里越是睡不安稳——金羽沉得太久了,静得反常。' },
@@ -743,11 +831,11 @@ export const ACT1: Script = {
       ],
     },
 
-    // ══════════ 第五幕《凤仪定鼎》〔大结局〕 ══════════
+    // ══════════ 第六幕《凤仪定鼎》〔大结局〕 ══════════
     act4: {
       id: 'act4',
       bg: 'hall',
-      act: '第五幕 · 凤仪定鼎',
+      act: '第六幕 · 凤仪定鼎',
       cast: ['quanhuang', 'jinyu'],
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(临朝)中宫之位虚悬已久。六宫无主,终非长法——朕,该立后了。' },

@@ -15,6 +15,7 @@ import { SayLinePanel } from './SayLinePanel';
 import { DeducePanel } from './DeducePanel';
 import { SokobanPanel } from './SokobanPanel';
 import { PairingPanel } from './PairingPanel';
+import { ProwlPanel } from './ProwlPanel';
 import { SceneBackground } from './SceneBackground';
 import { advanceStory, currentStep, startStory, type DramaState } from './story';
 
@@ -111,6 +112,12 @@ export function DramaScreen(_props: Props) {
           />
         ) : step?.kind === 'pairing' ? (
           <PairingPanel
+            key={`${state.sceneId}-${state.stepIndex}`}
+            step={step}
+            onResolved={(solved) => advance({ solved })}
+          />
+        ) : step?.kind === 'prowl' ? (
+          <ProwlPanel
             key={`${state.sceneId}-${state.stepIndex}`}
             step={step}
             onResolved={(solved) => advance({ solved })}
