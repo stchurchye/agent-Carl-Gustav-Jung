@@ -165,8 +165,109 @@ function garden(): PixelGrid {
   return toGrid(c);
 }
 
+/** 公堂正殿:双御座(犬皇+太后)+ 屏风 + 丹陛金阶 + 审案长桌 + 朱柱(比前殿更森严) */
+function court(): PixelGrid {
+  const c = blank('S');
+  rect(c, 0, 42, SCENE_W - 1, SCENE_H - 1, 'F'); // 石地
+  rect(c, 0, 47, SCENE_W - 1, 47, 'f');
+  rect(c, 0, 52, SCENE_W - 1, 52, 'f');
+  rect(c, 0, 4, SCENE_W - 1, 41, 'W'); // 后墙
+  rect(c, 0, 0, SCENE_W - 1, 3, 'K'); // 屋梁
+  rect(c, 0, 3, SCENE_W - 1, 3, 'G'); // 金线
+  // 屏风(金框深红 + 金纹)
+  rect(c, 15, 5, 32, 30, 'D');
+  rect(c, 15, 5, 32, 6, 'G');
+  rect(c, 15, 5, 16, 30, 'G');
+  rect(c, 31, 5, 32, 30, 'G');
+  rect(c, 22, 12, 25, 13, 'G');
+  rect(c, 20, 18, 27, 19, 'G');
+  // 丹陛(金阶)
+  rect(c, 14, 38, 33, 42, 'g');
+  rect(c, 16, 35, 31, 37, 'G');
+  rect(c, 18, 32, 29, 34, 'g');
+  // 双御座
+  rect(c, 18, 27, 22, 40, 'R');
+  rect(c, 18, 27, 18, 40, 'K');
+  rect(c, 22, 27, 22, 40, 'K');
+  rect(c, 18, 27, 22, 28, 'G');
+  rect(c, 25, 27, 29, 40, 'R');
+  rect(c, 25, 27, 25, 40, 'K');
+  rect(c, 29, 27, 29, 40, 'K');
+  rect(c, 25, 27, 29, 28, 'G');
+  // 朱柱
+  pillar(c, 2, 4, 42);
+  pillar(c, 41, 4, 42);
+  // 审案长桌
+  rect(c, 11, 44, 36, 46, 'R');
+  rect(c, 11, 44, 36, 44, 'G');
+  rect(c, 11, 46, 36, 46, 'r');
+  // 灯笼
+  lantern(c, 7, 7);
+  lantern(c, 38, 7);
+  return toGrid(c);
+}
+
+/** 太医院:整面药柜格架(铜环抽屉)+ 药案药碾 + 晾药匾 */
+function clinic(): PixelGrid {
+  const c = blank('S');
+  rect(c, 0, 44, SCENE_W - 1, SCENE_H - 1, 'F');
+  rect(c, 0, 49, SCENE_W - 1, 49, 'f');
+  rect(c, 0, 0, SCENE_W - 1, 3, 'K');
+  rect(c, 0, 3, SCENE_W - 1, 3, 'G');
+  rect(c, 0, 4, SCENE_W - 1, 43, 'W');
+  // 药柜
+  rect(c, 3, 6, 44, 35, 'w');
+  rect(c, 3, 6, 44, 6, 'K');
+  rect(c, 3, 35, 44, 35, 'K');
+  rect(c, 3, 6, 3, 35, 'K');
+  rect(c, 44, 6, 44, 35, 'K');
+  for (let row = 9; row <= 27; row += 9)
+    for (let col = 6; col <= 34; col += 7) {
+      rect(c, col, row, col + 5, row + 5, 'W');
+      rect(c, col, row, col + 5, row, 'K');
+      rect(c, col, row, col, row + 5, 'b');
+      px(c, col + 2, row + 3, 'G');
+      px(c, col + 3, row + 3, 'G');
+    }
+  // 药案 + 药碾
+  rect(c, 8, 40, 22, 43, 'r');
+  rect(c, 8, 40, 22, 40, 'G');
+  rect(c, 12, 37, 18, 39, 'B');
+  disc(c, 15, 38, 3, 1, 'b');
+  // 晾药匾
+  disc(c, 34, 40, 5, 3, 'g');
+  disc(c, 34, 40, 4, 2, 'J');
+  return toGrid(c);
+}
+
+/** 听更阁(夜):暗蓝夜空 + 暖月 + 阁檐立柱 + 朱栏 + 灯笼 */
+function pavilion(): PixelGrid {
+  const c = blank('n');
+  disc(c, 38, 10, 5, 5, 'S'); // 暖月
+  rect(c, 0, 44, SCENE_W - 1, SCENE_H - 1, 'F');
+  rect(c, 0, 49, SCENE_W - 1, 49, 'f');
+  // 阁檐
+  rect(c, 0, 6, SCENE_W - 1, 10, 'K');
+  rect(c, 0, 6, SCENE_W - 1, 6, 'G');
+  rect(c, 2, 10, SCENE_W - 3, 11, 'r');
+  // 立柱
+  pillar(c, 4, 11, 44);
+  pillar(c, 39, 11, 44);
+  // 朱栏(上下横栏 + 竖栏)
+  rect(c, 10, 34, 37, 35, 'r');
+  rect(c, 10, 40, 37, 41, 'r');
+  for (let x = 12; x <= 35; x += 4) rect(c, x, 35, x + 1, 40, 'r');
+  // 灯笼
+  lantern(c, 14, 14);
+  lantern(c, 31, 14);
+  return toGrid(c);
+}
+
 export const SCENE_GRIDS: Record<string, PixelGrid> = {
   hall: hall(),
   gate: gate(),
   garden: garden(),
+  court: court(),
+  clinic: clinic(),
+  pavilion: pavilion(),
 };

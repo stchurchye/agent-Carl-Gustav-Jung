@@ -18,6 +18,7 @@ import { PairingPanel } from './PairingPanel';
 import { ProwlPanel } from './ProwlPanel';
 import { KoulliPanel } from './KoulliPanel';
 import { ZitherPanel } from './ZitherPanel';
+import { DebatePanel } from './DebatePanel';
 import { SceneBackground } from './SceneBackground';
 import { currentStep, type DramaState } from './story';
 import {
@@ -49,6 +50,8 @@ export function DramaScreen(_props: Props) {
     () => scene.cast.map((id) => ({ id, m: castMember(id) })).filter((c) => c.m),
     [scene],
   );
+  // 当前说话的角色(对白/说台词步)→ 高亮它、压暗旁人
+  const speakerId = step && (step.kind === 'line' || step.kind === 'sayline') ? step.who : null;
 
   const advance = (input?: { choice?: number; pass?: boolean; solved?: boolean }) =>
     setSave((s) => advanceSave(ACT1, s, input));
@@ -98,13 +101,20 @@ export function DramaScreen(_props: Props) {
         <View style={styles.cast}>
           {castSprites.map(({ id, m }) => {
             const crown = m!.headdress ? buildHeaddress(m!.headdress) : null;
+            const speaking = id === speakerId;
+            const dim = speakerId != null && !speaking;
+            const size = castSprites.length >= 4 ? 50 : castSprites.length === 3 ? 60 : 72;
             return (
-              <View key={id} style={styles.castSlot}>
-                <View style={styles.dogStack}>
-                  <PixelSprite sprite={buildDogCharacter(m!.dog).still} size={72} />
-                  {crown ? <PixelSprite sprite={crown} size={72} style={StyleSheet.absoluteFill} /> : null}
+              <View
+                key={id}
+                testID={speaking ? `cast-speaking-${id}` : `cast-${id}`}
+                style={[styles.castSlot, dim && styles.castDim, speaking && styles.castSpeaking]}
+              >
+                <View style={{ width: size, height: size }}>
+                  <PixelSprite sprite={buildDogCharacter(m!.dog).still} size={size} />
+                  {crown ? <PixelSprite sprite={crown} size={size} style={StyleSheet.absoluteFill} /> : null}
                 </View>
-                <Text style={styles.castName}>{m!.name}</Text>
+                <Text style={[styles.castName, speaking && styles.castNameOn]}>{m!.name}</Text>
               </View>
             );
           })}
@@ -171,6 +181,12 @@ export function DramaScreen(_props: Props) {
             key={`${state.sceneId}-${state.stepIndex}`}
             step={step}
             onResolved={(solved) => advance({ solved })}
+          />
+        ) : step?.kind === 'debate' ? (
+          <DebatePanel
+            key={`${state.sceneId}-${state.stepIndex}`}
+            step={step}
+            onResolved={(won) => advance({ solved: won })}
           />
         ) : null}
       </View>
@@ -247,7 +263,8 @@ const styles = StyleSheet.create({
   actBannerText: { fontSize: 15, fontWeight: '800', color: '#F1D67E', letterSpacing: 2 },
   cast: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', padding: 16 },
   castSlot: { alignItems: 'center', gap: 4 },
-  dogStack: { width: 72, height: 72 },
+  castDim: { opacity: 0.5 },
+  castSpeaking: { transform: [{ translateY: -5 }] }, // 说话者微微抬升
   castName: {
     fontSize: 12,
     color: '#FFFDF7',
@@ -258,6 +275,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: 'hidden',
   },
+  castNameOn: { backgroundColor: '#B3402F', color: '#F1D67E' }, // 说话者名牌高亮
+
   panel: {
     backgroundColor: '#FFFDF7',
     borderTopWidth: 2,
