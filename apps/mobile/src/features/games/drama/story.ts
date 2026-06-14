@@ -34,11 +34,20 @@ export type Deduce = {
   onSolve?: SceneId;
   onFail?: SceneId;
 };
+/** 推箱子脱困:把宫箱全推上地砖机关、暗门即开。解开=onSolve;放弃突围=onFail */
+export type Sokoban = {
+  kind: 'sokoban';
+  prompt?: string;
+  /** 关卡(Sokoban 记法字符网格);缺省用库房关卡 */
+  level?: string[];
+  onSolve?: SceneId;
+  onFail?: SceneId;
+};
 export type Ending = { kind: 'ending'; outcome: 'good' | 'bad'; text: string };
 /** 旗标条件分支(无玩家输入,自动按旗标走);让选择产生后果 */
 export type Branch = { kind: 'branch'; flag: string; whenSet?: SceneId; whenUnset?: SceneId };
 
-export type Step = Line | Choice | SayLine | Deduce | Branch | Ending;
+export type Step = Line | Choice | SayLine | Deduce | Sokoban | Branch | Ending;
 
 export type Scene = {
   id: SceneId;
@@ -122,6 +131,9 @@ export function advanceStory(script: Script, state: DramaState, input?: AdvanceI
       next = target(script, state, input?.pass ? step.onPass : step.onFail);
       break;
     case 'deduce':
+      next = target(script, state, input?.solved ? step.onSolve : step.onFail);
+      break;
+    case 'sokoban':
       next = target(script, state, input?.solved ? step.onSolve : step.onFail);
       break;
     case 'branch':

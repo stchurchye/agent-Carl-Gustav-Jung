@@ -563,8 +563,33 @@ export const ACT1: Script = {
       id: 'defend',
       bg: 'hall',
       cast: ['xuetuan', 'molan'],
+      goto: 'detain',
       steps: [
-        { kind: 'line', who: 'xuetuan', text: '(上前半步,挡在墨兰身前)陛下,巫蛊乃灭门重罪,定罪岂能凭一个来路不明的木偶?容臣妾把塞木偶的人,揪出来给陛下看!' },
+        { kind: 'line', who: 'xuetuan', text: '(上前半步,挡在墨兰身前)陛下!巫蛊乃灭门重罪,定罪岂能凭一根来路不明的啃骨?容臣妾把栽赃的人,揪出来给陛下看!' },
+      ],
+    },
+    // 推箱子脱困:金羽抢先把雪团软禁库房,得推宫箱开暗门冲回公堂——慢一步墨兰就没命
+    detain: {
+      id: 'detain',
+      bg: 'gate',
+      cast: ['jinyu', 'xuetuan'],
+      steps: [
+        { kind: 'line', who: 'jinyu', text: '(抢上一步,假意关切)妹妹怕是急糊涂了。来人——送娘娘去偏殿库房歇着,公堂上的事,可容不得她这样搅。' },
+        { kind: 'line', who: 'xuetuan', text: '(库房门哐当落锁,四下堆满宫箱)她是要把我关到公堂散场!可巧——地砖上那几处机关,把箱子全压上去,暗门就开。墨兰还跪在堂上等我,一刻都耽误不得!' },
+        {
+          kind: 'sokoban',
+          prompt: '推开宫箱、把四角地砖机关全压上,撬开暗门冲回公堂——慢一步,墨兰就没命了。',
+          onSolve: 'a3probe',
+          onFail: 'caught',
+        },
+      ],
+    },
+    a3probe: {
+      id: 'a3probe',
+      bg: 'hall',
+      cast: ['xuetuan', 'molan'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(暗门轰然洞开,我踉跄冲回公堂)还来得及!当值的宫人都在这儿——谁动的手,这一回,我要当着满堂揪出来。' },
         {
           kind: 'deduce',
           prompt: '近三日出入过墨兰寝殿的宫人都在此。嗅出谁的爪上沾着新刻啃骨的骨屑气、谁是金羽埋的钉子——揪出栽赃的真凶。',
@@ -573,6 +598,18 @@ export const ACT1: Script = {
           seed: 13,
           onSolve: 'expose',
           onFail: 'bothFall',
+        },
+      ],
+    },
+    caught: {
+      id: 'caught',
+      bg: 'gate',
+      cast: ['xuetuan'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'bad',
+          text: '【棠梨惊变 · 困毙】箱笼推来推去,暗门却始终不开。库房外,公堂的梆子一声声敲过去——等她终于颓然松了爪,墨兰的死讯,已隔着那道门传了进来。金羽要的从不是她的命,是要她困在咫尺之外,眼睁睁看着自己,救不下那个唯一肯信她的人。',
         },
       ],
     },

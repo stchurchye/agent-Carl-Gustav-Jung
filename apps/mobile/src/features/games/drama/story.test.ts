@@ -15,6 +15,7 @@ const SCRIPT: Script = {
           options: [
             { label: '行礼', setFlags: ['polite'], goto: 's2' },
             { label: '无视', goto: 's3' },
+            { label: '脱困', goto: 's4' },
           ],
         },
       ],
@@ -30,6 +31,12 @@ const SCRIPT: Script = {
       bg: 'garden',
       cast: ['hero'],
       steps: [{ kind: 'deduce', onSolve: 'sGood', onFail: 'sBad' }],
+    },
+    s4: {
+      id: 's4',
+      bg: 'gate',
+      cast: ['hero'],
+      steps: [{ kind: 'sokoban', onSolve: 'sGood', onFail: 'sBad' }],
     },
     sGood: { id: 'sGood', bg: 'hall', cast: [], steps: [{ kind: 'ending', outcome: 'good', text: '圆满' }] },
     sBad: { id: 'sBad', bg: 'hall', cast: [], steps: [{ kind: 'ending', outcome: 'bad', text: '出局' }] },
@@ -94,6 +101,17 @@ describe('advanceStory:说台词 / 查案 分支 + 结局状态', () => {
   });
   it('查错 → 坏结局', () => {
     expect(advanceStory(SCRIPT, atDeduce(), { solved: false }).status).toBe('lost');
+  });
+
+  function atSokoban() {
+    const s = advanceStory(SCRIPT, startStory(SCRIPT));
+    return advanceStory(SCRIPT, s, { choice: 2 }); // → s4 sokoban
+  }
+  it('推箱解开 → 好结局', () => {
+    expect(advanceStory(SCRIPT, atSokoban(), { solved: true }).status).toBe('won');
+  });
+  it('放弃突围 → 坏结局', () => {
+    expect(advanceStory(SCRIPT, atSokoban(), { solved: false }).status).toBe('lost');
   });
 
   it('结局后再 advance 空操作', () => {

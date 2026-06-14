@@ -13,6 +13,7 @@ import { ACT1 } from './script';
 import { castMember } from './cast';
 import { SayLinePanel } from './SayLinePanel';
 import { DeducePanel } from './DeducePanel';
+import { SokobanPanel } from './SokobanPanel';
 import { SceneBackground } from './SceneBackground';
 import { advanceStory, currentStep, startStory, type DramaState } from './story';
 
@@ -97,6 +98,12 @@ export function DramaScreen(_props: Props) {
           />
         ) : step?.kind === 'deduce' ? (
           <DeducePanel
+            key={`${state.sceneId}-${state.stepIndex}`}
+            step={step}
+            onResolved={(solved) => advance({ solved })}
+          />
+        ) : step?.kind === 'sokoban' ? (
+          <SokobanPanel
             key={`${state.sceneId}-${state.stepIndex}`}
             step={step}
             onResolved={(solved) => advance({ solved })}
