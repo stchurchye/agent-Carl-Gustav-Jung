@@ -8,7 +8,13 @@ export type Line = { kind: 'line'; who: CharId; text: string; mood?: string };
 /** 选项:可置旗标、可跳场景(无 goto 则进本场景下一步) */
 export type ChoiceOption = { label: string; setFlags?: string[]; goto?: SceneId };
 export type Choice = { kind: 'choice'; prompt?: string; options: ChoiceOption[] };
-/** 说对台词:玩家说的话经 LLM 判定 pass/fail → 走不同场景 */
+/** 一个可选的应对台词(多选题模式);good=得体能过,reply=选错时对面的回怼 */
+export type SayOption = { label: string; good: boolean; reply?: string };
+/**
+ * 说对台词:
+ *  - 给了 options → 多选题模式(挑一句得体的,挑对即过,纯离线、不连 LLM)
+ *  - 没给 options → 自由打字 + LLM 判官模式
+ */
 export type SayLine = {
   kind: 'sayline';
   who: CharId;
@@ -17,6 +23,8 @@ export type SayLine = {
   /** 场景情境(喂给判官做背景) */
   context?: string;
   hint?: string;
+  /** 多选题选项;有则走多选、不连 LLM */
+  options?: SayOption[];
   onPass?: SceneId;
   onFail?: SceneId;
 };
