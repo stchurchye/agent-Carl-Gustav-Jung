@@ -53,10 +53,21 @@ const COURT: PixelGrid = grid24([
   [5, 'R', 11],
 ]);
 
+/** 帝冕:双层金冠 + 中央红宝 + 额心垂珠(犬皇专属;有别于贵妃凤冠的尖顶与两侧步摇坠) */
+const EMPEROR: PixelGrid = grid24([
+  [0, 'HHHHHH', 9],
+  [1, 'GGGGGG', 9],
+  [2, 'GGGGGGGGGG', 7],
+  [3, 'GGGRRGGG', 8],
+  [4, 'GHHHHHHG', 8],
+  [5, 'PP', 11],
+]);
+
 const HEADDRESS_GRIDS: Record<string, PixelGrid> = {
   phoenix: PHOENIX,
   buyao: BUYAO,
   court: COURT,
+  emperor: EMPEROR,
 };
 
 const cache = new Map<string, CompiledSprite>();

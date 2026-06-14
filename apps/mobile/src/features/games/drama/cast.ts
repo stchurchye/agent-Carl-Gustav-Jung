@@ -31,6 +31,12 @@ export const CAST: Record<CharId, CastMember> = {
     dog: { ...DEFAULT_DOG, coat: 'ebony', ears: 'longdrop', tail: 'straight', personality: 'sweet' },
     headdress: 'buyao',
   },
+  // 犬朝之主·圣眷所系:赭红威仪 + 专属帝冕
+  quanhuang: {
+    name: '犬皇',
+    dog: { ...DEFAULT_DOG, body: 'sturdy', coat: 'terra', ears: 'pointy', tail: 'curl', personality: 'calm' },
+    headdress: 'emperor',
+  },
 };
 
 export function castMember(id: CharId): CastMember | null {
