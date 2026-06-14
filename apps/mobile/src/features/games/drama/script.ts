@@ -1,17 +1,19 @@
 import type { Script } from './story';
 
 /**
- * 犬朝后宫 ·《雪团传》全本:四幕原创宫斗。
+ * 犬朝后宫 ·《雪团传》全本:八幕原创宫斗。
  * 全部为原创人物、原创台词、原创情节——宫斗只是类型套路(不受版权),不照搬、不"小改"任何作品。
  *
- * 旗标一路贯穿、皆有回响(无死旗标):
- *  - polite(行礼)        → 老福三度作证:vouch / vouch2 / laofuFinal
- *  - trust_molan(结盟)    → 墨兰给情报、解锁隐藏贤宠、第三幕拼死相救的羁绊
- *  - humiliated_jinyu(点破)→ 第三幕金羽的报复变成血海深仇
- *  - glory(锋芒夺宠)      → 第四幕金羽纠集的党羽更盛
- *  - saved_molan / cold_blood(救/弃墨兰)→ 第四幕站着的是盟友还是孤影,决定终局
+ * 八幕(机制各异):初入宫闱(查案/说台词)· 御宴争辉(说台词/查案/选择)· 试毒局(验毒配伍)·
+ *   月下夜探(潜行)· 棠梨惊变(选择/推箱/查案/说台词)· 椒房册仪(默宫仪)· 听更夜奏(抚弦节奏)·
+ *   凤仪定鼎(大结局)。每幕"善果"续进下一幕,只有末幕才有真正的大结局;各幕"恶果"即 game over。
  *
- * 每幕"善果"续进下一幕,只有最末一幕(凤仪定鼎)才是真正的大结局;各幕"恶果"即game over(有画面的重击)。
+ * 旗标一路贯穿、皆有回响(无死旗标),终幕汇成「证据 × 风向 × 人证」:
+ *  - polite(行礼)→ 老福三度作证(vouch/vouch2/laofuFinal);trust_molan(结盟)→ 情报/隐藏贤宠/救墨兰
+ *  - humiliated_jinyu(点破)→ 金羽血仇;glory(锋芒)→ 树敌更盛、夜奏更险、终幕党羽压境
+ *  - saved_molan / cold_blood(救/弃墨兰)→ 终局孤影或盟友;stole_letter / struck_first(偷信/先发)
+ *    → 终幕证据碾压、太后人证,解锁「大白于天下 / 名正族诛」隐藏结局
+ *  - night_favor / lost_composure(夜奏通仪/破功)→ 终幕开场圣心向你或存疑(风向)
  */
 export const ACT1: Script = {
   start: 'gate',
@@ -986,8 +988,33 @@ export const ACT1: Script = {
       steps: [
         { kind: 'line', who: 'quanhuang', text: '(临朝)中宫之位虚悬已久。六宫无主,终非长法——朕,该立后了。' },
         { kind: 'line', who: 'jinyu', text: '(凤眼赤红,孤注一掷)陛下!立后乃国本,岂容一个心怀叵测之人觊觎!臣妾要奏——她暗害皇嗣、私通宫外,桩桩是诛族的死罪!' },
-        { kind: 'branch', flag: 'saved_molan', whenSet: 'a4Ally', whenUnset: 'a4Solo' },
+        // 风向:昨夜听更阁那一曲,圣心向你还是存了疑
+        { kind: 'branch', flag: 'night_favor', whenSet: 'a4windhi', whenUnset: 'a4windlo' },
       ],
+    },
+    a4windhi: {
+      id: 'a4windhi',
+      bg: 'hall',
+      cast: ['quanhuang', 'xuetuan'],
+      goto: 'a4stand',
+      steps: [
+        { kind: 'line', who: 'quanhuang', text: '(目光沉沉,未即采信)昨夜一曲,朕已识得此女的静气。金羽,这般急着泼脏水,倒像是怕了什么。讲下去——朕,听着。' },
+      ],
+    },
+    a4windlo: {
+      id: 'a4windlo',
+      bg: 'hall',
+      cast: ['jinyu', 'xuetuan'],
+      goto: 'a4stand',
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(心头一沉)昨夜听更阁那一曲乱了节律,「德不配位」的话已在六宫传开。圣心存了疑——这一仗,我从一开始就矮了三分,半个错都犯不起。' },
+      ],
+    },
+    a4stand: {
+      id: 'a4stand',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      steps: [{ kind: 'branch', flag: 'saved_molan', whenSet: 'a4Ally', whenUnset: 'a4Solo' }],
     },
     a4Ally: {
       id: 'a4Ally',
@@ -1034,9 +1061,34 @@ export const ACT1: Script = {
           count: 7,
           budget: 2,
           seed: 17,
-          onSolve: 'finalShow',
+          onSolve: 'a4evidence',
           onFail: 'fengyun',
         },
+      ],
+    },
+    // 证据强度:那夜偷来的密信 + 是否先发制人惊动太后
+    a4evidence: {
+      id: 'a4evidence',
+      bg: 'hall',
+      cast: ['xuetuan'],
+      steps: [{ kind: 'branch', flag: 'stole_letter', whenSet: 'a4letter', whenUnset: 'finalShow' }],
+    },
+    a4letter: {
+      id: 'a4letter',
+      bg: 'hall',
+      cast: ['xuetuan', 'quanhuang'],
+      steps: [
+        { kind: 'line', who: 'xuetuan', text: '(从袖中抽出那封密信,双手呈上)陛下请看——这是金羽伪造巫蛊的底稿、私通宫外的亲笔。白纸黑字,人证物证俱在。今日之事,已不是她诬我,是我告她!' },
+        { kind: 'branch', flag: 'struck_first', whenSet: 'a4taihou', whenUnset: 'finalShow' },
+      ],
+    },
+    a4taihou: {
+      id: 'a4taihou',
+      bg: 'hall',
+      cast: ['laofu', 'quanhuang'],
+      goto: 'finalShow',
+      steps: [
+        { kind: 'line', who: 'laofu', text: '(代传太后懿旨)太后早得了这封密报,暗中查了金羽多日。太后口谕:此女所奏句句属实,金羽之罪,证据确凿——着即彻查!(有了太后撑腰,金羽的党羽霎时噤了声)' },
       ],
     },
     finalShow: {
@@ -1091,15 +1143,53 @@ export const ACT1: Script = {
       id: 'mercyBranch',
       bg: 'hall',
       cast: ['xuetuan'],
-      steps: [{ kind: 'branch', flag: 'cold_blood', whenSet: 'endLoneJust', whenUnset: 'endPhoenix' }],
+      steps: [{ kind: 'branch', flag: 'cold_blood', whenSet: 'endLoneJust', whenUnset: 'a4mercyClean' }],
+    },
+    // 仁路 + 未负墨兰:有铁证密信 → 大白于天下;否则 → 凤仪天下
+    a4mercyClean: {
+      id: 'a4mercyClean',
+      bg: 'hall',
+      cast: ['xuetuan', 'molan'],
+      steps: [{ kind: 'branch', flag: 'stole_letter', whenSet: 'endVindicated', whenUnset: 'endPhoenix' }],
     },
     ruthlessBranch: {
       id: 'ruthlessBranch',
       bg: 'hall',
       cast: ['xuetuan'],
+      // 狠路 + 那封通敌密信在手 → 名正言顺族诛;否则按是否负墨兰分流
+      steps: [{ kind: 'branch', flag: 'stole_letter', whenSet: 'endPurge', whenUnset: 'a4ruthDark' }],
+    },
+    a4ruthDark: {
+      id: 'a4ruthDark',
+      bg: 'hall',
+      cast: ['xuetuan'],
       steps: [{ kind: 'branch', flag: 'cold_blood', whenSet: 'endTyrant', whenUnset: 'endBloodRobe' }],
     },
-    // ── 大结局 · 四种归宿 + 两处败亡 ──
+    endVindicated: {
+      id: 'endVindicated',
+      bg: 'hall',
+      cast: ['xuetuan', 'molan'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'good',
+          text: '【大结局 · 大白于天下】那封亲笔密信当殿宣读,金羽伪造巫蛊、私通宫外,桩桩铁证如山。她再无一句可辩,依国法褫位下狱,昭告六宫。雪团不是踏着权术上位——是把真相摊在了天光底下,堂堂正正洗清一身污名,登临凤位。册后那日,墨兰扶着她的凤裾,满殿心服。清者自清,沉冤得雪,这一局,赢得光明磊落。〔全剧终 · 隐藏 · 至清之路〕',
+        },
+      ],
+    },
+    endPurge: {
+      id: 'endPurge',
+      bg: 'hall',
+      cast: ['xuetuan', 'jinyu'],
+      steps: [
+        {
+          kind: 'ending',
+          outcome: 'good',
+          text: '【大结局 · 名正族诛】通敌的铁证在手,雪团不必再赶尽杀绝——国法自会替她动手。金羽以「私通外敌」论罪,一族尽没,无人能道一个冤字。她赢得名正言顺,半分把柄不留。可当那道族诛的旨意明发天下,她立在凤仪殿上,望着金羽被拖走的背影,忽然觉得冷——原来最干净的杀人,是借刀;而她,早已学会了借刀。凤位在握,再无敌手,只是夜里偶尔会想:自己究竟是赢家,还是又一个金羽。〔全剧终 · 隐藏 · 借刀之路〕',
+        },
+      ],
+    },
+    // ── 大结局 · 六种归宿 + 两处败亡 ──
     endPhoenix: {
       id: 'endPhoenix',
       bg: 'hall',
