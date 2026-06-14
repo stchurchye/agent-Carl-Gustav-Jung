@@ -73,6 +73,8 @@ export type Zither = { kind: 'zither'; prompt?: string; onSolve?: SceneId; onFai
 export type Debate = {
   kind: 'debate';
   prompt?: string;
+  /** 主发难者(舞台高亮它)——多轮发难通常同一人 */
+  who?: CharId;
   rounds: import('./debate').DebateRound[];
   onWin?: SceneId;
   onLose?: SceneId;
