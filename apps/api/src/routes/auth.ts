@@ -10,6 +10,7 @@ import {
 import { requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { loginThrottle } from '../lib/loginThrottle.js';
+import { intEnv } from '../lib/env.js';
 import * as pg from '../store/pg.js';
 
 export const authRouter = new Hono<{ Variables: AppVariables }>();
@@ -17,7 +18,7 @@ export const authRouter = new Hono<{ Variables: AppVariables }>();
 const authRateLimit = rateLimit({
   keyPrefix: 'auth',
   windowMs: 15 * 60 * 1000,
-  max: Number(process.env.AUTH_RATE_LIMIT_MAX ?? 30),
+  max: intEnv('AUTH_RATE_LIMIT_MAX', 30),
 });
 
 function isPublicRegistrationAllowed(): boolean {
@@ -31,7 +32,7 @@ authRouter.post(
   rateLimit({
     keyPrefix: 'auth-register',
     windowMs: 60 * 60 * 1000,
-    max: Number(process.env.AUTH_REGISTER_RATE_LIMIT_MAX ?? 5),
+    max: intEnv('AUTH_REGISTER_RATE_LIMIT_MAX', 5),
   }),
   async (c) => {
     if (!isPublicRegistrationAllowed()) {

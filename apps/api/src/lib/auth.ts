@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import type { User } from '@xzz/shared';
+import { intEnv } from './env.js';
 
 const JWT_ISSUER = 'xzz-api';
 const JWT_AUDIENCE = 'xzz-mobile';
@@ -42,7 +43,7 @@ export async function signAccessToken(user: User): Promise<{
   accessToken: string;
   expiresIn: number;
 }> {
-  const expiresIn = Number(process.env.JWT_EXPIRES_SEC ?? DEFAULT_EXPIRES_SEC);
+  const expiresIn = intEnv('JWT_EXPIRES_SEC', DEFAULT_EXPIRES_SEC);
   const accessToken = await new SignJWT({
     username: user.username,
     displayName: user.displayName,
